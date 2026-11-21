@@ -1,0 +1,16 @@
+:root {
+  --shift-day: #f5a623;
+  --shift-middle: #4a90d9;
+  --shift-night: #5b4b8a;
+  --shift-off: #b0b4bb;
+}
+html, body, #app { margin: 0; height: 100%; }
+body { font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background: #f4f5f7; }
+.page { padding: 16px; max-width: 1200px; margin: 0 auto; box-sizing: border-box; }
+.page-title { font-size: 18px; font-weight: 600; margin: 0 0 12px; }
+.shift-tag { display: inline-block; padding: 2px 8px; border-radius: 4px; color: #fff; font-size: 12px; line-height: 18px; white-space: nowrap; }
+.shift-day { background: var(--shift-day); }
+.shift-middle { background: var(--shift-middle); }
+.shift-night { background: var(--shift-night); }
+.shift-off { background: transparent; color: var(--shift-off); }
+.toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }

@@ -1,0 +1,25 @@
+# 内网部署：docker compose up -d --build
+# HTTPS 反向代理（PWA 需要）在第 6 步加入
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-app}
+      POSTGRES_DB: workrecord
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on: [db]
+    env_file: backend/.env
+    environment:
+      DATABASE_URL: postgresql+psycopg://app:${POSTGRES_PASSWORD:-app}@db:5432/workrecord
+    ports:
+      - "8000:8000"
+
+volumes:
+  pgdata:
