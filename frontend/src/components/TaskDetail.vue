@@ -1,0 +1,182 @@
+<script setup>
+// 任务详情抽屉：内容、状态操作、人员、时间、图片、修改记录
+import { computed, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import api from '../api'
+import { localName, localText } from '../i18n'
+import { fmtFull, isNarrow, STATUS_TYPE } from '../format'
+import { photoRecord } from '../offline'
+import { useAuth } from '../stores/auth'
+import { useOutbox } from '../stores/outbox'
+import PhotoPicker from './PhotoPicker.vue'
+import ShiftTag from './ShiftTag.vue'
+import TaskForm from './TaskForm.vue'
+import TaskPhotos from './TaskPhotos.vue'
+
+const props = defineProps({ taskId: { type: Number, default: null } })
+const visible = defineModel({ type: Boolean })
+const emit = defineEmits(['changed'])
+const { t } = useI18n()
+const auth = useAuth()
+const outbox = useOutbox()
+
+const task = ref(null)
+const history = ref([])
+const showHistory = ref(false)
+const editOpen = ref(false)
+const busy = ref(false)
+
+async function load() {
+  if (!props.taskId) return
+  task.value = (await api.get(`/tasks/${props.taskId}`)).data
+  if (showHistory.value) await loadHistory()
+}
+async function loadHistory() {
+  history.value = (await api.get(`/tasks/${props.taskId}/history`)).data
+}
+watch(() => [visible.value, props.taskId], ([v]) => {
+  if (v) {
+    task.value = null
+    showHistory.value = false
+    load()
+  }
+}, { immediate: true })
+watch(showHistory, (v) => v && loadHistory())
+
+const content = computed(() => task.value && localText(task.value.content, task.value.source_lang))
+const leftover = computed(() => task.value && localText(task.value.leftover, task.value.leftover_source_lang))
+
+async function changed() {
+  await load()
+  emit('changed')
+}
+
+async function setStatus(status) {
+  if (status === 'done') {
+    await ElMessageBox.confirm(t('task.confirmDone'), { type: 'success' })
+  }
+  busy.value = true
+  try {
+    await api.post(`/tasks/${task.value.id}/status`, { status })
+    await changed()
+  } finally {
+    busy.value = false
+  }
+}
+
+async function addPhotos(files) {
+  busy.value = true
+  try {
+    const ok = await outbox.submitPhotos(task.value.id, files.map(photoRecord))
+    if (!ok) ElMessage.warning({ message: t('outbox.savedOffline'), duration: 5000 })
+    await changed()
+  } finally {
+    busy.value = false
+  }
+}
+
+async function deletePhoto(p) {
+  await ElMessageBox.confirm(t('photo.confirmRemove'), { type: 'warning' })
+  await api.delete(`/attachments/${p.id}`)
+  await changed()
+}
+
+// 修改记录：状态变更只显示状态那一行（附带的时间、确认人等字段仍在留痕里），语言标记字段不显示
+const shownHistory = computed(() => history.value.filter((h) =>
+  !(h.action === 'status' && h.field !== 'status') && !['source_lang', 'leftover_source_lang'].includes(h.field)))
+
+function parse(v) {
+  if (v == null) return null
+  try { return JSON.parse(v) } catch { return v }
+}
+function fieldLabel(f) {
+  const m = /^(content|leftover)_(zh|sr|en)$/.exec(f)
+  if (m) return `${t(m[1] === 'content' ? 'task.content' : 'task.leftover')} (${m[2]})`
+  return { start_at: t('task.start'), end_at: t('task.end'), workers: t('task.workers') }[f] || f
+}
+function fmtVal(f, v) {
+  v = parse(v)
+  if (v == null || v === '') return '∅'
+  if (Array.isArray(v)) return v.join('、') || '∅'
+  if (f === 'start_at' || f === 'end_at') return fmtFull(String(v).replace(' ', 'T'))
+  const str = String(v)
+  return str.length > 60 ? str.slice(0, 60) + '…' : str
+}
+function histText(h) {
+  if (h.action === 'attach' || h.action === 'detach') return h.new_value || h.old_value
+  if (h.action === 'create') return ''
+  if (h.field === 'status') return `${t('status.' + h.old_value)} → ${t('status.' + h.new_value)}`
+  return `${fieldLabel(h.field)}: ${fmtVal(h.field, h.old_value)} → ${fmtVal(h.field, h.new_value)}`
+}
+</script>
+
+<template>
+  <el-drawer v-model="visible" :size="isNarrow() ? '100%' : '560px'" :title="task ? `#${task.id}` : ''" append-to-body>
+    <div v-if="task" class="detail">
+      <div class="head">
+        <el-tag :type="STATUS_TYPE[task.status]" effect="dark">{{ t(`status.${task.status}`) }}</el-tag>
+        <span class="team">{{ localName(auth.teamById(task.team_id)) }}</span>
+        <ShiftTag :kind="task.shift_kind" />
+        <span class="muted">{{ task.shift_date }}</span>
+      </div>
+
+      <div class="content">{{ content.text }}</div>
+      <div v-if="content.fallback || task.translation_status === 'pending'" class="muted small">
+        {{ t('task.original') }} ({{ task.source_lang }}) · {{ t('task.pendingTr') }}
+      </div>
+
+      <div v-if="task.can_edit" class="actions">
+        <el-button v-if="task.status === 'not_started'" type="warning" :loading="busy" @click="setStatus('in_progress')">{{ t('task.start_action') }}</el-button>
+        <el-button v-if="['not_started', 'in_progress'].includes(task.status)" type="success" :loading="busy" @click="setStatus('done')">{{ t('task.done_action') }}</el-button>
+        <el-button v-if="task.status === 'in_progress'" :loading="busy" @click="setStatus('not_started')">{{ t('task.undo_start') }}</el-button>
+        <el-button v-if="task.status === 'done'" :loading="busy" @click="setStatus('in_progress')">{{ t('task.reopen') }}</el-button>
+        <el-button @click="editOpen = true">{{ t('common.edit') }}</el-button>
+      </div>
+
+      <el-descriptions :column="1" border size="small" class="meta">
+        <el-descriptions-item :label="t('task.workers')">
+          <el-tag v-for="w in task.workers" :key="w.id" size="small" class="wtag">{{ w.name }}</el-tag>
+          <span v-if="!task.workers.length" class="muted">{{ t('task.noWorkers') }}</span>
+        </el-descriptions-item>
+        <el-descriptions-item :label="t('task.start')">{{ fmtFull(task.start_at) }}</el-descriptions-item>
+        <el-descriptions-item :label="t('task.end')">{{ fmtFull(task.end_at) }}</el-descriptions-item>
+        <el-descriptions-item v-if="task.confirmed_by" :label="t('task.confirmedBy')">{{ task.confirmed_by_name }} · {{ fmtFull(task.confirmed_at) }}</el-descriptions-item>
+        <el-descriptions-item :label="t('task.publisher')">{{ task.created_by_name }} · {{ fmtFull(task.recorded_at) }}</el-descriptions-item>
+        <el-descriptions-item :label="t('task.updater')">{{ task.updated_by_name }} · {{ fmtFull(task.updated_at) }}</el-descriptions-item>
+        <el-descriptions-item v-if="leftover.text" :label="t('task.leftover')"><span class="pre">{{ leftover.text }}</span></el-descriptions-item>
+      </el-descriptions>
+
+      <h4>{{ t('photo.title') }} ({{ task.attachments.length }})</h4>
+      <TaskPhotos :photos="task.attachments" :can-delete="task.can_edit" @delete="deletePhoto" />
+      <PhotoPicker v-if="task.can_edit" class="mt" @pick="addPhotos" />
+
+      <el-collapse class="mt" @change="(v) => (showHistory = v.includes('h'))">
+        <el-collapse-item :title="t('task.history')" name="h">
+          <el-timeline v-if="shownHistory.length">
+            <el-timeline-item v-for="h in shownHistory" :key="h.id" :timestamp="`${fmtFull(h.at)} · ${h.user_name ?? ''}`" placement="top">
+              <b>{{ t('history.' + h.action) }}</b> <span class="small">{{ histText(h) }}</span>
+            </el-timeline-item>
+          </el-timeline>
+        </el-collapse-item>
+      </el-collapse>
+    </div>
+    <el-skeleton v-else :rows="6" animated />
+    <TaskForm v-if="task" v-model="editOpen" :task="task" @saved="changed" />
+  </el-drawer>
+</template>
+
+<style scoped>
+.head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.team { font-weight: 600; }
+.content { font-size: 16px; line-height: 1.6; margin: 12px 0 4px; white-space: pre-wrap; word-break: break-word; }
+.muted { color: #909399; }
+.small { font-size: 12px; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+.actions .el-button + .el-button { margin-left: 0; }
+.meta { margin: 12px 0; }
+.wtag { margin: 2px 4px 2px 0; }
+.pre { white-space: pre-wrap; }
+.mt { margin-top: 12px; }
+h4 { margin: 16px 0 8px; }
+</style>

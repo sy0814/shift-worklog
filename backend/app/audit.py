@@ -1,6 +1,7 @@
 """留痕：写日志的工具函数 + 数据库层禁止修改/删除 audit_log。"""
 
 import json
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import event, text
@@ -8,6 +9,13 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.orm import Session
 
 from .models import AuditLog
+
+
+def _norm(v: Any) -> Any:
+    # SQLite 读回的时间是 naive（库里统一存 UTC），比较前补上时区
+    if isinstance(v, datetime) and v.tzinfo is None:
+        return v.replace(tzinfo=timezone.utc)
+    return v
 
 
 def _s(v: Any) -> str | None:
@@ -52,15 +60,16 @@ def log_changes(
     user_id: int | None,
     entity: str,
     entity_id: Any,
+    action: str = "update",
 ) -> bool:
     """把 changes 里与 obj 当前值不同的字段写入 obj，并逐字段留痕。返回是否有改动。"""
     changed = False
     for field, new in changes.items():
-        old = getattr(obj, field)
-        if old == new:
+        old = _norm(getattr(obj, field))
+        if old == _norm(new):
             continue
         setattr(obj, field, new)
-        log(db, user_id=user_id, action="update", entity=entity, entity_id=entity_id,
+        log(db, user_id=user_id, action=action, entity=entity, entity_id=entity_id,
             field=field, old=old, new=new)
         changed = True
     return changed

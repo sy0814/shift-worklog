@@ -20,6 +20,9 @@ services:
       DATABASE_URL: postgresql+psycopg://app:${POSTGRES_PASSWORD:-app}@db:5432/workrecord
     ports:
       - "8000:8000"
+    volumes:
+      - uploads:/app/data/uploads   # 任务图片（原图 + 浏览图 + 缩略图），注意备份
 
 volumes:
   pgdata:
+  uploads:

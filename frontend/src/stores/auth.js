@@ -38,6 +38,7 @@ export const useAuth = defineStore('auth', {
       if (this.user) this.user = (await api.patch('/auth/me', { lang: code })).data
     },
     logout() {
+      // 离线草稿按用户保存在本机，退出登录不会删除，下次同一账号登录后继续同步
       localStorage.removeItem('token')
       this.user = null
     },

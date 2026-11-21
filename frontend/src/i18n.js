@@ -27,6 +27,27 @@ const messages = {
       dayStart: '白班开始', middleStart: '中班开始', nightStart: '夜班开始', holidays: '节假日（常白班休息）',
       holidayName: '名称', date: '日期', weekday: '星期', pos: ['白1', '白2', '中1', '中2', '夜1', '夜2', '休1', '休2'],
     },
+    nav2: { tasks: '任务', workers: '员工名册' },
+    status: { not_started: '未开始', in_progress: '进行中', done: '已完成', handed_over: '已移交', discarded: '已废弃', open: '未完成', all: '全部' },
+    task: {
+      new: '新建任务', edit: '编辑任务', content: '工作内容', contentPh: '可以用中文、塞语或英语填写', workers: '参与人员', team: '班组',
+      start: '开始时间', end: '完成时间', leftover: '遗留问题', status: '状态', publisher: '发布人', updater: '最后修改',
+      recorded: '录入', shift: '班次', confirmedBy: '完成确认', start_action: '开始', done_action: '完成', reopen: '重新打开', undo_start: '改回未开始',
+      history: '修改记录', original: '原文', pendingTr: '待翻译', search: '搜索内容', empty: '没有任务', allTeams: '全部班组',
+      dateRange: '日期', noWorkers: '未选择', created: '已创建', confirmDone: '确认这项工作已完成？', loadMore: '加载更多',
+    },
+    photo: {
+      title: '图片', camera: '拍照', gallery: '从相册选择', file: '选择图片', takenAt: '拍摄时间',
+      src_exif: '照片自带时间', src_file: '文件时间', src_upload: '上传时间（照片无时间信息）',
+      waiting: '待上传', remove: '删除图片', confirmRemove: '删除这张图片？（会留下记录）',
+    },
+    outbox: {
+      title: '待同步', none: '没有待同步的内容', syncNow: '立即同步', savedOffline: '网络不通，已存为草稿，联网后自动同步',
+      synced: '已同步 {n} 条', photos: '{n} 张图片', newTask: '新任务', addPhotos: '补充图片', failed: '同步失败', discard: '丢弃草稿',
+      confirmDiscard: '丢弃后无法恢复，确定？', offline: '离线',
+    },
+    workers: { name: '姓名', no: '工号', team: '班组', bulk: '批量添加', bulkPh: '每行一个姓名', noTeam: '未分组', showInactive: '显示已停用' },
+    history: { create: '创建', update: '修改', status: '状态', attach: '添加图片', detach: '删除图片' },
     audit: { at: '时间', user: '操作人', action: '操作', entity: '对象', field: '字段', old: '修改前', new: '修改后' },
   },
   sr: {
@@ -50,6 +71,27 @@ const messages = {
       dayStart: 'Početak prve smene', middleStart: 'Početak druge smene', nightStart: 'Početak treće smene', holidays: 'Praznici (dnevna smena ne radi)',
       holidayName: 'Naziv', date: 'Datum', weekday: 'Dan', pos: ['P1', 'P2', 'D1', 'D2', 'T1', 'T2', 'S1', 'S2'],
     },
+    nav2: { tasks: 'Zadaci', workers: 'Radnici' },
+    status: { not_started: 'Nije započeto', in_progress: 'U toku', done: 'Završeno', handed_over: 'Predato', discarded: 'Odbačeno', open: 'Nezavršeno', all: 'Sve' },
+    task: {
+      new: 'Novi zadatak', edit: 'Izmena zadatka', content: 'Opis posla', contentPh: 'Možete pisati na srpskom, kineskom ili engleskom', workers: 'Učesnici', team: 'Smena',
+      start: 'Početak', end: 'Završetak', leftover: 'Preostali problemi', status: 'Status', publisher: 'Uneo', updater: 'Poslednja izmena',
+      recorded: 'Uneto', shift: 'Smena', confirmedBy: 'Potvrdio završetak', start_action: 'Započni', done_action: 'Završi', reopen: 'Ponovo otvori', undo_start: 'Vrati na nije započeto',
+      history: 'Istorija izmena', original: 'Original', pendingTr: 'Čeka prevod', search: 'Pretraga', empty: 'Nema zadataka', allTeams: 'Sve smene',
+      dateRange: 'Datum', noWorkers: 'Nije izabrano', created: 'Kreirano', confirmDone: 'Potvrditi da je posao završen?', loadMore: 'Učitaj još',
+    },
+    photo: {
+      title: 'Slike', camera: 'Fotografiši', gallery: 'Iz galerije', file: 'Izaberi sliku', takenAt: 'Snimljeno',
+      src_exif: 'vreme iz fotografije', src_file: 'vreme fajla', src_upload: 'vreme otpremanja (fotografija nema vreme)',
+      waiting: 'Čeka otpremanje', remove: 'Obriši sliku', confirmRemove: 'Obrisati ovu sliku? (ostaje zapis)',
+    },
+    outbox: {
+      title: 'Čeka sinhronizaciju', none: 'Nema ničega za sinhronizaciju', syncNow: 'Sinhronizuj', savedOffline: 'Nema mreže – sačuvano kao nacrt, sinhronizuje se automatski',
+      synced: 'Sinhronizovano: {n}', photos: '{n} slika', newTask: 'Novi zadatak', addPhotos: 'Dodatne slike', failed: 'Neuspešno', discard: 'Odbaci nacrt',
+      confirmDiscard: 'Nacrt se ne može vratiti. Nastaviti?', offline: 'Van mreže',
+    },
+    workers: { name: 'Ime i prezime', no: 'Matični broj', team: 'Smena', bulk: 'Dodaj više', bulkPh: 'Jedno ime po redu', noTeam: 'Bez smene', showInactive: 'Prikaži neaktivne' },
+    history: { create: 'Kreirano', update: 'Izmena', status: 'Status', attach: 'Dodata slika', detach: 'Obrisana slika' },
     audit: { at: 'Vreme', user: 'Korisnik', action: 'Radnja', entity: 'Objekat', field: 'Polje', old: 'Staro', new: 'Novo' },
   },
   en: {
@@ -73,6 +115,27 @@ const messages = {
       dayStart: 'Day shift starts', middleStart: 'Middle shift starts', nightStart: 'Night shift starts', holidays: 'Holidays (day team off)',
       holidayName: 'Name', date: 'Date', weekday: 'Weekday', pos: ['D1', 'D2', 'M1', 'M2', 'N1', 'N2', 'O1', 'O2'],
     },
+    nav2: { tasks: 'Tasks', workers: 'Workers' },
+    status: { not_started: 'Not started', in_progress: 'In progress', done: 'Done', handed_over: 'Handed over', discarded: 'Discarded', open: 'Open', all: 'All' },
+    task: {
+      new: 'New task', edit: 'Edit task', content: 'Work', contentPh: 'Chinese, Serbian or English', workers: 'Workers', team: 'Team',
+      start: 'Start', end: 'Finish', leftover: 'Open issues', status: 'Status', publisher: 'Posted by', updater: 'Last edited',
+      recorded: 'Recorded', shift: 'Shift', confirmedBy: 'Confirmed by', start_action: 'Start', done_action: 'Done', reopen: 'Reopen', undo_start: 'Back to not started',
+      history: 'History', original: 'Original', pendingTr: 'Awaiting translation', search: 'Search', empty: 'No tasks', allTeams: 'All teams',
+      dateRange: 'Date', noWorkers: 'None', created: 'Created', confirmDone: 'Confirm this work is done?', loadMore: 'Load more',
+    },
+    photo: {
+      title: 'Photos', camera: 'Take photo', gallery: 'From gallery', file: 'Choose image', takenAt: 'Taken',
+      src_exif: 'photo time', src_file: 'file time', src_upload: 'upload time (no time in photo)',
+      waiting: 'Waiting to upload', remove: 'Delete photo', confirmRemove: 'Delete this photo? (it stays in the log)',
+    },
+    outbox: {
+      title: 'Pending sync', none: 'Nothing to sync', syncNow: 'Sync now', savedOffline: 'No network – saved as draft, will sync automatically',
+      synced: 'Synced {n}', photos: '{n} photos', newTask: 'New task', addPhotos: 'Extra photos', failed: 'Sync failed', discard: 'Discard draft',
+      confirmDiscard: 'The draft cannot be recovered. Continue?', offline: 'Offline',
+    },
+    workers: { name: 'Name', no: 'Employee no.', team: 'Team', bulk: 'Bulk add', bulkPh: 'One name per line', noTeam: 'No team', showInactive: 'Show inactive' },
+    history: { create: 'Created', update: 'Edited', status: 'Status', attach: 'Photo added', detach: 'Photo deleted' },
     audit: { at: 'Time', user: 'User', action: 'Action', entity: 'Object', field: 'Field', old: 'Before', new: 'After' },
   },
 }
@@ -102,4 +165,16 @@ export function setLang(code) {
 export function localName(obj) {
   if (!obj) return ''
   return obj[`name_${i18n.global.locale.value}`] || obj.name_zh
+}
+
+/**
+ * 取三语字段在当前语言下的文字；当前语言还没有译文时退回原文。
+ * 返回 { text, fallback }，fallback=true 表示显示的是原文。
+ */
+export function localText(tri, sourceLang) {
+  if (!tri) return { text: '', fallback: false }
+  const lang = i18n.global.locale.value
+  if (tri[lang]) return { text: tri[lang], fallback: false }
+  const src = tri[sourceLang] || tri.zh || tri.sr || tri.en || ''
+  return { text: src, fallback: !!src }
 }

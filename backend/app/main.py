@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import audit  # noqa: F401  注册 audit_log 的 after_create 触发器
 from .db import Base, SessionLocal, engine
-from .routers import audit_log, auth, schedule, users
+from .routers import audit_log, auth, schedule, tasks, users, workers
 from .seed import seed
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"  # 前端构建产物
@@ -27,6 +27,8 @@ app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(schedule.router)
 app.include_router(audit_log.router)
+app.include_router(workers.router)
+app.include_router(tasks.router)
 
 
 @app.get("/api/health")

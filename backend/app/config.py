@@ -17,6 +17,10 @@ class Settings(BaseSettings):
 
     deepseek_api_key: str = ""
 
+    upload_dir: str = "./data/uploads"
+    max_upload_mb: int = 30
+    max_photos_per_task: int = 50
+
     @property
     def tz(self) -> ZoneInfo:
         return ZoneInfo(self.app_timezone)

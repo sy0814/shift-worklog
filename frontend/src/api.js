@@ -18,7 +18,7 @@ api.interceptors.response.use(
     if (status === 401 && router.currentRoute.value.name !== 'login') {
       localStorage.removeItem('token')
       router.push({ name: 'login' })
-    } else {
+    } else if (!err.config?.silent) {
       const detail = err.response?.data?.detail
       ElMessage.error(typeof detail === 'string' ? detail : i18n.global.t('common.requestFailed'))
     }

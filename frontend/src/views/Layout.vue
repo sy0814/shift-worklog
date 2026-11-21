@@ -6,7 +6,8 @@ import { ElMessage } from 'element-plus'
 import api from '../api'
 import { localName } from '../i18n'
 import { useAuth } from '../stores/auth'
-import LangSwitch from './LangSwitch.vue'
+import LangSwitch from '../components/LangSwitch.vue'
+import OutboxButton from '../components/OutboxButton.vue'
 
 const { t } = useI18n()
 const auth = useAuth()
@@ -14,8 +15,9 @@ const router = useRouter()
 
 const menu = computed(() => [
   { name: 'home', label: t('nav.home') },
+  { name: 'tasks', label: t('nav2.tasks') },
   { name: 'schedule', label: t('nav.schedule') },
-  ...(auth.isAdmin ? [{ name: 'users', label: t('nav.users') }, { name: 'audit', label: t('nav.audit') }] : []),
+  ...(auth.isAdmin ? [{ name: 'workers', label: t('nav2.workers') }, { name: 'users', label: t('nav.users') }, { name: 'audit', label: t('nav.audit') }] : []),
 ])
 
 function logout() {
@@ -41,6 +43,7 @@ async function changePassword() {
         <router-link v-for="m in menu" :key="m.name" :to="{ name: m.name }" class="nav-link">{{ m.label }}</router-link>
       </nav>
       <div class="right">
+        <OutboxButton />
         <LangSwitch />
         <el-dropdown trigger="click">
           <span class="user">

@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { useAuth } from '../stores/auth'
-import LangSwitch from './LangSwitch.vue'
+import LangSwitch from '../components/LangSwitch.vue'
 
 const { t } = useI18n()
 const auth = useAuth()

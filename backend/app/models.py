@@ -90,3 +90,95 @@ class AuditLog(Base):
     old_value: Mapped[str | None] = mapped_column(Text, nullable=True)
     new_value: Mapped[str | None] = mapped_column(Text, nullable=True)
     extra: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+
+class Worker(Base):
+    """员工名册（不开账号）。"""
+
+    __tablename__ = "workers"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100))
+    employee_no: Mapped[str | None] = mapped_column(String(50), nullable=True, unique=True)
+    team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+TASK_STATUSES = ("not_started", "in_progress", "done", "handed_over", "discarded")
+
+
+class Task(Base):
+    __tablename__ = "tasks"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # 客户端生成的 UUID，离线草稿重复提交时用来去重
+    client_id: Mapped[str] = mapped_column(String(36), unique=True, index=True)
+
+    # 三语内容。录入时只填原文语言那一列，其余由第 4 步的翻译补齐
+    content_zh: Mapped[str | None] = mapped_column(Text, nullable=True)
+    content_sr: Mapped[str | None] = mapped_column(Text, nullable=True)
+    content_en: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_lang: Mapped[str] = mapped_column(String(5))
+    # 遗留问题（同样三语）
+    leftover_zh: Mapped[str | None] = mapped_column(Text, nullable=True)
+    leftover_sr: Mapped[str | None] = mapped_column(Text, nullable=True)
+    leftover_en: Mapped[str | None] = mapped_column(Text, nullable=True)
+    leftover_source_lang: Mapped[str | None] = mapped_column(String(5), nullable=True)
+    # pending（待翻译）/ done / failed / manual（人工校对过）
+    translation_status: Mapped[str] = mapped_column(String(10), default="pending")
+
+    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"), index=True)  # 当前所属班组
+    origin_team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"))  # 创建班组
+    source_task_id: Mapped[int | None] = mapped_column(ForeignKey("tasks.id"), nullable=True)
+
+    status: Mapped[str] = mapped_column(String(15), default="not_started", index=True)
+    # 录入所在的班次（按 recorded_at 推算；夜班归属开始那天）
+    shift_date: Mapped[date] = mapped_column(Date, index=True)
+    shift_kind: Mapped[str] = mapped_column(String(10))
+    start_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    end_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    confirmed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    created_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    updated_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))  # 录入时间（离线草稿为本地保存时间）
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    workers: Mapped[list[Worker]] = relationship(secondary="task_workers", order_by="Worker.id")
+    attachments: Mapped[list["Attachment"]] = relationship(
+        primaryjoin="and_(Attachment.task_id == Task.id, Attachment.deleted_at.is_(None))",
+        order_by="Attachment.taken_at", viewonly=True)
+
+
+class TaskWorker(Base):
+    __tablename__ = "task_workers"
+
+    task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"), primary_key=True)
+    worker_id: Mapped[int] = mapped_column(ForeignKey("workers.id"), primary_key=True)
+
+
+class Attachment(Base):
+    """任务图片。原图 + 浏览图 + 缩略图，软删除。"""
+
+    __tablename__ = "attachments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    client_id: Mapped[str] = mapped_column(String(36), unique=True, index=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id"), index=True)
+    filename: Mapped[str] = mapped_column(String(255))
+    content_type: Mapped[str] = mapped_column(String(50))
+    size: Mapped[int] = mapped_column(Integer)
+    width: Mapped[int] = mapped_column(Integer)
+    height: Mapped[int] = mapped_column(Integer)
+    path_original: Mapped[str] = mapped_column(String(255))
+    path_view: Mapped[str] = mapped_column(String(255))
+    path_thumb: Mapped[str] = mapped_column(String(255))
+    taken_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    taken_at_source: Mapped[str] = mapped_column(String(10))  # exif / file / upload
+    uploaded_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)

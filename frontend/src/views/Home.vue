@@ -5,7 +5,7 @@ import dayjs from 'dayjs'
 import api from '../api'
 import { localName } from '../i18n'
 import { useAuth } from '../stores/auth'
-import ShiftTag from './ShiftTag.vue'
+import ShiftTag from '../components/ShiftTag.vue'
 
 const { t } = useI18n()
 const auth = useAuth()
@@ -51,7 +51,7 @@ const teamNames = (ids) => ids.map((id) => localName(auth.teamById(id))).join(' 
       </div>
     </el-card>
 
-    <el-alert :title="t('home.tasksSoon')" type="info" :closable="false" show-icon />
+    <router-link :to="{ name: 'tasks' }"><el-button type="primary" size="large">{{ t('nav2.tasks') }} →</el-button></router-link>
   </div>
 </template>
 

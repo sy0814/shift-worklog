@@ -6,7 +6,7 @@ import dayjs from 'dayjs'
 import api from '../api'
 import { localName } from '../i18n'
 import { useAuth } from '../stores/auth'
-import ShiftTag from './ShiftTag.vue'
+import ShiftTag from '../components/ShiftTag.vue'
 
 const { t, tm, locale } = useI18n()
 const auth = useAuth()
