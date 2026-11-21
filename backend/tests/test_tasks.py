@@ -204,6 +204,22 @@ def test_photo_time_fallbacks(client, leader_h):
     assert c["taken_at_source"] == "upload"
 
 
+def test_photo_client_exif(client, leader_h):
+    # 手机压缩后图片里没有 EXIF，时间由前端单独带上
+    t = new_task(client, leader_h)
+    a = upload(client, leader_h, t["id"], jpeg(), exif_datetime="2026:11:20 09:15:30",
+               last_modified=int(datetime(2026, 11, 21, tzinfo=timezone.utc).timestamp() * 1000)).json()
+    assert a["taken_at_source"] == "exif" and a["taken_at"].startswith("2026-11-20T08:15:30")
+    b = upload(client, leader_h, t["id"], jpeg(), exif_datetime="2026:11:20 09:15:30", exif_offset="+08:00").json()
+    assert b["taken_at"].startswith("2026-11-20T01:15:30")
+    # 文件自带 EXIF 优先于前端传的
+    c = upload(client, leader_h, t["id"], jpeg("2026:11:19 07:00:00"), exif_datetime="2026:11:20 09:15:30").json()
+    assert c["taken_at"].startswith("2026-11-19T06:00:00")
+    # 格式错误的忽略
+    d = upload(client, leader_h, t["id"], jpeg(), exif_datetime="garbage").json()
+    assert d["taken_at_source"] == "upload"
+
+
 def test_photo_idempotent_and_delete(client, leader_h):
     t = new_task(client, leader_h)
     cid = uid()

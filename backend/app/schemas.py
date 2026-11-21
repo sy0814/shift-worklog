@@ -191,6 +191,38 @@ class TaskUpdate(BaseModel):
     end_at: datetime | None = None
 
 
+class HandoverRequest(BaseModel):
+    task_ids: list[int] = Field(min_length=1, max_length=200)
+    to_team_id: int | None = None  # 不填则用系统建议的接班班组
+    note: str | None = Field(default=None, max_length=5000)
+    lang: Lang | None = None
+
+
+class DiscardRequest(BaseModel):
+    reason: str = Field(min_length=1, max_length=5000)
+    lang: Lang | None = None
+
+
+class HandoverDefault(BaseModel):
+    team_id: int
+    to_team_id: int | None
+
+
+class HandoverInfo(BaseModel):
+    team_id: int  # 对方班组（移入：来自哪个班组；移出：交给哪个班组）
+    task_id: int  # 对方任务
+    default_team_id: int | None
+    note: str | None
+    note_lang: str | None
+    by_name: str
+    at: UTCDateTime
+
+
+class SettingsIO(BaseModel):
+    overdue_hours: int = Field(ge=1, le=24 * 60)
+    overdue_handovers: int = Field(ge=1, le=100)
+
+
 class TaskStatusChange(BaseModel):
     status: Literal["not_started", "in_progress", "done"]
 
@@ -240,6 +272,17 @@ class TaskOut(BaseModel):
     workers: list[WorkerOut]
     attachments: list[AttachmentOut]
     can_edit: bool
+    # 移交 / 废弃 / 警示
+    chain_started_at: UTCDateTime
+    handover_count: int
+    age_hours: float
+    overdue: bool
+    handover_in: HandoverInfo | None
+    handover_out: HandoverInfo | None
+    discard_reason: Trilingual
+    discard_reason_lang: str | None
+    discarded_by_name: str | None
+    discarded_at: UTCDateTime | None
 
 
 class TaskPage(BaseModel):
@@ -249,3 +292,16 @@ class TaskPage(BaseModel):
 
 class HistoryOut(AuditOut):
     user_name: str | None
+
+
+class BoardOut(BaseModel):
+    team_id: int
+    shift_date: date  # 本班组当前（或下一个）班次
+    shift_kind: str
+    on_duty: bool
+    prev_team_ids: list[int]  # 上一班（交给本班组的班组）
+    next_team_id: int | None  # 默认移交对象
+    received: list[TaskOut]  # 别的班组移交过来、尚未完成
+    todo: list[TaskOut]  # 本班组自己的未完成任务
+    done_recent: list[TaskOut]  # 最近 12 小时完成的
+    handed_out_recent: list[TaskOut]  # 最近 12 小时移交出去的

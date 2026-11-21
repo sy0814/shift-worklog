@@ -7,7 +7,8 @@ import dayjs from 'dayjs'
 import api from '../api'
 import { localName } from '../i18n'
 import { isNarrow } from '../format'
-import { photoRecord, uuid } from '../offline'
+import { uuid } from '../offline'
+import { preparePhotos } from '../photo'
 import { useAuth } from '../stores/auth'
 import { useOutbox } from '../stores/outbox'
 import LocalPhotos from './LocalPhotos.vue'
@@ -88,6 +89,15 @@ const workerGroups = computed(() => {
 })
 
 const fullscreen = isNarrow()
+const preparing = ref(false)
+async function addPhotos(files) {
+  preparing.value = true
+  try {
+    photos.value.push(...(await preparePhotos(files)))
+  } finally {
+    preparing.value = false
+  }
+}
 
 async function save() {
   if (!form.content?.trim()) return
@@ -174,13 +184,13 @@ async function saveEdit() {
         <el-input v-model="form.leftover" type="textarea" :autosize="{ minRows: 2, maxRows: 6 }" maxlength="5000" />
       </el-form-item>
       <el-form-item v-if="!task" :label="t('photo.title')">
-        <PhotoPicker @pick="(fs) => photos.push(...fs.map(photoRecord))" />
-        <LocalPhotos :photos="photos" @remove="(i) => photos.splice(i, 1)" />
+        <PhotoPicker @pick="addPhotos" />
+        <LocalPhotos v-loading="preparing" :photos="photos" @remove="(i) => photos.splice(i, 1)" />
       </el-form-item>
     </el-form>
     <template #footer>
       <el-button @click="visible = false">{{ t('common.cancel') }}</el-button>
-      <el-button type="primary" :loading="saving" :disabled="!form.content?.trim()" @click="save">{{ t('common.save') }}</el-button>
+      <el-button type="primary" :loading="saving || preparing" :disabled="!form.content?.trim()" @click="save">{{ t('common.save') }}</el-button>
     </template>
   </el-dialog>
 </template>

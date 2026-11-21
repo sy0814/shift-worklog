@@ -23,7 +23,7 @@ onMounted(async () => {
     <div class="toolbar">
       <h1 class="page-title" style="margin: 0; flex: 1">{{ t('nav.audit') }}</h1>
       <el-select v-model="entity" clearable :placeholder="t('audit.entity')" style="width: 160px" @change="load">
-        <el-option v-for="e in ['user', 'shift_config', 'team', 'holiday', 'system']" :key="e" :label="e" :value="e" />
+        <el-option v-for="e in ['task', 'user', 'worker', 'shift_config', 'team', 'holiday', 'setting', 'system']" :key="e" :label="e" :value="e" />
       </el-select>
     </div>
     <el-table :data="rows" size="small" border>

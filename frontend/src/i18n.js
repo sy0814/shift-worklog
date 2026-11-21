@@ -27,7 +27,7 @@ const messages = {
       dayStart: '白班开始', middleStart: '中班开始', nightStart: '夜班开始', holidays: '节假日（常白班休息）',
       holidayName: '名称', date: '日期', weekday: '星期', pos: ['白1', '白2', '中1', '中2', '夜1', '夜2', '休1', '休2'],
     },
-    nav2: { tasks: '任务', workers: '员工名册' },
+    nav2: { tasks: '任务', workers: '员工名册', board: '交接班' },
     status: { not_started: '未开始', in_progress: '进行中', done: '已完成', handed_over: '已移交', discarded: '已废弃', open: '未完成', all: '全部' },
     task: {
       new: '新建任务', edit: '编辑任务', content: '工作内容', contentPh: '可以用中文、塞语或英语填写', workers: '参与人员', team: '班组',
@@ -47,7 +47,21 @@ const messages = {
       confirmDiscard: '丢弃后无法恢复，确定？', offline: '离线',
     },
     workers: { name: '姓名', no: '工号', team: '班组', bulk: '批量添加', bulkPh: '每行一个姓名', noTeam: '未分组', showInactive: '显示已停用' },
-    history: { create: '创建', update: '修改', status: '状态', attach: '添加图片', detach: '删除图片' },
+    history: { create: '创建', update: '修改', status: '状态', attach: '添加图片', detach: '删除图片', handover: '移交', receive: '接收移交', discard: '废弃' },
+    ho: {
+      handover: '移交', discard: '废弃', to: '移交给', suggested: '系统建议', note: '交接说明', notePh: '交给下一班需要注意的事项（会作为对方任务的遗留问题）',
+      discardReason: '废弃原因', discardPh: '必须填写原因', from: '由 {team} 移交', toTeam: '已移交给 {team}', viewSource: '查看原任务', viewTarget: '查看接收任务',
+      discarded: '已废弃', times: '已移交 {n} 次', done: '已移交 {n} 条', selected: '已选 {n} 条', batch: '移交所选', selectAll: '全选',
+      confirmDiscard: '废弃后不能恢复，确定？',
+    },
+    board: {
+      title: '交接班', onDuty: '当前在班 · {shift}', next: '下一班 · {date} {shift}', prev: '上一班', nextTeam: '默认移交给',
+      received: '上一班移交过来', todo: '本班待办', doneRecent: '最近 12 小时完成', outRecent: '最近 12 小时移交出去', empty: '无',
+    },
+    overdue: {
+      title: '未闭环警示', badge: '超时', hours: '{n} 小时', none: '没有超时未完成的任务', settings: '警示设置',
+      hoursLabel: '超过多少小时未完成', handoversLabel: '移交多少次仍未完成', hint: '从第一次录入算起；满足任一条件就标红置顶',
+    },
     audit: { at: '时间', user: '操作人', action: '操作', entity: '对象', field: '字段', old: '修改前', new: '修改后' },
   },
   sr: {
@@ -71,7 +85,7 @@ const messages = {
       dayStart: 'Početak prve smene', middleStart: 'Početak druge smene', nightStart: 'Početak treće smene', holidays: 'Praznici (dnevna smena ne radi)',
       holidayName: 'Naziv', date: 'Datum', weekday: 'Dan', pos: ['P1', 'P2', 'D1', 'D2', 'T1', 'T2', 'S1', 'S2'],
     },
-    nav2: { tasks: 'Zadaci', workers: 'Radnici' },
+    nav2: { tasks: 'Zadaci', workers: 'Radnici', board: 'Primopredaja' },
     status: { not_started: 'Nije započeto', in_progress: 'U toku', done: 'Završeno', handed_over: 'Predato', discarded: 'Odbačeno', open: 'Nezavršeno', all: 'Sve' },
     task: {
       new: 'Novi zadatak', edit: 'Izmena zadatka', content: 'Opis posla', contentPh: 'Možete pisati na srpskom, kineskom ili engleskom', workers: 'Učesnici', team: 'Smena',
@@ -91,7 +105,21 @@ const messages = {
       confirmDiscard: 'Nacrt se ne može vratiti. Nastaviti?', offline: 'Van mreže',
     },
     workers: { name: 'Ime i prezime', no: 'Matični broj', team: 'Smena', bulk: 'Dodaj više', bulkPh: 'Jedno ime po redu', noTeam: 'Bez smene', showInactive: 'Prikaži neaktivne' },
-    history: { create: 'Kreirano', update: 'Izmena', status: 'Status', attach: 'Dodata slika', detach: 'Obrisana slika' },
+    history: { create: 'Kreirano', update: 'Izmena', status: 'Status', attach: 'Dodata slika', detach: 'Obrisana slika', handover: 'Predato', receive: 'Primljeno', discard: 'Odbačeno' },
+    ho: {
+      handover: 'Predaj', discard: 'Odbaci', to: 'Predaj smeni', suggested: 'predlog sistema', note: 'Napomena za primopredaju', notePh: 'Šta sledeća smena treba da zna (postaje preostali problem kod njih)',
+      discardReason: 'Razlog odbacivanja', discardPh: 'Razlog je obavezan', from: 'Predala {team}', toTeam: 'Predato smeni {team}', viewSource: 'Prikaži izvorni zadatak', viewTarget: 'Prikaži primljeni zadatak',
+      discarded: 'Odbačeno', times: 'Predato {n} puta', done: 'Predato: {n}', selected: 'Izabrano: {n}', batch: 'Predaj izabrano', selectAll: 'Izaberi sve',
+      confirmDiscard: 'Odbacivanje se ne može poništiti. Nastaviti?',
+    },
+    board: {
+      title: 'Primopredaja', onDuty: 'Sada na smeni · {shift}', next: 'Sledeća smena · {date} {shift}', prev: 'Prethodna smena', nextTeam: 'Podrazumevano predati',
+      received: 'Predato od prethodne smene', todo: 'Zadaci smene', doneRecent: 'Završeno u poslednjih 12 h', outRecent: 'Predato u poslednjih 12 h', empty: 'Nema',
+    },
+    overdue: {
+      title: 'Nezatvoreni zadaci', badge: 'Kasni', hours: '{n} h', none: 'Nema zadataka koji kasne', settings: 'Podešavanje upozorenja',
+      hoursLabel: 'Nezavršeno duže od (sati)', handoversLabel: 'Nezavršeno posle broja predaja', hint: 'Računa se od prvog unosa; dovoljan je jedan uslov',
+    },
     audit: { at: 'Vreme', user: 'Korisnik', action: 'Radnja', entity: 'Objekat', field: 'Polje', old: 'Staro', new: 'Novo' },
   },
   en: {
@@ -115,7 +143,7 @@ const messages = {
       dayStart: 'Day shift starts', middleStart: 'Middle shift starts', nightStart: 'Night shift starts', holidays: 'Holidays (day team off)',
       holidayName: 'Name', date: 'Date', weekday: 'Weekday', pos: ['D1', 'D2', 'M1', 'M2', 'N1', 'N2', 'O1', 'O2'],
     },
-    nav2: { tasks: 'Tasks', workers: 'Workers' },
+    nav2: { tasks: 'Tasks', workers: 'Workers', board: 'Handover' },
     status: { not_started: 'Not started', in_progress: 'In progress', done: 'Done', handed_over: 'Handed over', discarded: 'Discarded', open: 'Open', all: 'All' },
     task: {
       new: 'New task', edit: 'Edit task', content: 'Work', contentPh: 'Chinese, Serbian or English', workers: 'Workers', team: 'Team',
@@ -135,7 +163,21 @@ const messages = {
       confirmDiscard: 'The draft cannot be recovered. Continue?', offline: 'Offline',
     },
     workers: { name: 'Name', no: 'Employee no.', team: 'Team', bulk: 'Bulk add', bulkPh: 'One name per line', noTeam: 'No team', showInactive: 'Show inactive' },
-    history: { create: 'Created', update: 'Edited', status: 'Status', attach: 'Photo added', detach: 'Photo deleted' },
+    history: { create: 'Created', update: 'Edited', status: 'Status', attach: 'Photo added', detach: 'Photo deleted', handover: 'Handed over', receive: 'Received', discard: 'Discarded' },
+    ho: {
+      handover: 'Hand over', discard: 'Discard', to: 'Hand over to', suggested: 'suggested', note: 'Handover note', notePh: 'What the next shift needs to know (becomes their open issue)',
+      discardReason: 'Reason', discardPh: 'A reason is required', from: 'From {team}', toTeam: 'Handed over to {team}', viewSource: 'Open source task', viewTarget: 'Open received task',
+      discarded: 'Discarded', times: 'Handed over {n}×', done: 'Handed over {n}', selected: '{n} selected', batch: 'Hand over selected', selectAll: 'Select all',
+      confirmDiscard: 'This cannot be undone. Continue?',
+    },
+    board: {
+      title: 'Handover', onDuty: 'On shift · {shift}', next: 'Next shift · {date} {shift}', prev: 'Previous shift', nextTeam: 'Hands over to',
+      received: 'Received from previous shift', todo: 'Team to-do', doneRecent: 'Done in last 12 h', outRecent: 'Handed over in last 12 h', empty: 'None',
+    },
+    overdue: {
+      title: 'Overdue', badge: 'Overdue', hours: '{n} h', none: 'Nothing overdue', settings: 'Alert settings',
+      hoursLabel: 'Open longer than (hours)', handoversLabel: 'Still open after N handovers', hint: 'Counted from the first entry; either condition triggers',
+    },
     audit: { at: 'Time', user: 'User', action: 'Action', entity: 'Object', field: 'Field', old: 'Before', new: 'After' },
   },
 }

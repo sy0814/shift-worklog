@@ -68,3 +68,23 @@ def test_day_team():
 def test_next_shift_of_team():
     # 11-21 夜班后 3 班休 11-23、11-24（位置 6、7），下次是 11-25 白班
     assert S.next_shift_of_team(TEAM["T3"], date(2026, 11, 22), NIGHT) == (date(2026, 11, 25), DAY)
+
+
+def test_default_handover_target():
+    # 11-21 白班 10:00：1 班在班 → 交给 2 班（中班）
+    assert S.default_handover_target(TEAM["T1"], datetime(2026, 11, 21, 10)) == TEAM["T2"]
+    # 1 班 15:10 已下班补录 → 交给此刻在班的 2 班
+    assert S.default_handover_target(TEAM["T1"], datetime(2026, 11, 21, 15, 10)) == TEAM["T2"]
+    # 3 班 11-21 夜班，11-22 05:00 移交 → 次日白班的班组
+    tgt = S.default_handover_target(TEAM["T3"], datetime(2026, 11, 22, 5))
+    assert S.shift_of(tgt, date(2026, 11, 22)) == DAY
+    # 常白班周五 10:00 → 当天中班
+    assert S.default_handover_target(TEAM["DAY"], datetime(2026, 11, 20, 10)) == \
+        S.rotating_team_on(date(2026, 11, 20), MIDDLE)
+
+
+def test_receiving_slot():
+    # 2 班 11-21 中班；白班时间收到 → 归属它当天的中班
+    assert S.receiving_slot(TEAM["T2"], datetime(2026, 11, 21, 10)) == (date(2026, 11, 21), MIDDLE)
+    # 4 班 11-21、11-22 休息（位置 6、7），下一班是 11-23 白班
+    assert S.receiving_slot(TEAM["T4"], datetime(2026, 11, 21, 10)) == (date(2026, 11, 23), DAY)

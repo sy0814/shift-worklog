@@ -15,12 +15,15 @@ const leftover = computed(() => localText(props.task.leftover, props.task.leftov
 </script>
 
 <template>
-  <div :class="['card', `st-${task.status}`]">
+  <div :class="['card', `st-${task.status}`, { overdue: task.overdue }]">
     <div class="row1">
       <el-tag :type="STATUS_TYPE[task.status]" size="small" effect="dark">{{ t(`status.${task.status}`) }}</el-tag>
       <span class="team">{{ localName(auth.teamById(task.team_id)) }}</span>
       <ShiftTag :kind="task.shift_kind" />
       <span class="muted">{{ task.shift_date.slice(5) }}</span>
+      <el-tag v-if="task.overdue" type="danger" size="small" effect="dark">{{ t('overdue.badge') }} {{ Math.floor(task.age_hours) }}h</el-tag>
+      <el-tag v-if="task.handover_in" size="small" effect="plain">← {{ localName(auth.teamById(task.handover_in.team_id)) }}</el-tag>
+      <el-tag v-if="task.handover_out" size="small" type="warning" effect="plain">→ {{ localName(auth.teamById(task.handover_out.team_id)) }}</el-tag>
       <span class="spacer" />
       <span v-if="task.attachments.length" class="muted"><el-icon><Picture /></el-icon> {{ task.attachments.length }}</span>
     </div>
@@ -39,7 +42,9 @@ const leftover = computed(() => localText(props.task.leftover, props.task.leftov
 .card:hover { box-shadow: 0 2px 8px rgba(0,0,0,.08); }
 .st-in_progress { border-left-color: #e6a23c; }
 .st-done { border-left-color: #67c23a; }
-.st-discarded { border-left-color: #f56c6c; }
+.st-discarded { border-left-color: #f56c6c; opacity: .75; }
+.st-handed_over { border-left-color: #409eff; opacity: .8; }
+.card.overdue { border-left-color: #f56c6c; background: #fef0f0; }
 .row1 { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .team { font-weight: 600; }
 .spacer { flex: 1; }

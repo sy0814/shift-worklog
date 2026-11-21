@@ -50,6 +50,19 @@ def _parse_offset(s: str | None) -> timezone | None:
         return None
 
 
+def parse_exif_datetime(value, offset, local_tz) -> datetime | None:
+    """解析 EXIF 时间字符串 "YYYY:MM:DD HH:MM:SS"（可带 "+01:00" 偏移）。"""
+    if not value:
+        return None
+    try:
+        naive = datetime.strptime(str(value).strip().rstrip("\x00")[:19], "%Y:%m:%d %H:%M:%S")
+    except ValueError:
+        return None
+    if naive.year < 2000:  # 相机未设置时间
+        return None
+    return naive.replace(tzinfo=_parse_offset(offset) or local_tz)
+
+
 def exif_taken_at(img: Image.Image, local_tz) -> datetime | None:
     """EXIF 拍摄时间：DateTimeOriginal → DateTimeDigitized → DateTime。"""
     exif = img.getexif()
@@ -62,15 +75,9 @@ def exif_taken_at(img: Image.Image, local_tz) -> datetime | None:
         (exif.get(ExifTags.Base.DateTime), sub.get(ExifTags.Base.OffsetTime)),
     ]
     for value, offset in candidates:
-        if not value:
-            continue
-        try:
-            naive = datetime.strptime(str(value).strip().rstrip("\x00"), "%Y:%m:%d %H:%M:%S")
-        except ValueError:
-            continue
-        if naive.year < 2000:  # 相机未设置时间
-            continue
-        return naive.replace(tzinfo=_parse_offset(offset) or local_tz)
+        d = parse_exif_datetime(value, offset, local_tz)
+        if d:
+            return d
     return None
 
 
@@ -93,6 +100,7 @@ def process_upload(
     local_tz,
     file_mtime: datetime | None,
     now: datetime,
+    client_exif: datetime | None = None,
 ) -> Processed:
     try:
         img = Image.open(io.BytesIO(data))
@@ -104,8 +112,11 @@ def process_upload(
     if ext is None:
         raise InvalidImage(f"unsupported format {fmt}")
 
+    # 优先级：文件里的 EXIF → 手机压缩前读出的 EXIF → 文件修改时间 → 上传时间
     taken = exif_taken_at(img, local_tz)
     source = "exif"
+    if taken is None and client_exif and client_exif <= now + timedelta(days=1):
+        taken = client_exif
     if taken is None:
         # 文件修改时间不能晚于现在，也不能早于很久以前
         if file_mtime and now - timedelta(days=3650) < file_mtime <= now + timedelta(minutes=5):

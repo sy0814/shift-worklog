@@ -6,13 +6,23 @@ import api from '../api'
 import { localName } from '../i18n'
 import { useAuth } from '../stores/auth'
 import ShiftTag from '../components/ShiftTag.vue'
+import TaskCard from '../components/TaskCard.vue'
+import TaskDetail from '../components/TaskDetail.vue'
 
 const { t } = useI18n()
 const auth = useAuth()
 const now = ref(null)
+const overdue = ref([])
+const detailOpen = ref(false)
+const detailId = ref(null)
+function open(task) {
+  detailId.value = task.id
+  detailOpen.value = true
+}
 const today = ref(null)
 
 async function load() {
+  overdue.value = (await api.get('/overdue')).data
   now.value = (await api.get('/shifts/now')).data
   const d = now.value.current.shift_date
   today.value = (await api.get('/shifts/calendar', { params: { start: d, end: d } })).data[0]
@@ -32,6 +42,16 @@ const teamNames = (ids) => ids.map((id) => localName(auth.teamById(id))).join(' 
 <template>
   <div class="page">
     <h1 class="page-title">{{ t('home.welcome', { name: auth.user?.full_name }) }}</h1>
+    <!-- 未闭环警示：标红置顶 -->
+    <el-card v-if="overdue.length" shadow="never" class="overdue">
+      <template #header>
+        <span class="od-title">⚠ {{ t('overdue.title') }} ({{ overdue.length }})</span>
+      </template>
+      <div class="od-list">
+        <TaskCard v-for="task in overdue" :key="task.id" :task="task" @click="open(task)" />
+      </div>
+    </el-card>
+
     <div v-if="now" class="cards">
       <el-card v-for="(s, key) in { current: now.current, next: now.next }" :key="key" shadow="never"
                :class="['shift-card', key, { mine: s.team_ids.includes(auth.user?.team_id) }]">
@@ -51,11 +71,20 @@ const teamNames = (ids) => ids.map((id) => localName(auth.teamById(id))).join(' 
       </div>
     </el-card>
 
-    <router-link :to="{ name: 'tasks' }"><el-button type="primary" size="large">{{ t('nav2.tasks') }} →</el-button></router-link>
+    <div class="links">
+      <router-link :to="{ name: 'board' }"><el-button type="primary" size="large">{{ t('nav2.board') }} →</el-button></router-link>
+      <router-link :to="{ name: 'tasks' }"><el-button size="large">{{ t('nav2.tasks') }} →</el-button></router-link>
+    </div>
+    <TaskDetail v-model="detailOpen" :task-id="detailId" @changed="load" />
   </div>
 </template>
 
 <style scoped>
+.overdue { margin-bottom: 12px; border: 1px solid #f56c6c; }
+.overdue :deep(.el-card__header) { background: #fef0f0; padding: 10px 16px; }
+.od-title { color: #f56c6c; font-weight: 600; }
+.od-list { display: flex; flex-direction: column; gap: 8px; max-height: 50vh; overflow: auto; }
+.links { display: flex; gap: 8px; flex-wrap: wrap; }
 .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin-bottom: 12px; }
 .shift-card .label { color: #888; font-size: 13px; }
 .shift-card .teams { font-size: 26px; font-weight: 600; margin: 6px 0; }

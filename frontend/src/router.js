@@ -8,6 +8,7 @@ const routes = [
     component: () => import('./views/Layout.vue'),
     children: [
       { path: '', name: 'home', component: () => import('./views/Home.vue') },
+      { path: 'board', name: 'board', component: () => import('./views/Board.vue') },
       { path: 'tasks', name: 'tasks', component: () => import('./views/Tasks.vue') },
       { path: 'schedule', name: 'schedule', component: () => import('./views/Schedule.vue') },
       { path: 'users', name: 'users', component: () => import('./views/Users.vue'), meta: { admin: true } },

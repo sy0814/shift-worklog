@@ -1,9 +1,10 @@
 """任务：增删改、参与人员、状态流转、图片。所有改动写留痕。
 
 权限：所有登录用户可查看全部任务；班长只能新建/修改本班组任务，管理员可改全部。
-已移交 / 已废弃的任务不可再修改（移交、废弃在第 3 步实现）。
+已移交 / 已废弃的任务不可再修改（移交、废弃见 handover.py）。
 """
 
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -12,15 +13,16 @@ from fastapi.responses import FileResponse
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
-from .. import audit
+from .. import app_settings, audit
 from ..config import get_settings
 from ..db import get_db
-from ..images import InvalidImage, process_upload
-from ..models import Attachment, AuditLog, Task, Team, User, Worker, utcnow
+from ..images import InvalidImage, parse_exif_datetime, process_upload
+from ..models import Attachment, AuditLog, Task, TaskHandover, Team, User, Worker, utcnow
 from ..schedule_service import load_schedule
 from ..schemas import (
     AttachmentOut,
     AuditOut,
+    HandoverInfo,
     HistoryOut,
     TaskCreate,
     TaskOut,
@@ -36,6 +38,7 @@ router = APIRouter(prefix="/api", tags=["tasks"])
 
 LANGS = ("zh", "sr", "en")
 TERMINAL = {"handed_over", "discarded"}
+OPEN = ("not_started", "in_progress")
 TRANSITIONS = {
     "not_started": {"in_progress", "done"},
     "in_progress": {"not_started", "done"},
@@ -79,7 +82,61 @@ def _can_edit(task: Task, user: User) -> bool:
     return user.role == "admin" or task.team_id == user.team_id
 
 
-def task_out(task: Task, user: User, names: dict[int, str]) -> TaskOut:
+def _aware(d: datetime) -> datetime:
+    return d.replace(tzinfo=timezone.utc) if d.tzinfo is None else d
+
+
+@dataclass
+class OutCtx:
+    """把一批任务转成 TaskOut 时需要的附加数据（一次查询，避免逐条查）。"""
+
+    names: dict[int, str]
+    ho_from: dict[int, TaskHandover]  # from_task_id → 移交记录
+    ho_to: dict[int, TaskHandover]  # to_task_id → 移交记录
+    overdue_hours: int
+    overdue_handovers: int
+    now: datetime
+
+
+def make_ctx(db: Session, tasks: list[Task]) -> OutCtx:
+    ids = [t.id for t in tasks]
+    hos = db.scalars(select(TaskHandover).where(
+        or_(TaskHandover.from_task_id.in_(ids), TaskHandover.to_task_id.in_(ids)))).all() if ids else []
+    cfg = app_settings.get_all(db)
+    return OutCtx(
+        names=_names(db),
+        ho_from={h.from_task_id: h for h in hos},
+        ho_to={h.to_task_id: h for h in hos},
+        overdue_hours=cfg["overdue_hours"],
+        overdue_handovers=cfg["overdue_handovers"],
+        now=utcnow(),
+    )
+
+
+def overdue_clause(db: Session, now: datetime):
+    """SQL 条件：未完成且（从第一次录入起超过 N 小时 或 已移交 N 次及以上）。"""
+    cfg = app_settings.get_all(db)
+    return (Task.status.in_(OPEN)) & or_(
+        Task.chain_started_at <= now - timedelta(hours=cfg["overdue_hours"]),
+        Task.handover_count >= cfg["overdue_handovers"],
+    )
+
+
+def _ho_info(h: TaskHandover | None, incoming: bool, names: dict[int, str]) -> HandoverInfo | None:
+    if h is None:
+        return None
+    return HandoverInfo(
+        team_id=h.from_team_id if incoming else h.to_team_id,
+        task_id=h.from_task_id if incoming else h.to_task_id,
+        default_team_id=h.default_team_id, note=h.note, note_lang=h.note_lang,
+        by_name=names.get(h.by_user_id, ""), at=h.at,
+    )
+
+
+def task_out(task: Task, user: User, ctx: OutCtx) -> TaskOut:
+    names = ctx.names
+    age = (ctx.now - _aware(task.chain_started_at)).total_seconds() / 3600
+    overdue = task.status in OPEN and (age >= ctx.overdue_hours or task.handover_count >= ctx.overdue_handovers)
     return TaskOut(
         id=task.id, client_id=task.client_id,
         content=Trilingual(zh=task.content_zh, sr=task.content_sr, en=task.content_en),
@@ -99,7 +156,24 @@ def task_out(task: Task, user: User, names: dict[int, str]) -> TaskOut:
         workers=[WorkerOut.model_validate(w) for w in task.workers],
         attachments=[_att_out(a, names) for a in task.attachments],
         can_edit=_can_edit(task, user),
+        chain_started_at=task.chain_started_at, handover_count=task.handover_count,
+        age_hours=round(age, 1), overdue=overdue,
+        handover_in=_ho_info(ctx.ho_to.get(task.id), True, names),
+        handover_out=_ho_info(ctx.ho_from.get(task.id), False, names),
+        discard_reason=Trilingual(zh=task.discard_reason_zh, sr=task.discard_reason_sr, en=task.discard_reason_en),
+        discard_reason_lang=task.discard_reason_lang,
+        discarded_by_name=names.get(task.discarded_by) if task.discarded_by else None,
+        discarded_at=task.discarded_at,
     )
+
+
+def tasks_out(db: Session, tasks: list[Task], user: User) -> list[TaskOut]:
+    ctx = make_ctx(db, tasks)
+    return [task_out(t, user, ctx) for t in tasks]
+
+
+def one_out(db: Session, task: Task, user: User) -> TaskOut:
+    return tasks_out(db, [task], user)[0]
 
 
 def _get_task(db: Session, task_id: int) -> Task:
@@ -155,6 +229,7 @@ def list_tasks(
     date_to: str | None = None,
     worker_id: int | None = None,
     q: str | None = Query(default=None, max_length=100),
+    overdue: bool = False,
     limit: int = Query(default=50, le=200),
     offset: int = 0,
     db: Session = Depends(get_db),
@@ -171,6 +246,8 @@ def list_tasks(
         query = query.where(Task.shift_date <= date_to)
     if worker_id:
         query = query.where(Task.workers.any(Worker.id == worker_id))
+    if overdue:
+        query = query.where(overdue_clause(db, utcnow()))
     if q:
         like = f"%{q}%"
         query = query.where(or_(*[getattr(Task, f"{p}_{l}").ilike(like)
@@ -181,13 +258,12 @@ def list_tasks(
         .order_by(Task.shift_date.desc(), Task.created_at.desc())
         .limit(limit).offset(offset)
     ).all()
-    names = _names(db)
-    return TaskPage(items=[task_out(t, user, names) for t in rows], total=total)
+    return TaskPage(items=tasks_out(db, list(rows), user), total=total)
 
 
 @router.get("/tasks/{task_id}", response_model=TaskOut)
 def get_task(task_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    return task_out(_get_task(db, task_id), user, _names(db))
+    return one_out(db, _get_task(db, task_id), user)
 
 
 @router.post("/tasks", response_model=TaskOut, status_code=201)
@@ -200,7 +276,7 @@ def create_task(body: TaskCreate, db: Session = Depends(get_db), user: User = De
             getattr(existing, f"content_{body.lang}") == body.content.strip()
         if not same:
             raise HTTPException(status.HTTP_409_CONFLICT, "client_id already used")
-        return task_out(_get_task(db, existing.id), user, _names(db))
+        return one_out(db, _get_task(db, existing.id), user)
 
     if user.role == "admin":
         if body.team_id is None or db.get(Team, body.team_id) is None:
@@ -230,7 +306,7 @@ def create_task(body: TaskCreate, db: Session = Depends(get_db), user: User = De
         confirmed_by=user.id if body.status == "done" else None,
         confirmed_at=now if body.status == "done" else None,
         created_by=user.id, updated_by=user.id, recorded_at=recorded, created_at=now, updated_at=now,
-        translation_status="pending",
+        translation_status="pending", chain_started_at=recorded, handover_count=0,
     )
     setattr(task, f"content_{body.lang}", body.content.strip())
     if body.leftover and body.leftover.strip():
@@ -246,7 +322,7 @@ def create_task(body: TaskCreate, db: Session = Depends(get_db), user: User = De
         "recorded_at": recorded, "shift": f"{shift_date} {shift_kind}",
     })
     db.commit()
-    return task_out(_get_task(db, task.id), user, _names(db))
+    return one_out(db, _get_task(db, task.id), user)
 
 
 @router.patch("/tasks/{task_id}", response_model=TaskOut)
@@ -288,7 +364,7 @@ def update_task(task_id: int, body: TaskUpdate, db: Session = Depends(get_db),
         task.updated_by = user.id
         task.updated_at = utcnow()
     db.commit()
-    return task_out(_get_task(db, task.id), user, _names(db))
+    return one_out(db, _get_task(db, task.id), user)
 
 
 @router.post("/tasks/{task_id}/status", response_model=TaskOut)
@@ -298,7 +374,7 @@ def change_status(task_id: int, body: TaskStatusChange, db: Session = Depends(ge
     _require_edit(task, user)
     new = body.status
     if new == task.status:
-        return task_out(task, user, _names(db))
+        return one_out(db, task, user)
     if new not in TRANSITIONS.get(task.status, set()):
         raise HTTPException(status.HTTP_409_CONFLICT, f"cannot go from {task.status} to {new}")
     now = utcnow()
@@ -321,7 +397,7 @@ def change_status(task_id: int, body: TaskStatusChange, db: Session = Depends(ge
     task.updated_by = user.id
     task.updated_at = now
     db.commit()
-    return task_out(_get_task(db, task.id), user, _names(db))
+    return one_out(db, _get_task(db, task.id), user)
 
 
 @router.get("/tasks/{task_id}/history", response_model=list[HistoryOut])
@@ -341,6 +417,8 @@ async def upload_attachment(
     file: UploadFile = File(...),
     client_id: str = Form(..., pattern=r"^[0-9a-fA-F-]{36}$"),
     last_modified: int | None = Form(default=None),  # 浏览器 File.lastModified（毫秒）
+    exif_datetime: str | None = Form(default=None, max_length=40),  # 手机压缩前读出的 EXIF 拍摄时间
+    exif_offset: str | None = Form(default=None, max_length=10),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -363,7 +441,8 @@ async def upload_attachment(
     now = utcnow()
     mtime = datetime.fromtimestamp(last_modified / 1000, timezone.utc) if last_modified else None
     try:
-        p = process_upload(data, _upload_root(), s.tz, mtime, now)
+        p = process_upload(data, _upload_root(), s.tz, mtime, now,
+                           client_exif=parse_exif_datetime(exif_datetime, exif_offset, s.tz))
     except InvalidImage:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "not a supported image")
 

@@ -96,3 +96,32 @@ class Schedule:
                 return d, k
             d, k = self.next_shift(d, k)
         raise ValueError("no upcoming shift")
+
+    # ---- 移交相关 ----
+    @staticmethod
+    def prev_shift(d: date, kind: str) -> tuple[date, str]:
+        i = ORDER.index(kind)
+        if i > 0:
+            return d, ORDER[i - 1]
+        return d - timedelta(days=1), ORDER[-1]
+
+    def is_on(self, team: TeamInfo, d: date, kind: str) -> bool:
+        return self.shift_of(team, d) == kind
+
+    def default_handover_target(self, team: TeamInfo, now: datetime) -> TeamInfo | None:
+        """移交时默认的接收班组。
+
+        班组正在上班：按交接顺序交给下一个班次（常白班交给当天中班）。
+        班组已下班（例如下班后才补录移交）：交给此刻在班的倒班班组。
+        """
+        d, k = self.shift_at(now)
+        if self.is_on(team, d, k):
+            return self.handover_target(team, d, k)
+        return self.rotating_team_on(d, k)
+
+    def receiving_slot(self, team: TeamInfo, now: datetime) -> tuple[date, str]:
+        """接收班组拿到任务时归属的班次：正在上班则为当前班次，否则为它的下一个班次。"""
+        d, k = self.shift_at(now)
+        if self.is_on(team, d, k):
+            return d, k
+        return self.next_shift_of_team(team, d, k)

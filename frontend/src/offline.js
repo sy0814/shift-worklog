@@ -38,10 +38,5 @@ export async function deleteEntry(key) {
   return (await dbp).delete('outbox', key)
 }
 
-/** 把选中的 File 转成可存进 IndexedDB 的照片记录 */
-export function photoRecord(file) {
-  return { client_id: uuid(), blob: file, name: file.name || 'photo.jpg', lastModified: file.lastModified || null, done: false }
-}
-
 /** 网络层面的失败（没有响应、网关超时）→ 留着以后重试；其他错误是服务器拒绝，需要人处理 */
 export const isNetworkError = (err) => !err.response || [502, 503, 504].includes(err.response.status)

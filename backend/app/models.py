@@ -141,6 +141,18 @@ class Task(Base):
     confirmed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # 移交链：第一次录入的时间、已经移交过几次（用于未闭环警示）
+    chain_started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    handover_count: Mapped[int] = mapped_column(Integer, default=0)
+
+    # 废弃原因（三语）
+    discard_reason_zh: Mapped[str | None] = mapped_column(Text, nullable=True)
+    discard_reason_sr: Mapped[str | None] = mapped_column(Text, nullable=True)
+    discard_reason_en: Mapped[str | None] = mapped_column(Text, nullable=True)
+    discard_reason_lang: Mapped[str | None] = mapped_column(String(5), nullable=True)
+    discarded_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    discarded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     created_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
     updated_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
     recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))  # 录入时间（离线草稿为本地保存时间）
@@ -182,3 +194,29 @@ class Attachment(Base):
     uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     deleted_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+
+
+class TaskHandover(Base):
+    """移交记录：原任务标记为已移交，在接收班组生成一条新任务（source_task_id 指回原任务）。"""
+
+    __tablename__ = "task_handovers"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    from_task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id"), unique=True)
+    to_task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id"), unique=True)
+    from_team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"))
+    to_team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"), index=True)
+    default_team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"), nullable=True)  # 系统建议的接班班组
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)  # 交接说明（原文，会作为新任务的遗留问题）
+    note_lang: Mapped[str | None] = mapped_column(String(5), nullable=True)
+    by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AppSetting(Base):
+    """可在后台修改的配置（key → JSON 值）。"""
+
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(String(50), primary_key=True)
+    value: Mapped[dict | list | int | str | None] = mapped_column(JSON)

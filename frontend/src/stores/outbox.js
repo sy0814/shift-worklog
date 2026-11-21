@@ -53,6 +53,8 @@ export const useOutbox = defineStore('outbox', {
           fd.append('file', p.blob, p.name)
           fd.append('client_id', p.client_id)
           if (p.lastModified) fd.append('last_modified', String(p.lastModified))
+          if (p.exif_datetime) fd.append('exif_datetime', p.exif_datetime)
+          if (p.exif_offset) fd.append('exif_offset', p.exif_offset)
           await api.post(`/tasks/${entry.task_id}/attachments`, fd, { silent: true, timeout: 120000 })
           p.done = true
           await putEntry(entry)
