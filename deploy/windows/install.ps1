@@ -147,8 +147,9 @@ UPLOAD_DIR=$($DataDir.Replace('\', '/'))/uploads
 New-Item -ItemType Directory -Force -Path (Join-Path $DataDir 'uploads') | Out-Null
 
 # ---------------- 5. 安装依赖并构建 ----------------
-Write-Step '5/9 安装依赖、构建网页'
+Write-Step '5/9 安装依赖、构建网页、初始化数据库'
 Build-App $python $npm
+Invoke-Migrate
 
 # ---------------- 6. 下载 Caddy 和服务程序 ----------------
 Write-Step '6/9 下载 Caddy（HTTPS）和 WinSW（Windows 服务）'

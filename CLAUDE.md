@@ -208,5 +208,11 @@
 - 工厂时区由 `APP_TIMEZONE` 配置，默认 `Europe/Belgrade`
 - 排班推算是纯函数，在 `backend/app/shifts.py`，测试在 `backend/tests/test_shifts.py`
 - 留痕：业务代码统一调用 `app/audit.py` 的 `log()` / `log_changes()`；数据库触发器禁止对 `audit_log` 做 UPDATE / DELETE（SQLite、PostgreSQL 都已验证）
-- 表结构目前用 `create_all` 建；切换到 PostgreSQL 正式上线前改用 Alembic 迁移
+- **数据库迁移（Alembic，2026-11-22 起）**：表结构以 `backend/migrations/versions/` 为准，第一版 `0001_baseline_schema`
+  - **改了 `app/models.py` 就必须生成迁移**：在 backend 目录 `python -m alembic revision --autogenerate -m "说明"`，人工检查生成的文件（新增非空列要给 `server_default`，否则已有数据的表加不上），再提交；`tests/test_migrations.py` 会检查迁移和模型一致，忘写迁移测试就失败
+  - 程序启动时自动 `upgrade head`（`app/migrate.py`）；Windows 的 install / update 脚本也会显式执行一次，出错直接显示
+  - 没有版本记录的旧库（以前 create_all 建的）：结构和代码完全一致才认领为最新版本，否则拒绝启动并列出差异
+  - 约束命名规则固定在 `app/db.py` 的 `NAMING`，不要改
+  - SQLite（开发）迁移时临时关闭外键检查，结束后做 `foreign_key_check`；正式环境是 PostgreSQL
+  - 全部测试可在 PostgreSQL 上跑：设置 `TEST_DATABASE_URL`（迁移测试另用 `TEST_PG_URL`），指向可清空的空库；2026-11-22 已在 PostgreSQL 16 上全部通过
 - 前端构建产物输出到 `backend/static/`，由 FastAPI 统一提供

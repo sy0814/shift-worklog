@@ -6,8 +6,8 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import audit  # noqa: F401  注册 audit_log 的 after_create 触发器
-from .db import Base, SessionLocal, engine
-from . import translation_service
+from .db import SessionLocal, engine
+from . import migrate, translation_service
 from .config import get_settings
 from .routers import attendance, audit_log, auth, export, handover, llm_settings, schedule, tasks, translation, users, workers
 from .seed import seed, seed_glossary
@@ -17,8 +17,8 @@ STATIC_DIR = Path(__file__).resolve().parent.parent / "static"  # 前端构建�
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    # 开发期直接 create_all；表结构稳定后（切 PostgreSQL 前）改用 Alembic 迁移
-    Base.metadata.create_all(engine)
+    # 数据库结构升级到最新版本（Alembic 迁移，数据保留）
+    migrate.upgrade(engine)
     with SessionLocal() as db:
         seed(db)
         seed_glossary(db)

@@ -14,3 +14,4 @@ APScheduler==3.11.3
 openpyxl==3.1.5
 cryptography==50.0.2
 tzdata==2026.6  # Windows 没有内置时区库，必须装
+alembic==1.20.1

@@ -2,7 +2,8 @@ import os
 import tempfile
 
 _tmp = tempfile.mkdtemp()
-os.environ["DATABASE_URL"] = f"sqlite:///{_tmp}/test.db"
+# 默认用临时 SQLite；设置 TEST_DATABASE_URL（指向可清空的空 PostgreSQL 库）可在 PostgreSQL 上跑全部测试
+os.environ["DATABASE_URL"] = os.environ.get("TEST_DATABASE_URL") or f"sqlite:///{_tmp}/test.db"
 os.environ["ADMIN_PASSWORD"] = "admin123"
 os.environ["UPLOAD_DIR"] = f"{_tmp}/uploads"
 os.environ["RUN_SCHEDULER"] = "false"

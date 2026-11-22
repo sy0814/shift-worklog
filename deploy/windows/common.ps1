@@ -138,6 +138,17 @@ function Build-App([string]$Python, [string]$Npm) {
     if (-not (Test-Path (Join-Path $Backend 'static\index.html'))) { throw '前端构建后没有找到 backend\static\index.html' }
 }
 
+# 数据库结构升级到最新版本（Alembic 迁移，数据保留）。单独执行，出错能直接在窗口里看到
+function Invoke-Migrate {
+    Write-Ok '升级数据库结构（已有数据保留）'
+    Push-Location $Backend
+    try {
+        Invoke-Native $VenvPy @('-m', 'alembic', 'upgrade', 'head') '数据库升级'
+        $cur = & $VenvPy -m alembic current 2>$null
+        Write-Ok "数据库版本：$("$cur".Trim())"
+    } finally { Pop-Location }
+}
+
 # ---------------- 服务 ----------------
 function Invoke-WinSW([string]$Name, [string]$Command) {
     $exe = Join-Path $ToolsDir "$Name.exe"
