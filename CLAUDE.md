@@ -153,7 +153,14 @@
   - 翻译期间原文被改 → 结果作废，等下一轮；同一任务不会同时翻译两次（进程内锁，**只支持单进程部署**，多 worker 需改成数据库锁）
   - 人工校对：`PUT /api/tasks/{id}/translation`，记入 `manual_fields`，机器翻译不会覆盖；改原文时前端询问「重新翻译 / 保留现有译文」（只有改的是原文时才问）
   - 提示词：固定规则在最前，术语表其次，待译文字放最后的 user 消息里，便于命中输入缓存
-  - **未经真实接口验证的配置**（文档站和接口在开发环境里都访问不了）：模型名 `DEEPSEEK_MODEL`（默认 deepseek-flash）、关闭思考模式的请求参数 `DEEPSEEK_EXTRA_BODY`（默认 `{"thinking": {"type": "disabled"}}`）、`translate_temperature`（0.3）。上线前用真实 Key 跑一次确认
+  - **已用真实接口验证（2026-11-22）**：
+    - 模型：`deepseek-flash`（DeepSeek-V4.1-Flash）、`deepseek-v4-pro` 都存在
+    - `deepseek-flash` **默认开启思考**；`{"thinking": {"type": "disabled"}}` 有效（推理 token 降为 0，输出 token 约少 80%）；可选值 `adaptive` / `enabled` / `disabled`，写错返回 422
+    - 输入缓存自动生效，`usage.prompt_cache_hit_tokens` / `prompt_cache_miss_tokens`；第二条起约 77% 的输入命中缓存
+    - 每条约 1~2 秒，输入约 1000 token（大部分命中缓存），输出约 100 token
+    - 术语表生效；设备编号、故障代码、单位、换行和列表保留；「忽略以上规则……」这类文字会被当作内容翻译，不会被执行
+    - 人名规则：拉丁字母的名字原样；中文名在 sr / en 里一律写拼音（张伟 → Zhang Wei），不用塞语音译
+    - 原文是西里尔塞语时，存库的 sr 列是转写后的拉丁字母；西里尔原文保留在 create 留痕里
   - 术语表：`glossary` 表，首次启动从 `app/glossary_seed.csv` 导入一次；管理员在「术语表」页增删改、导入/导出 CSV（按中文词条合并），改动留痕
 - 工厂时区由 `APP_TIMEZONE` 配置，默认 `Europe/Belgrade`
 - 排班推算是纯函数，在 `backend/app/shifts.py`，测试在 `backend/tests/test_shifts.py`
