@@ -197,6 +197,7 @@
     - 已在本地用 Caddy 2.6 + 浏览器信任根证书实测：HTTPS、Service Worker、断网重开、离线新建并联网后自动同步都通过
   - 图标：`frontend/public/icons/`（Pillow 画的：记录板 + 对勾），含 maskable 和 apple-touch-icon
 - [x] Windows 部署脚本（2026-11-22）：`deploy/windows/`（install / update / backup / uninstall + common，说明见该目录 README）
+  - 部署指南面向初学者，三语：`deploy/windows/README.md`（中）、`README.sr.md`（塞，拉丁字母）、`README.en.md`（英）；**改了脚本的提示文字、步骤或网页上的菜单名，要同步改三份指南**（英、塞版里有「脚本中文提示 → 含义」对照表）
   - 目录：`C:\WorkRecord\app`（程序，更新时覆盖，保留 `.venv`、`.env`）、`data`（图片、Caddy 证书、地址和备份目录设置）、`tools`（caddy.exe、WinSW）、`logs`、`backups`
   - 服务：`WorkRecordApp`（uvicorn 只监听 127.0.0.1:8000，依赖 PostgreSQL 服务）、`WorkRecordCaddy`（80/443）；崩溃自动重启
   - Caddy 用 `XDG_DATA_HOME=C:\WorkRecord\data\caddy`，根证书在 `data\caddy\caddy\pki\authorities\local\root.crt`（已在 Linux 上验证该目录结构）

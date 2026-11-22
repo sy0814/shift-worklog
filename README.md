@@ -35,7 +35,8 @@ npm run build   # 输出到 backend/static，由后端直接提供
 
 ## 部署
 
-**Windows 10/11（正式部署方式）**：原生安装 + PostgreSQL，见 [deploy/windows/README.md](deploy/windows/README.md)。
+**Windows 10/11（正式部署方式）**：原生安装 + PostgreSQL。面向初学者的分步指南（三语）：
+[中文](deploy/windows/README.md) · [Srpski](deploy/windows/README.sr.md) · [English](deploy/windows/README.en.md)
 
 ### Linux / Docker（备选）
 
