@@ -15,6 +15,7 @@ from sqlalchemy import (
     String,
     Text,
     Time,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -237,4 +238,27 @@ class GlossaryTerm(Base):
     en: Mapped[str] = mapped_column(String(200))
     category: Mapped[str] = mapped_column(String(50), default="")
     note: Mapped[str] = mapped_column(String(200), default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+ATTENDANCE_STATUSES = ("present", "leave", "sick", "absent", "off")
+
+
+class Attendance(Base):
+    """出勤例外记录。默认出勤按排班推算、不存库；这里只存导入或手工改过的。"""
+
+    __tablename__ = "attendance"
+    __table_args__ = (UniqueConstraint("worker_id", "day", name="uq_attendance_worker_day"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    worker_id: Mapped[int] = mapped_column(ForeignKey("workers.id"), index=True)
+    day: Mapped[date] = mapped_column(Date, index=True)  # 班次日期（夜班归属开始那天）
+    # present 出勤 / leave 请假 / sick 病假 / absent 缺勤 / off 休息
+    status: Mapped[str] = mapped_column(String(10))
+    # 实际上的班次（调班、加班时与本班组排班不同）；为空表示按本班组排班
+    shift_kind: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"), nullable=True)  # 顶哪个班组的班
+    note: Mapped[str] = mapped_column(String(200), default="")
+    source: Mapped[str] = mapped_column(String(10))  # import / manual
+    updated_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

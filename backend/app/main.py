@@ -9,7 +9,7 @@ from . import audit  # noqa: F401  注册 audit_log 的 after_create 触发器
 from .db import Base, SessionLocal, engine
 from . import translation_service
 from .config import get_settings
-from .routers import audit_log, auth, handover, schedule, tasks, translation, users, workers
+from .routers import attendance, audit_log, auth, export, handover, schedule, tasks, translation, users, workers
 from .seed import seed, seed_glossary
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"  # 前端构建产物
@@ -37,6 +37,8 @@ app.include_router(workers.router)
 app.include_router(tasks.router)
 app.include_router(handover.router)
 app.include_router(translation.router)
+app.include_router(attendance.router)
+app.include_router(export.router)
 
 
 @app.get("/api/health")

@@ -9,6 +9,7 @@ import { useOutbox } from '../stores/outbox'
 import TaskCard from '../components/TaskCard.vue'
 import TaskDetail from '../components/TaskDetail.vue'
 import TaskForm from '../components/TaskForm.vue'
+import ExportDialog from '../components/ExportDialog.vue'
 
 const { t } = useI18n()
 const auth = useAuth()
@@ -64,6 +65,7 @@ function watchTranslations(list) {
 onUnmounted(() => clearTimeout(trTimer))
 
 const formOpen = ref(false)
+const exportOpen = ref(false)
 const detailOpen = ref(false)
 const detailId = ref(null)
 function open(task) {
@@ -88,6 +90,7 @@ function open(task) {
       <el-input v-model="filters.q" :placeholder="t('task.search')" clearable style="width: 180px"
                 @keyup.enter="load()" @clear="load()" />
       <span class="spacer" />
+      <el-button @click="exportOpen = true">{{ t('exp.title') }}</el-button>
       <el-button class="new-btn" type="primary" :icon="Plus" @click="formOpen = true">{{ t('task.new') }}</el-button>
     </div>
 
@@ -99,6 +102,7 @@ function open(task) {
 
     <el-button class="fab" type="primary" circle :icon="Plus" size="large" @click="formOpen = true" />
     <TaskForm v-model="formOpen" @saved="load()" />
+    <ExportDialog v-model="exportOpen" :team-id="filters.team_id" />
     <TaskDetail v-model="detailOpen" :task-id="detailId" @changed="load()" />
   </div>
 </template>

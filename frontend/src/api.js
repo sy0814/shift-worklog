@@ -27,3 +27,18 @@ api.interceptors.response.use(
 )
 
 export default api
+
+/** 带登录令牌下载文件（Excel、CSV 等） */
+export async function download(url, params, fallbackName) {
+  const res = await api.get(url, { params, responseType: 'blob', timeout: 120000 })
+  const cd = res.headers['content-disposition'] || ''
+  const m = /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/.exec(cd)
+  const name = m ? decodeURIComponent(m[1] || m[2]) : fallbackName
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(res.data)
+  a.download = name
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000)
+}
