@@ -5,6 +5,8 @@ _tmp = tempfile.mkdtemp()
 os.environ["DATABASE_URL"] = f"sqlite:///{_tmp}/test.db"
 os.environ["ADMIN_PASSWORD"] = "admin123"
 os.environ["UPLOAD_DIR"] = f"{_tmp}/uploads"
+os.environ["RUN_SCHEDULER"] = "false"
+os.environ["DEEPSEEK_API_KEY"] = ""  # 默认不翻译；翻译测试里单独打开
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402

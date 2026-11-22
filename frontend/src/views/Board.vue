@@ -1,6 +1,6 @@
 <script setup>
 // 交接班 / 早班会视图：上一班移交过来的 + 本班待办，可多选一起移交
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import api from '../api'
 import { localName } from '../i18n'
@@ -23,12 +23,24 @@ async function load() {
     board.value = (await api.get('/board', { params: { team_id: teamId.value } })).data
     const openIds = new Set([...board.value.received, ...board.value.todo].map((x) => x.id))
     selected.value = selected.value.filter((id) => openIds.has(id))
+    watchTranslations([...board.value.received, ...board.value.todo, ...board.value.done_recent, ...board.value.handed_out_recent])
   } finally {
     loading.value = false
   }
 }
 watch(teamId, () => { selected.value = []; load() })
 onMounted(load)
+
+// 有任务还在后台翻译时，每 4 秒刷新一次（最多 1 分钟），翻译好后列表自动显示译文
+let trTimer = null
+let trTries = 0
+function watchTranslations(list) {
+  clearTimeout(trTimer)
+  if (!list.some((x) => x.translation_status === 'pending')) { trTries = 0; return }
+  if (trTries++ >= 15) return
+  trTimer = setTimeout(() => load(), 4000)
+}
+onUnmounted(() => clearTimeout(trTimer))
 
 const canEdit = computed(() => auth.isAdmin || auth.user?.team_id === teamId.value)
 const openTasks = computed(() => (board.value ? [...board.value.received, ...board.value.todo] : []))

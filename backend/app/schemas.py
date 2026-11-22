@@ -189,6 +189,8 @@ class TaskUpdate(BaseModel):
     worker_ids: list[int] | None = Field(default=None, max_length=200)
     start_at: datetime | None = None
     end_at: datetime | None = None
+    # 原文改了以后：True 重新翻译（覆盖人工校对的译文）；False 保留现有译文
+    retranslate: bool = True
 
 
 class HandoverRequest(BaseModel):
@@ -251,6 +253,8 @@ class TaskOut(BaseModel):
     leftover: Trilingual
     leftover_source_lang: str | None
     translation_status: str
+    translation_error: str | None
+    manual_fields: list[str]
     team_id: int
     origin_team_id: int
     source_task_id: int | None
@@ -305,3 +309,36 @@ class BoardOut(BaseModel):
     todo: list[TaskOut]  # 本班组自己的未完成任务
     done_recent: list[TaskOut]  # 最近 12 小时完成的
     handed_out_recent: list[TaskOut]  # 最近 12 小时移交出去的
+
+
+# ---------------- 翻译 / 术语表 ----------------
+class ManualTranslation(BaseModel):
+    field: Literal["content", "leftover", "discard_reason"]
+    lang: Lang
+    text: str = Field(min_length=1, max_length=5000)
+
+
+class TranslationStatus(BaseModel):
+    configured: bool
+    model: str
+    counts: dict[str, int]
+
+
+class GlossaryIn(BaseModel):
+    zh: str = Field(min_length=1, max_length=200)
+    sr: str = Field(min_length=1, max_length=200)
+    en: str = Field(min_length=1, max_length=200)
+    category: str = Field(default="", max_length=50)
+    note: str = Field(default="", max_length=200)
+
+
+class GlossaryOut(GlossaryIn):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    updated_at: UTCDateTime
+
+
+class ImportResult(BaseModel):
+    added: int
+    updated: int
+    skipped: int

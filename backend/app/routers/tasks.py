@@ -8,12 +8,12 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
-from .. import app_settings, audit
+from .. import app_settings, audit, translation_service
 from ..config import get_settings
 from ..db import get_db
 from ..images import InvalidImage, parse_exif_datetime, process_upload
@@ -144,6 +144,8 @@ def task_out(task: Task, user: User, ctx: OutCtx) -> TaskOut:
         leftover=Trilingual(zh=task.leftover_zh, sr=task.leftover_sr, en=task.leftover_en),
         leftover_source_lang=task.leftover_source_lang,
         translation_status=task.translation_status,
+        translation_error=task.translation_error if user.role == "admin" else None,
+        manual_fields=list(task.manual_fields or []),
         team_id=task.team_id, origin_team_id=task.origin_team_id, source_task_id=task.source_task_id,
         status=task.status, shift_date=task.shift_date, shift_kind=task.shift_kind,
         start_at=task.start_at, end_at=task.end_at,
@@ -206,18 +208,24 @@ def _check_times(start: datetime | None, end: datetime | None) -> None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "end_at before start_at")
 
 
-def _text_changes(prefix: str, task: Task, text: str | None, lang: str) -> dict:
-    """修改某个语言的文字：写入该语言列，其余两种语言清空待重新翻译。"""
+def _text_changes(prefix: str, task: Task, text: str | None, lang: str, retranslate: bool) -> tuple[dict, bool]:
+    """修改某段文字。返回 (要写的列, 是否需要重新翻译)。
+
+    retranslate=True：写入该语言列，其余两种语言清空待重新翻译（含人工校对过的）。
+    retranslate=False：只改原文那一列，保留现有译文（换了原文语言时仍强制重新翻译）。
+    """
     src_field = "source_lang" if prefix == "content" else "leftover_source_lang"
     text = (text or "").strip() or None
     if text is None:  # 只有遗留问题允许清空
-        return {f"{prefix}_{l}": None for l in LANGS} | {src_field: None}
+        return {f"{prefix}_{l}": None for l in LANGS} | {src_field: None}, False
     if getattr(task, f"{prefix}_{lang}") == text and getattr(task, src_field) == lang:
-        return {}
+        return {}, False
+    if not retranslate and getattr(task, src_field) == lang:
+        return {f"{prefix}_{lang}": text}, False
     changes = {f"{prefix}_{l}": None for l in LANGS if l != lang}
     changes[f"{prefix}_{lang}"] = text
     changes[src_field] = lang
-    return changes
+    return changes, True
 
 
 # ---------------- 任务 ----------------
@@ -267,13 +275,15 @@ def get_task(task_id: int, db: Session = Depends(get_db), user: User = Depends(g
 
 
 @router.post("/tasks", response_model=TaskOut, status_code=201)
-def create_task(body: TaskCreate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def create_task(body: TaskCreate, bg: BackgroundTasks, db: Session = Depends(get_db),
+                user: User = Depends(get_current_user)):
     # 离线草稿可能重复提交：同一个 client_id 直接返回已有任务
     existing = db.scalar(select(Task).where(Task.client_id == body.client_id))
     if existing is not None:
         # 真正的重试内容一定相同；内容不同说明客户端出错，拒绝而不是悄悄返回别的任务
-        same = existing.created_by == user.id and \
-            getattr(existing, f"content_{body.lang}") == body.content.strip()
+        # 翻译后原文可能被挪到模型判断的那一列，所以三列都比
+        same = existing.created_by == user.id and body.content.strip() in \
+            {existing.content_zh, existing.content_sr, existing.content_en}
         if not same:
             raise HTTPException(status.HTTP_409_CONFLICT, "client_id already used")
         return one_out(db, _get_task(db, existing.id), user)
@@ -321,32 +331,41 @@ def create_task(body: TaskCreate, db: Session = Depends(get_db), user: User = De
         "start_at": start_at, "end_at": end_at, "leftover": task.leftover_source_lang and body.leftover.strip(),
         "recorded_at": recorded, "shift": f"{shift_date} {shift_kind}",
     })
+    task.manual_fields = []
     db.commit()
+    bg.add_task(translation_service.translate_task, task.id)  # 响应返回后在后台翻译
     return one_out(db, _get_task(db, task.id), user)
 
 
 @router.patch("/tasks/{task_id}", response_model=TaskOut)
-def update_task(task_id: int, body: TaskUpdate, db: Session = Depends(get_db),
+def update_task(task_id: int, body: TaskUpdate, bg: BackgroundTasks, db: Session = Depends(get_db),
                 user: User = Depends(get_current_user)):
     task = _get_task(db, task_id)
     _require_edit(task, user)
     data = body.model_dump(exclude_unset=True)
     lang = body.lang or user.lang
     changes: dict = {}
+    text_changed: dict[str, bool] = {}  # 字段 → 是否重新翻译
     if "content" in data:
         if not data["content"] or not data["content"].strip():
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "content required")
-        changes |= _text_changes("content", task, data["content"], lang)
+        c, rt = _text_changes("content", task, data["content"], lang, body.retranslate)
+        if c:
+            changes |= c
+            text_changed["content"] = rt
     if "leftover" in data:
-        changes |= _text_changes("leftover", task, data["leftover"], body.leftover_lang or lang)
+        c, rt = _text_changes("leftover", task, data["leftover"], body.leftover_lang or lang, body.retranslate)
+        if c:
+            changes |= c
+            text_changed["leftover"] = rt
     for f in ("start_at", "end_at"):
         if f in data:
             changes[f] = to_utc(data[f])
     _check_times(changes.get("start_at", task.start_at), changes.get("end_at", task.end_at))
 
     changed = audit.log_changes(db, task, changes, user_id=user.id, entity="task", entity_id=task.id)
-    if any(k.startswith(("content_", "leftover_")) for k in changes) and changed:
-        task.translation_status = "pending"
+    for field, rt in text_changed.items():
+        translation_service.mark_text_changed(task, field, retranslate=rt)
 
     if "worker_ids" in data and data["worker_ids"] is not None:
         new_workers = _load_workers(db, data["worker_ids"])
@@ -364,6 +383,8 @@ def update_task(task_id: int, body: TaskUpdate, db: Session = Depends(get_db),
         task.updated_by = user.id
         task.updated_at = utcnow()
     db.commit()
+    if task.translation_status == "pending":
+        bg.add_task(translation_service.translate_task, task.id)
     return one_out(db, _get_task(db, task.id), user)
 
 

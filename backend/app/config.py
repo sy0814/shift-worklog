@@ -15,7 +15,18 @@ class Settings(BaseSettings):
     admin_username: str = "admin"
     admin_password: str = "admin123"
 
+    # ---- DeepSeek 翻译 / AI 分析 ----
     deepseek_api_key: str = ""
+    deepseek_base_url: str = "https://api.deepseek.com"
+    deepseek_model: str = "deepseek-flash"
+    # 附加到请求体里的参数（JSON），用来关闭思考模式等
+    deepseek_extra_body: str = '{"thinking": {"type": "disabled"}}'
+    translate_temperature: float = 0.3
+    translate_timeout: float = 15.0
+    translate_retries: int = 2  # 超时 / 网络错误后再试几次
+    translate_max_attempts: int = 20  # 后台重试上限，超过后标记 failed，等管理员手动重试
+    translate_retry_seconds: int = 120  # 后台重试间隔
+    run_scheduler: bool = True  # 测试时关闭
 
     upload_dir: str = "./data/uploads"
     max_upload_mb: int = 30

@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, reactive, ref, watch } from 'vue'
+import { onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Plus } from '@element-plus/icons-vue'
 import api from '../api'
@@ -42,6 +42,7 @@ async function load(append = false) {
     const { data } = await api.get('/tasks', { params })
     items.value = append ? [...items.value, ...data.items] : data.items
     total.value = data.total
+    watchTranslations(items.value)
   } finally {
     loading.value = false
   }
@@ -50,6 +51,17 @@ watch(() => [filters.team_id, filters.statusSet, filters.dates], () => load())
 // 离线草稿同步成功后刷新列表
 watch(() => outbox.lastSyncedTaskIds.length, () => load())
 onMounted(load)
+
+// 有任务还在后台翻译时，每 4 秒刷新一次（最多 1 分钟），翻译好后列表自动显示译文
+let trTimer = null
+let trTries = 0
+function watchTranslations(list) {
+  clearTimeout(trTimer)
+  if (!list.some((x) => x.translation_status === 'pending')) { trTries = 0; return }
+  if (trTries++ >= 15) return
+  trTimer = setTimeout(() => load(), 4000)
+}
+onUnmounted(() => clearTimeout(trTimer))
 
 const formOpen = ref(false)
 const detailOpen = ref(false)

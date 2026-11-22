@@ -1,13 +1,15 @@
 """首次启动时写入初始数据：5 个班组、排班基准、管理员和班长账号。"""
 
+import csv
 from datetime import date, time
+from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from . import audit
 from .config import get_settings
-from .models import ShiftConfig, Team, User
+from .models import AppSetting, ShiftConfig, Team, User
 from .security import hash_password
 
 # 基准日 2026-11-01：3 班白1(0)、4 班中1(2)、1 班夜1(4)、2 班休1(6)
@@ -53,4 +55,19 @@ def seed(db: Session) -> None:
                     full_name=username, role="leader", team_id=teams[code].id, lang="zh"))
     db.flush()
     audit.log(db, user_id=None, action="seed", entity="system", entity_id="init")
+    db.commit()
+
+
+GLOSSARY_SEED = Path(__file__).with_name("glossary_seed.csv")
+
+
+def seed_glossary(db: Session) -> None:
+    """首次启动导入术语表初始数据（只导一次；之后由管理员在后台维护）。"""
+    if db.get(AppSetting, "glossary_seeded") is not None or not GLOSSARY_SEED.exists():
+        return
+    from .routers.translation import import_rows
+
+    with GLOSSARY_SEED.open(encoding="utf-8-sig") as f:
+        import_rows(db, list(csv.DictReader(f)), None)
+    db.add(AppSetting(key="glossary_seeded", value=True))
     db.commit()

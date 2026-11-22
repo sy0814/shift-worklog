@@ -9,3 +9,5 @@ python-multipart==0.0.34
 psycopg[binary]==3.3.9
 pillow==13.0.0
 pillow-heif==1.8.1
+httpx==0.28.1
+APScheduler==3.11.3

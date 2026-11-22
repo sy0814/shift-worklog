@@ -18,7 +18,7 @@ const menu = computed(() => [
   { name: 'board', label: t('nav2.board') },
   { name: 'tasks', label: t('nav2.tasks') },
   { name: 'schedule', label: t('nav.schedule') },
-  ...(auth.isAdmin ? [{ name: 'workers', label: t('nav2.workers') }, { name: 'users', label: t('nav.users') }, { name: 'audit', label: t('nav.audit') }] : []),
+  ...(auth.isAdmin ? [{ name: 'workers', label: t('nav2.workers') }, { name: 'glossary', label: t('nav2.glossary') }, { name: 'users', label: t('nav.users') }, { name: 'audit', label: t('nav.audit') }] : []),
 ])
 
 function logout() {

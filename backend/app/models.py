@@ -125,8 +125,12 @@ class Task(Base):
     leftover_sr: Mapped[str | None] = mapped_column(Text, nullable=True)
     leftover_en: Mapped[str | None] = mapped_column(Text, nullable=True)
     leftover_source_lang: Mapped[str | None] = mapped_column(String(5), nullable=True)
-    # pending（待翻译）/ done / failed / manual（人工校对过）
-    translation_status: Mapped[str] = mapped_column(String(10), default="pending")
+    # pending（待翻译）/ done / failed（后台多次重试仍失败，等管理员手动重试）
+    translation_status: Mapped[str] = mapped_column(String(10), default="pending", index=True)
+    translation_attempts: Mapped[int] = mapped_column(Integer, default=0)
+    translation_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # 人工校对过的译文列，如 ["content_sr", "leftover_en"]
+    manual_fields: Mapped[list] = mapped_column(JSON, default=list)
 
     team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"), index=True)  # 当前所属班组
     origin_team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"))  # 创建班组
@@ -220,3 +224,17 @@ class AppSetting(Base):
 
     key: Mapped[str] = mapped_column(String(50), primary_key=True)
     value: Mapped[dict | list | int | str | None] = mapped_column(JSON)
+
+
+class GlossaryTerm(Base):
+    """术语表：翻译时拼进系统提示词。"""
+
+    __tablename__ = "glossary"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    zh: Mapped[str] = mapped_column(String(200))
+    sr: Mapped[str] = mapped_column(String(200))
+    en: Mapped[str] = mapped_column(String(200))
+    category: Mapped[str] = mapped_column(String(50), default="")
+    note: Mapped[str] = mapped_column(String(200), default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

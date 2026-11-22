@@ -8,11 +8,11 @@ source_task_id 指回原任务；内容、译文、图片带过去，参与人�
 import uuid
 from datetime import timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from .. import app_settings, audit
+from .. import app_settings, audit, translation_service
 from ..db import get_db
 from ..models import Attachment, AppSetting, Task, TaskHandover, Team, User, utcnow
 from ..schedule_service import load_schedule, local_now
@@ -46,7 +46,8 @@ def handover_default(team_id: int, db: Session = Depends(get_db), _: User = Depe
 
 
 @router.post("/handover", response_model=list[TaskOut])
-def handover(body: HandoverRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def handover(body: HandoverRequest, bg: BackgroundTasks, db: Session = Depends(get_db),
+             user: User = Depends(get_current_user)):
     sched = load_schedule(db)
     now_local = local_now()
     now = utcnow()
@@ -79,15 +80,17 @@ def handover(body: HandoverRequest, db: Session = Depends(get_db), user: User = 
             status=src.status, shift_date=rd, shift_kind=rk, start_at=src.start_at,
             created_by=user.id, updated_by=user.id, recorded_at=now, created_at=now, updated_at=now,
             chain_started_at=src.chain_started_at, handover_count=src.handover_count + 1,
+            manual_fields=[m for m in (src.manual_fields or []) if not m.startswith("leftover_")]
+            if note else list(src.manual_fields or []),
         )
         if note:
             setattr(new, f"leftover_{lang}", note)
             new.leftover_source_lang = lang
-            new.translation_status = "pending"
         else:
             for l in LANGS:
                 setattr(new, f"leftover_{l}", getattr(src, f"leftover_{l}"))
             new.leftover_source_lang = src.leftover_source_lang
+        translation_service.refresh_status(new)
         db.add(new)
         db.flush()
 
@@ -121,11 +124,14 @@ def handover(body: HandoverRequest, db: Session = Depends(get_db), user: User = 
         created.append(new)
 
     db.commit()
+    for t in created:
+        if t.translation_status == "pending":
+            bg.add_task(translation_service.translate_task, t.id)
     return tasks_out(db, [_get_task(db, t.id) for t in created], user)
 
 
 @router.post("/tasks/{task_id}/discard", response_model=TaskOut)
-def discard(task_id: int, body: DiscardRequest, db: Session = Depends(get_db),
+def discard(task_id: int, body: DiscardRequest, bg: BackgroundTasks, db: Session = Depends(get_db),
             user: User = Depends(get_current_user)):
     task = _get_task(db, task_id)
     _require_edit(task, user)
@@ -139,10 +145,11 @@ def discard(task_id: int, body: DiscardRequest, db: Session = Depends(get_db),
     changes = {"status": "discarded", f"discard_reason_{lang}": reason, "discard_reason_lang": lang,
                "discarded_by": user.id, "discarded_at": now}
     audit.log_changes(db, task, changes, user_id=user.id, entity="task", entity_id=task.id, action="discard")
-    task.translation_status = "pending"
+    translation_service.mark_text_changed(task, "discard_reason")
     task.updated_by = user.id
     task.updated_at = now
     db.commit()
+    bg.add_task(translation_service.translate_task, task.id)
     return tasks_out(db, [_get_task(db, task.id)], user)[0]
 
 

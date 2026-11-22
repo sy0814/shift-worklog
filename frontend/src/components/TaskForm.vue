@@ -2,7 +2,7 @@
 // 新建 / 编辑任务。新建时图片随任务一起进离线发件箱；编辑时只改文字和人员，图片在详情里补充。
 import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import dayjs from 'dayjs'
 import api from '../api'
 import { localName } from '../i18n'
@@ -140,6 +140,23 @@ async function saveEdit() {
   if ([...form.worker_ids].sort().join() !== [...o.worker_ids].sort().join()) patch.worker_ids = form.worker_ids
   if (form.start_at !== o.start_at) patch.start_at = form.start_at || null
   if (form.end_at !== o.end_at) patch.end_at = form.end_at || null
+  // 改了原文、且这段有人工校对过的译文：问是重新翻译还是保留
+  // 只有改的是原文时才有「保留译文」的选项；改的是某种译文的话，它成为新原文，另外两种必须重翻
+  const srcLangOf = { content: props.task.source_lang, leftover: props.task.leftover_source_lang }
+  const editLangOf = { content: o.contentLang, leftover: patch.leftover_lang }
+  const touched = ['content', 'leftover'].filter((f) => f in patch && editLangOf[f] === srcLangOf[f])
+  const hasManual = touched.some((f) => (props.task.manual_fields || []).some((m) => m.startsWith(f + '_')))
+  if (hasManual) {
+    try {
+      await ElMessageBox.confirm(t('tr.keepOrRetranslate'), t('tr.keepOrRetranslateTitle'), {
+        confirmButtonText: t('tr.retry'), cancelButtonText: t('tr.keep'), distinguishCancelAndClose: true, type: 'warning',
+      })
+      patch.retranslate = true
+    } catch (action) {
+      if (action !== 'cancel') return // 关掉对话框 = 不保存
+      patch.retranslate = false
+    }
+  }
   if (Object.keys(patch).length) await api.patch(`/tasks/${props.task.id}`, patch)
   visible.value = false
   ElMessage.success(t('common.saved'))

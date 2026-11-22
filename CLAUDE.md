@@ -116,7 +116,7 @@
 ## 待确认
 
 1. 出勤表的现有 Excel 格式（之后提供样例）
-2. 术语表 `glossary_seed.csv` 请塞方同事校对
+2. 术语表塞语译文请塞方同事校对（可在后台「术语表」页导出 CSV 给他们，改完再导入）
 
 ## 开发顺序
 
@@ -145,6 +145,16 @@
   - **废弃** 必须填原因（三语列 `discard_reason_*`），记录废弃人和时间
   - **未闭环警示**：未完成且（从第一次录入 `chain_started_at` 起超过 N 小时，或已移交 N 次及以上），N 存在 `app_settings` 表，管理员在「排班 → 警示设置」里改，默认 24 小时 / 3 次。首页红框置顶，交接班视图里超时的排最前
   - 交接班视图 `/api/board`：上一班移交过来的、本班待办、最近 12 小时完成、最近 12 小时移交出去
+- [x] 第 4 步：DeepSeek 三语翻译 + 术语表（2026-11-22）
+  - `app/translator.py`：只负责调接口和校验结果（换模型只改这里）；`app/translation_service.py`：写回任务、后台执行、定时重试
+  - 三段文字分别翻译、各自记原文语言：内容 content、遗留问题 leftover、废弃原因 discard_reason
+  - 原文语言以**模型判断**为准（录入时只按界面语言暂记），原文原样保留；塞语一律转拉丁字母（模型输出和人工输入都转）
+  - 录入/修改后用 FastAPI BackgroundTasks 在响应之后翻译，不阻塞录入；失败（超时、5xx、429、内容不合格）当次重试 2 次，仍失败保持「待翻译」，APScheduler 每 2 分钟重试，累计 20 次后标 failed，管理员在术语表页点「重试失败的」；4xx（Key 错、余额不足）不重试
+  - 翻译期间原文被改 → 结果作废，等下一轮；同一任务不会同时翻译两次（进程内锁，**只支持单进程部署**，多 worker 需改成数据库锁）
+  - 人工校对：`PUT /api/tasks/{id}/translation`，记入 `manual_fields`，机器翻译不会覆盖；改原文时前端询问「重新翻译 / 保留现有译文」（只有改的是原文时才问）
+  - 提示词：固定规则在最前，术语表其次，待译文字放最后的 user 消息里，便于命中输入缓存
+  - **未经真实接口验证的配置**（文档站和接口在开发环境里都访问不了）：模型名 `DEEPSEEK_MODEL`（默认 deepseek-flash）、关闭思考模式的请求参数 `DEEPSEEK_EXTRA_BODY`（默认 `{"thinking": {"type": "disabled"}}`）、`translate_temperature`（0.3）。上线前用真实 Key 跑一次确认
+  - 术语表：`glossary` 表，首次启动从 `app/glossary_seed.csv` 导入一次；管理员在「术语表」页增删改、导入/导出 CSV（按中文词条合并），改动留痕
 - 工厂时区由 `APP_TIMEZONE` 配置，默认 `Europe/Belgrade`
 - 排班推算是纯函数，在 `backend/app/shifts.py`，测试在 `backend/tests/test_shifts.py`
 - 留痕：业务代码统一调用 `app/audit.py` 的 `log()` / `log_changes()`；数据库触发器禁止对 `audit_log` 做 UPDATE / DELETE（SQLite、PostgreSQL 都已验证）

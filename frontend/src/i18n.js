@@ -27,7 +27,7 @@ const messages = {
       dayStart: '白班开始', middleStart: '中班开始', nightStart: '夜班开始', holidays: '节假日（常白班休息）',
       holidayName: '名称', date: '日期', weekday: '星期', pos: ['白1', '白2', '中1', '中2', '夜1', '夜2', '休1', '休2'],
     },
-    nav2: { tasks: '任务', workers: '员工名册', board: '交接班' },
+    nav2: { tasks: '任务', workers: '员工名册', board: '交接班', glossary: '术语表' },
     status: { not_started: '未开始', in_progress: '进行中', done: '已完成', handed_over: '已移交', discarded: '已废弃', open: '未完成', all: '全部' },
     task: {
       new: '新建任务', edit: '编辑任务', content: '工作内容', contentPh: '可以用中文、塞语或英语填写', workers: '参与人员', team: '班组',
@@ -47,7 +47,7 @@ const messages = {
       confirmDiscard: '丢弃后无法恢复，确定？', offline: '离线',
     },
     workers: { name: '姓名', no: '工号', team: '班组', bulk: '批量添加', bulkPh: '每行一个姓名', noTeam: '未分组', showInactive: '显示已停用' },
-    history: { create: '创建', update: '修改', status: '状态', attach: '添加图片', detach: '删除图片', handover: '移交', receive: '接收移交', discard: '废弃' },
+    history: { create: '创建', update: '修改', status: '状态', attach: '添加图片', detach: '删除图片', handover: '移交', receive: '接收移交', discard: '废弃', translate: '机器翻译', translate_manual: '人工校对译文', retranslate: '重新翻译' },
     ho: {
       handover: '移交', discard: '废弃', to: '移交给', suggested: '系统建议', note: '交接说明', notePh: '交给下一班需要注意的事项（会作为对方任务的遗留问题）',
       discardReason: '废弃原因', discardPh: '必须填写原因', from: '由 {team} 移交', toTeam: '已移交给 {team}', viewSource: '查看原任务', viewTarget: '查看接收任务',
@@ -62,6 +62,13 @@ const messages = {
       title: '未闭环警示', badge: '超时', hours: '{n} 小时', none: '没有超时未完成的任务', settings: '警示设置',
       hoursLabel: '超过多少小时未完成', handoversLabel: '移交多少次仍未完成', hint: '从第一次录入算起；满足任一条件就标红置顶',
     },
+    tr: {
+      translating: '翻译中…', failed: '翻译失败', retry: '重新翻译', machine: '机器翻译', manual: '人工校对', showOriginal: '查看原文', hideOriginal: '收起原文',
+      correct: '校对译文', source: '原文', notConfigured: '翻译服务未配置（缺少 DEEPSEEK_API_KEY）', keepOrRetranslateTitle: '原文已修改',
+      keepOrRetranslate: '这条内容有人工校对过的译文。要重新翻译（覆盖人工校对）还是保留现有译文？', keep: '保留现有译文', pendingN: '待翻译 {n} 条', failedN: '失败 {n} 条', retryFailed: '重试失败的',
+      model: '模型', fields: { content: '工作内容', leftover: '遗留问题', discard_reason: '废弃原因' },
+    },
+    glossary: { title: '术语表', zh: '中文', sr: '塞尔维亚语', en: '英语', category: '类别', note: '备注', import: '导入 CSV', export: '导出 CSV', imported: '新增 {added}，更新 {updated}，跳过 {skipped}', search: '搜索术语', hint: '翻译时会把术语表发给模型，保证专业词汇译法统一' },
     audit: { at: '时间', user: '操作人', action: '操作', entity: '对象', field: '字段', old: '修改前', new: '修改后' },
   },
   sr: {
@@ -85,7 +92,7 @@ const messages = {
       dayStart: 'Početak prve smene', middleStart: 'Početak druge smene', nightStart: 'Početak treće smene', holidays: 'Praznici (dnevna smena ne radi)',
       holidayName: 'Naziv', date: 'Datum', weekday: 'Dan', pos: ['P1', 'P2', 'D1', 'D2', 'T1', 'T2', 'S1', 'S2'],
     },
-    nav2: { tasks: 'Zadaci', workers: 'Radnici', board: 'Primopredaja' },
+    nav2: { tasks: 'Zadaci', workers: 'Radnici', board: 'Primopredaja', glossary: 'Rečnik' },
     status: { not_started: 'Nije započeto', in_progress: 'U toku', done: 'Završeno', handed_over: 'Predato', discarded: 'Odbačeno', open: 'Nezavršeno', all: 'Sve' },
     task: {
       new: 'Novi zadatak', edit: 'Izmena zadatka', content: 'Opis posla', contentPh: 'Možete pisati na srpskom, kineskom ili engleskom', workers: 'Učesnici', team: 'Smena',
@@ -105,7 +112,7 @@ const messages = {
       confirmDiscard: 'Nacrt se ne može vratiti. Nastaviti?', offline: 'Van mreže',
     },
     workers: { name: 'Ime i prezime', no: 'Matični broj', team: 'Smena', bulk: 'Dodaj više', bulkPh: 'Jedno ime po redu', noTeam: 'Bez smene', showInactive: 'Prikaži neaktivne' },
-    history: { create: 'Kreirano', update: 'Izmena', status: 'Status', attach: 'Dodata slika', detach: 'Obrisana slika', handover: 'Predato', receive: 'Primljeno', discard: 'Odbačeno' },
+    history: { create: 'Kreirano', update: 'Izmena', status: 'Status', attach: 'Dodata slika', detach: 'Obrisana slika', handover: 'Predato', receive: 'Primljeno', discard: 'Odbačeno', translate: 'Mašinski prevod', translate_manual: 'Ručna ispravka prevoda', retranslate: 'Ponovni prevod' },
     ho: {
       handover: 'Predaj', discard: 'Odbaci', to: 'Predaj smeni', suggested: 'predlog sistema', note: 'Napomena za primopredaju', notePh: 'Šta sledeća smena treba da zna (postaje preostali problem kod njih)',
       discardReason: 'Razlog odbacivanja', discardPh: 'Razlog je obavezan', from: 'Predala {team}', toTeam: 'Predato smeni {team}', viewSource: 'Prikaži izvorni zadatak', viewTarget: 'Prikaži primljeni zadatak',
@@ -120,6 +127,13 @@ const messages = {
       title: 'Nezatvoreni zadaci', badge: 'Kasni', hours: '{n} h', none: 'Nema zadataka koji kasne', settings: 'Podešavanje upozorenja',
       hoursLabel: 'Nezavršeno duže od (sati)', handoversLabel: 'Nezavršeno posle broja predaja', hint: 'Računa se od prvog unosa; dovoljan je jedan uslov',
     },
+    tr: {
+      translating: 'Prevodi se…', failed: 'Prevod nije uspeo', retry: 'Prevedi ponovo', machine: 'Mašinski prevod', manual: 'Ručno ispravljeno', showOriginal: 'Prikaži original', hideOriginal: 'Sakrij original',
+      correct: 'Ispravi prevod', source: 'Original', notConfigured: 'Prevođenje nije podešeno (nedostaje DEEPSEEK_API_KEY)', keepOrRetranslateTitle: 'Original je izmenjen',
+      keepOrRetranslate: 'Ovaj tekst ima ručno ispravljen prevod. Prevesti ponovo (zameniti ručne ispravke) ili zadržati postojeći prevod?', keep: 'Zadrži prevod', pendingN: 'Čeka prevod: {n}', failedN: 'Neuspešno: {n}', retryFailed: 'Ponovi neuspešne',
+      model: 'Model', fields: { content: 'Opis posla', leftover: 'Preostali problemi', discard_reason: 'Razlog odbacivanja' },
+    },
+    glossary: { title: 'Rečnik pojmova', zh: 'Kineski', sr: 'Srpski', en: 'Engleski', category: 'Kategorija', note: 'Napomena', import: 'Uvezi CSV', export: 'Izvezi CSV', imported: 'Dodato {added}, izmenjeno {updated}, preskočeno {skipped}', search: 'Pretraga', hint: 'Rečnik se šalje modelu pri prevođenju da bi stručni izrazi bili ujednačeni' },
     audit: { at: 'Vreme', user: 'Korisnik', action: 'Radnja', entity: 'Objekat', field: 'Polje', old: 'Staro', new: 'Novo' },
   },
   en: {
@@ -143,7 +157,7 @@ const messages = {
       dayStart: 'Day shift starts', middleStart: 'Middle shift starts', nightStart: 'Night shift starts', holidays: 'Holidays (day team off)',
       holidayName: 'Name', date: 'Date', weekday: 'Weekday', pos: ['D1', 'D2', 'M1', 'M2', 'N1', 'N2', 'O1', 'O2'],
     },
-    nav2: { tasks: 'Tasks', workers: 'Workers', board: 'Handover' },
+    nav2: { tasks: 'Tasks', workers: 'Workers', board: 'Handover', glossary: 'Glossary' },
     status: { not_started: 'Not started', in_progress: 'In progress', done: 'Done', handed_over: 'Handed over', discarded: 'Discarded', open: 'Open', all: 'All' },
     task: {
       new: 'New task', edit: 'Edit task', content: 'Work', contentPh: 'Chinese, Serbian or English', workers: 'Workers', team: 'Team',
@@ -163,7 +177,7 @@ const messages = {
       confirmDiscard: 'The draft cannot be recovered. Continue?', offline: 'Offline',
     },
     workers: { name: 'Name', no: 'Employee no.', team: 'Team', bulk: 'Bulk add', bulkPh: 'One name per line', noTeam: 'No team', showInactive: 'Show inactive' },
-    history: { create: 'Created', update: 'Edited', status: 'Status', attach: 'Photo added', detach: 'Photo deleted', handover: 'Handed over', receive: 'Received', discard: 'Discarded' },
+    history: { create: 'Created', update: 'Edited', status: 'Status', attach: 'Photo added', detach: 'Photo deleted', handover: 'Handed over', receive: 'Received', discard: 'Discarded', translate: 'Machine translation', translate_manual: 'Translation corrected', retranslate: 'Retranslated' },
     ho: {
       handover: 'Hand over', discard: 'Discard', to: 'Hand over to', suggested: 'suggested', note: 'Handover note', notePh: 'What the next shift needs to know (becomes their open issue)',
       discardReason: 'Reason', discardPh: 'A reason is required', from: 'From {team}', toTeam: 'Handed over to {team}', viewSource: 'Open source task', viewTarget: 'Open received task',
@@ -178,6 +192,13 @@ const messages = {
       title: 'Overdue', badge: 'Overdue', hours: '{n} h', none: 'Nothing overdue', settings: 'Alert settings',
       hoursLabel: 'Open longer than (hours)', handoversLabel: 'Still open after N handovers', hint: 'Counted from the first entry; either condition triggers',
     },
+    tr: {
+      translating: 'Translating…', failed: 'Translation failed', retry: 'Translate again', machine: 'Machine translation', manual: 'Corrected', showOriginal: 'Show original', hideOriginal: 'Hide original',
+      correct: 'Correct translation', source: 'Original', notConfigured: 'Translation not configured (DEEPSEEK_API_KEY missing)', keepOrRetranslateTitle: 'Original changed',
+      keepOrRetranslate: 'This text has manually corrected translations. Translate again (overwriting corrections) or keep the current translations?', keep: 'Keep translations', pendingN: '{n} pending', failedN: '{n} failed', retryFailed: 'Retry failed',
+      model: 'Model', fields: { content: 'Work', leftover: 'Open issues', discard_reason: 'Discard reason' },
+    },
+    glossary: { title: 'Glossary', zh: 'Chinese', sr: 'Serbian', en: 'English', category: 'Category', note: 'Note', import: 'Import CSV', export: 'Export CSV', imported: '{added} added, {updated} updated, {skipped} skipped', search: 'Search', hint: 'The glossary is sent to the model so technical terms are translated consistently' },
     audit: { at: 'Time', user: 'User', action: 'Action', entity: 'Object', field: 'Field', old: 'Before', new: 'After' },
   },
 }

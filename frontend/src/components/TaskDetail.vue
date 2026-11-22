@@ -1,8 +1,9 @@
 <script setup>
 // 任务详情抽屉：内容、状态操作、人员、时间、图片、修改记录
-import { computed, ref, watch } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Loading } from '@element-plus/icons-vue'
 import api from '../api'
 import { localName, localText } from '../i18n'
 import { fmtFull, isNarrow, STATUS_TYPE } from '../format'
@@ -14,6 +15,8 @@ import ShiftTag from './ShiftTag.vue'
 import TaskForm from './TaskForm.vue'
 import TaskPhotos from './TaskPhotos.vue'
 import HandoverDialog from './HandoverDialog.vue'
+import TransText from './TransText.vue'
+import TranslationEditor from './TranslationEditor.vue'
 
 const props = defineProps({ taskId: { type: Number, default: null } })
 const visible = defineModel({ type: Boolean })
@@ -25,6 +28,37 @@ const outbox = useOutbox()
 const currentId = ref(null) // 可以在移交链上前后跳转
 const task = ref(null)
 const hoOpen = ref(false)
+const trOpen = ref(false)
+const retranslating = ref(false)
+
+// 翻译在后台进行：待翻译时每 3 秒刷新一次，最多 1 分钟
+let pollTimer = null
+let pollCount = 0
+function schedulePoll() {
+  clearTimeout(pollTimer)
+  if (!visible.value || task.value?.translation_status !== 'pending' || pollCount >= 20) return
+  pollTimer = setTimeout(async () => {
+    pollCount++
+    const id = currentId.value
+    const fresh = (await api.get(`/tasks/${id}`)).data
+    if (id === currentId.value) task.value = fresh
+    if (fresh.translation_status !== 'pending') emit('changed') // 翻译好了，让列表也刷新
+    schedulePoll()
+  }, 3000)
+}
+watch(() => task.value?.translation_status, () => schedulePoll())
+watch(visible, (v) => !v && clearTimeout(pollTimer))
+onUnmounted(() => clearTimeout(pollTimer))
+
+async function retranslate() {
+  retranslating.value = true
+  try {
+    task.value = (await api.post(`/tasks/${task.value.id}/retranslate`)).data
+    emit('changed')
+  } finally {
+    retranslating.value = false
+  }
+}
 const history = ref([])
 const showHistory = ref(false)
 const editOpen = ref(false)
@@ -44,6 +78,7 @@ watch(() => [visible.value, props.taskId], ([v]) => {
 
 function goTo(id) {
   currentId.value = id
+  pollCount = 0
   task.value = null
   history.value = []
   showHistory.value = false
@@ -51,7 +86,6 @@ function goTo(id) {
 }
 watch(showHistory, (v) => v && loadHistory())
 
-const content = computed(() => task.value && localText(task.value.content, task.value.source_lang))
 const leftover = computed(() => task.value && localText(task.value.leftover, task.value.leftover_source_lang))
 
 async function changed() {
@@ -107,15 +141,14 @@ const shownHistory = computed(() => history.value.filter((h) => {
   return true
 }))
 const teamLabel = (id) => localName(auth.teamById(Number(id)))
-const discardReason = computed(() => task.value && localText(task.value.discard_reason, task.value.discard_reason_lang))
 
 function parse(v) {
   if (v == null) return null
   try { return JSON.parse(v) } catch { return v }
 }
 function fieldLabel(f) {
-  const m = /^(content|leftover)_(zh|sr|en)$/.exec(f)
-  if (m) return `${t(m[1] === 'content' ? 'task.content' : 'task.leftover')} (${m[2]})`
+  const m = /^(content|leftover|discard_reason)_(zh|sr|en)$/.exec(f)
+  if (m) return `${t('tr.fields.' + m[1])} (${m[2]})`
   return { start_at: t('task.start'), end_at: t('task.end'), workers: t('task.workers') }[f] || f
 }
 function fmtVal(f, v) {
@@ -131,6 +164,11 @@ function histText(h) {
   if (h.action === 'create') return ''
   if (h.action === 'handover') return `→ ${teamLabel(h.new_value)}`
   if (h.action === 'discard') return parse(h.new_value)
+  if (h.action === 'translate') {
+    const v = parse(h.new_value) || {}
+    return `${fieldLabel(h.field + '_' + locale.value)}: ${fmtVal('', v[h.field + '_' + locale.value])}`
+  }
+  if (h.action === 'retranslate') return ''
   if (h.action === 'receive') {
     const v = parse(h.new_value) || {}
     return `${teamLabel(v.from_team_id)} → ${teamLabel(v.to_team_id)}${v.note ? ' · ' + v.note : ''}`
@@ -163,12 +201,16 @@ function histText(h) {
       </el-alert>
       <el-alert v-if="task.status === 'discarded'" type="error" :closable="false" class="mt"
                 :title="`${t('ho.discarded')} · ${task.discarded_by_name} · ${fmtFull(task.discarded_at)}`">
-        <div class="pre">{{ t('ho.discardReason') }}: {{ discardReason.text }}</div>
+        <b>{{ t('ho.discardReason') }}:</b>
+        <TransText :tri="task.discard_reason" :src-lang="task.discard_reason_lang" field="discard_reason" :manual-fields="task.manual_fields" />
       </el-alert>
 
-      <div class="content">{{ content.text }}</div>
-      <div v-if="content.fallback || task.translation_status === 'pending'" class="muted small">
-        {{ t('task.original') }} ({{ task.source_lang }}) · {{ t('task.pendingTr') }}
+      <TransText class="content" :tri="task.content" :src-lang="task.source_lang" field="content" :manual-fields="task.manual_fields" />
+      <div class="trbar small">
+        <span v-if="task.translation_status === 'pending'" class="muted"><el-icon class="is-loading"><Loading /></el-icon> {{ t('tr.translating') }}</span>
+        <span v-if="task.translation_status === 'failed'" class="err">{{ t('tr.failed') }}<template v-if="task.translation_error">: {{ task.translation_error }}</template></span>
+        <el-button v-if="task.can_edit || auth.isAdmin || task.team_id === auth.user?.team_id" link type="primary" size="small" @click="trOpen = true">{{ t('tr.correct') }}</el-button>
+        <el-button v-if="task.translation_status !== 'done' && (auth.isAdmin || task.team_id === auth.user?.team_id)" link type="primary" size="small" :loading="retranslating" @click="retranslate">{{ t('tr.retry') }}</el-button>
       </div>
 
       <div v-if="task.can_edit" class="actions">
@@ -193,7 +235,9 @@ function histText(h) {
         <el-descriptions-item v-if="task.confirmed_by" :label="t('task.confirmedBy')">{{ task.confirmed_by_name }} · {{ fmtFull(task.confirmed_at) }}</el-descriptions-item>
         <el-descriptions-item :label="t('task.publisher')">{{ task.created_by_name }} · {{ fmtFull(task.recorded_at) }}</el-descriptions-item>
         <el-descriptions-item :label="t('task.updater')">{{ task.updated_by_name }} · {{ fmtFull(task.updated_at) }}</el-descriptions-item>
-        <el-descriptions-item v-if="leftover.text" :label="t('task.leftover')"><span class="pre">{{ leftover.text }}</span></el-descriptions-item>
+        <el-descriptions-item v-if="leftover.text" :label="t('task.leftover')">
+          <TransText :tri="task.leftover" :src-lang="task.leftover_source_lang" field="leftover" :manual-fields="task.manual_fields" />
+        </el-descriptions-item>
       </el-descriptions>
 
       <h4>{{ t('photo.title') }} ({{ task.attachments.length }})</h4>
@@ -212,6 +256,7 @@ function histText(h) {
     </div>
     <el-skeleton v-else :rows="6" animated />
     <TaskForm v-if="task" v-model="editOpen" :task="task" @saved="changed" />
+    <TranslationEditor v-if="task" v-model="trOpen" :task="task" @saved="changed" />
     <HandoverDialog v-if="task" v-model="hoOpen" :task-ids="[task.id]" :team-id="task.team_id" @done="changed" />
   </el-drawer>
 </template>
@@ -220,7 +265,9 @@ function histText(h) {
 .head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .team { font-weight: 600; }
 .content { font-size: 16px; line-height: 1.6; margin: 12px 0 4px; white-space: pre-wrap; word-break: break-word; }
-.muted { color: #909399; }
+.muted { color: #909399; display: inline-flex; align-items: center; gap: 4px; }
+.trbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; min-height: 20px; }
+.err { color: #f56c6c; }
 .small { font-size: 12px; }
 .actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
 .actions .el-button + .el-button { margin-left: 0; }

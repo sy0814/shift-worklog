@@ -1,0 +1,52 @@
+zh,sr,en,category,note
+选矿厂,flotacija (postrojenje za preradu rude),concentrator plant,选矿,待校对
+颚式破碎机,čeljusna drobilica,jaw crusher,破碎,待校对
+圆锥破碎机,konusna drobilica,cone crusher,破碎,待校对
+旋回破碎机,giratorna drobilica,gyratory crusher,破碎,待校对
+振动筛,vibraciono sito,vibrating screen,破碎,待校对
+半自磨机,SAG mlin,SAG mill,磨矿,待校对
+球磨机,mlin sa kuglama,ball mill,磨矿,待校对
+衬板,obloga mlina,mill liner,磨矿,待校对
+钢球,čelične kugle,grinding balls,磨矿,待校对
+旋流器,hidrociklon,hydrocyclone,磨矿,待校对
+浮选机,flotaciona ćelija,flotation cell,浮选,待校对
+搅拌槽,rezervoar sa mešalicom,agitation tank,浮选,待校对
+药剂,reagensi,reagents,浮选,待校对
+矿浆,pulpa,slurry,浮选,待校对
+精矿,koncentrat,concentrate,浮选,待校对
+尾矿,jalovina,tailings,浮选,待校对
+浓密机,zgušnjivač,thickener,脱水,待校对
+压滤机,filter presa,filter press,脱水,待校对
+渣浆泵,muljna pumpa,slurry pump,泵,待校对
+给料机,dodavač,feeder,输送,待校对
+皮带输送机,transportna traka,belt conveyor,输送,待校对
+托辊,valjak transportera,idler,输送,待校对
+滚筒,bubanj,pulley,输送,待校对
+除铁器,separator gvožđa,tramp iron magnet,输送,待校对
+减速机,reduktor,gearbox,机械,待校对
+轴承,ležaj,bearing,机械,待校对
+联轴器,spojnica,coupling,机械,待校对
+变压器,transformator,transformer,电气,待校对
+高压开关柜,visokonaponska ćelija,HV switchgear,电气,待校对
+低压配电柜,niskonaponski razvodni ormar,LV distribution cabinet,电气,待校对
+断路器,prekidač,circuit breaker,电气,待校对
+接触器,kontaktor,contactor,电气,待校对
+继电器,relej,relay,电气,待校对
+熔断器,osigurač,fuse,电气,待校对
+变频器,frekventni regulator,variable frequency drive (VFD),电气,待校对
+软启动器,soft starter,soft starter,电气,待校对
+电动机,elektromotor,electric motor,电气,待校对
+电缆,kabl,cable,电气,待校对
+电流互感器,strujni transformator,current transformer,电气,待校对
+电压互感器,naponski transformator,voltage transformer,电气,待校对
+无功补偿柜,ormar za kompenzaciju reaktivne snage,reactive power compensation cabinet,电气,待校对
+接地,uzemljenje,grounding,电气,待校对
+绝缘电阻,otpor izolacije,insulation resistance,电气,待校对
+PLC,PLC,PLC,电气,原样保留
+照明,osvetljenje,lighting,电气,待校对
+故障,kvar,fault,通用,待校对
+检修,održavanje i popravka,maintenance and repair,通用,待校对
+巡检,obilazak i pregled,inspection round,通用,待校对
+工作票,dozvola za rad,work permit,安全,待校对
+停送电,isključenje i uključenje napajanja,power isolation and restoration,安全,待校对
+挂牌上锁,zaključavanje i označavanje (LOTO),lockout-tagout (LOTO),安全,待校对
