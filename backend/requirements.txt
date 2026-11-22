@@ -13,3 +13,4 @@ httpx==0.28.1
 APScheduler==3.11.3
 openpyxl==3.1.5
 cryptography==50.0.2
+tzdata==2026.6  # Windows 没有内置时区库，必须装

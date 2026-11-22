@@ -54,7 +54,7 @@
 - 数据库：PostgreSQL（开发期可用 SQLite）
 - 定时任务：APScheduler（定期巡查自动派活）
 - Excel：openpyxl（导入出勤表、导出记录）
-- 部署：Docker Compose，内网一台 PC / 小主机即可
+- 部署：**Windows 10/11 原生安装（已确认）**：PostgreSQL + Python 虚拟环境 + Caddy，用 WinSW 注册为 Windows 服务；脚本在 `deploy/windows/`。Docker Compose 保留为备选（Docker Desktop 大公司要付费）
 - 内网 HTTPS：自签名证书或内部 CA（PWA 的 Service Worker 需要 HTTPS）
 
 ## 角色与权限
@@ -196,6 +196,15 @@
     - app 不再直接暴露端口，只经 Caddy；uvicorn 加 `--proxy-headers`
     - 已在本地用 Caddy 2.6 + 浏览器信任根证书实测：HTTPS、Service Worker、断网重开、离线新建并联网后自动同步都通过
   - 图标：`frontend/public/icons/`（Pillow 画的：记录板 + 对勾），含 maskable 和 apple-touch-icon
+- [x] Windows 部署脚本（2026-11-22）：`deploy/windows/`（install / update / backup / uninstall + common，说明见该目录 README）
+  - 目录：`C:\WorkRecord\app`（程序，更新时覆盖，保留 `.venv`、`.env`）、`data`（图片、Caddy 证书、地址和备份目录设置）、`tools`（caddy.exe、WinSW）、`logs`、`backups`
+  - 服务：`WorkRecordApp`（uvicorn 只监听 127.0.0.1:8000，依赖 PostgreSQL 服务）、`WorkRecordCaddy`（80/443）；崩溃自动重启
+  - Caddy 用 `XDG_DATA_HOME=C:\WorkRecord\data\caddy`，根证书在 `data\caddy\caddy\pki\authorities\local\root.crt`（已在 Linux 上验证该目录结构）
+  - PostgreSQL 手动安装（EDB 安装包）；脚本创建专用账号 `workrecord`（随机密码写进 `.env`），`.env` 权限只给 Administrators / SYSTEM
+  - 每天 03:40 计划任务备份（pg_dump 保留 30 天、图片增量、证书、配置）；关闭睡眠 / 休眠；防火墙放行 80/443
+  - **.ps1 必须 UTF-8 带 BOM + CRLF**（Windows PowerShell 5.1 否则中文乱码），`.gitattributes` 已设 `*.ps1 eol=crlf`；只用 PS 5.1 语法
+  - **尚未在真实 Windows 上运行过**（开发环境没有 Windows，也不允许运行 PowerShell）；首次部署时留意输出
+  - `.env` 按 UTF-8 读取（`env_file_encoding`，中文 Windows 默认 GBK）；依赖加了 `tzdata`（Windows 没有 IANA 时区库）
 - 工厂时区由 `APP_TIMEZONE` 配置，默认 `Europe/Belgrade`
 - 排班推算是纯函数，在 `backend/app/shifts.py`，测试在 `backend/tests/test_shifts.py`
 - 留痕：业务代码统一调用 `app/audit.py` 的 `log()` / `log_changes()`；数据库触发器禁止对 `audit_log` 做 UPDATE / DELETE（SQLite、PostgreSQL 都已验证）

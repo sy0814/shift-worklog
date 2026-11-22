@@ -33,7 +33,11 @@ npm run build   # 输出到 backend/static，由后端直接提供
 
 **上线前所有初始密码都要改掉**，`SECRET_KEY` 也要换成随机长字符串。
 
-## 部署（内网服务器）
+## 部署
+
+**Windows 10/11（正式部署方式）**：原生安装 + PostgreSQL，见 [deploy/windows/README.md](deploy/windows/README.md)。
+
+### Linux / Docker（备选）
 
 需要一台装了 Docker 的内网电脑或小主机，手机和电脑要能访问它的内网 IP。
 
