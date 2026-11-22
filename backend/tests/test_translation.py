@@ -264,3 +264,43 @@ def test_glossary_import_export(client, admin_h, leader_h):
     assert g["球磨机"]["sr"] == "kuglični mlin" and g["球磨机"]["note"] == "已校对"
     exp = client.get("/api/glossary/export", headers=leader_h)
     assert exp.text.startswith("﻿zh,sr,en,category,note") and "kuglični mlin" in exp.text
+
+
+def test_queue_under_burst(client, leader_h, fake, monkeypatch):
+    """一波并发录入：请求立即返回，同时最多 WORKERS 个翻译调用，最后全部翻译完。"""
+    import threading
+    import time as _t
+    from concurrent.futures import ThreadPoolExecutor
+
+    active, peak, lock = [0], [0], threading.Lock()
+
+    def slow(_body):
+        with lock:
+            active[0] += 1
+            peak[0] = max(peak[0], active[0])
+        _t.sleep(0.15)
+        with lock:
+            active[0] -= 1
+    fake.on_call = slow
+    translation_service.start_workers()
+    try:
+        def create(i):
+            t0 = _t.monotonic()
+            r = client.post("/api/tasks", headers=leader_h,
+                            json={"client_id": str(uuid.uuid4()), "content": f"Burst task {i}", "lang": "en"})
+            assert r.status_code == 201
+            return r.json()["id"], _t.monotonic() - t0
+        with ThreadPoolExecutor(6) as ex:
+            results = list(ex.map(create, range(30)))
+        assert max(d for _, d in results) < 1.0  # 请求不等翻译
+        deadline = _t.monotonic() + 30
+        ids = [i for i, _ in results]
+        while _t.monotonic() < deadline:
+            sts = [client.get(f"/api/tasks/{i}", headers=leader_h).json()["translation_status"] for i in ids]
+            if all(s == "done" for s in sts):
+                break
+            _t.sleep(0.2)
+        assert all(s == "done" for s in sts)
+        assert peak[0] <= translation_service.WORKERS
+    finally:
+        translation_service.stop_workers()

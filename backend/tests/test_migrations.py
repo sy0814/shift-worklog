@@ -20,8 +20,8 @@ EXTRA = '''
 from alembic import op
 import sqlalchemy as sa
 
-revision = "0002"
-down_revision = "0001"
+revision = "practice"
+down_revision = "{head}"
 branch_labels = None
 depends_on = None
 
@@ -97,16 +97,17 @@ def test_upgrade_and_downgrade_keep_data(engine, tmp_path):
     """有数据的库升级（加列）、再退回，数据都不丢。"""
     scripts = tmp_path / "migrations"
     shutil.copytree(migrate.BACKEND / "migrations", scripts, ignore=shutil.ignore_patterns("__pycache__"))
-    (scripts / "versions" / "0002_practice.py").write_text(EXTRA, encoding="utf-8")
+    head = migrate.head_revision()  # 练习迁移接在当前最新版本后面
+    (scripts / "versions" / "zz_practice.py").write_text(EXTRA.replace("{head}", head), encoding="utf-8")
     cfg = migrate.alembic_config(scripts)
 
-    migrate.upgrade(engine)  # 正式迁移 → 0001
+    migrate.upgrade(engine)  # 正式迁移 → 最新版本
     with engine.begin() as c:
         _seed(c)
 
-    migrate.upgrade(engine, cfg)  # → 0002
+    migrate.upgrade(engine, cfg)  # → 练习版本
     with engine.connect() as c:
-        assert migrate.current_revision(c) == "0002"
+        assert migrate.current_revision(c) == "practice"
         cols = {x["name"] for x in inspect(c).get_columns("workers")}
         assert {"phone", "shift_note"} <= cols
         assert c.execute(text("SELECT name, shift_note FROM workers")).one() == ("Petar", "n/a")
@@ -117,11 +118,11 @@ def test_upgrade_and_downgrade_keep_data(engine, tmp_path):
             c.execute(text("DELETE FROM audit_log"))
         c.rollback()
 
-    with engine.begin() as c:  # 退回 0001
+    with engine.begin() as c:  # 退回上一版
         cfg.attributes["connection"] = c
-        command.downgrade(cfg, "0001")
+        command.downgrade(cfg, head)
     with engine.connect() as c:
-        assert migrate.current_revision(c) == "0001"
+        assert migrate.current_revision(c) == head
         assert "phone" not in {x["name"] for x in inspect(c).get_columns("workers")}
         assert c.execute(text("SELECT name FROM workers")).scalar() == "Petar"
         assert c.execute(text("SELECT count(*) FROM task_workers")).scalar() == 1

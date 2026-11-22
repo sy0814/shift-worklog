@@ -88,6 +88,14 @@ const messages = {
     },
     pwa: { newVersion: '有新版本', newVersionHint: '保存好正在填写的内容后刷新。', reload: '刷新', offline: '离线模式', offlineData: '离线模式：显示的是 {time} 的数据，新建的任务和照片会在联网后自动上传', offlineNoData: '离线模式：新建的任务和照片会在联网后自动上传', install: '添加到主屏幕' },
     menu: { more: '更多', admin: '管理' },
+    ai: {
+      title: 'AI 工作量分析', range: '时间段', team: '班组', allTeams: '全部班组', lang: '报告语言', start: '开始分析', history: '历史报告',
+      running: '正在分析，一般需要 30～120 秒，可以先离开本页', failed: '分析失败', retry: '重新分析', download: '下载报告', print: '打印',
+      stats: '统计数据（报告里的数字都来自这里）', teams: '班组', people: '人员', notConfigured: 'AI 接口未配置，请先到「系统设置」填写', empty: '还没有报告',
+      st: { pending: '排队中', running: '分析中', done: '完成', failed: '失败' }, tokens: '用量 {i} / {o} token', by: '{name} 发起',
+      col: { name: '姓名', team: '班组', sched: '排班班次', present: '实际出勤', leave: '请假', sick: '病假', absent: '缺勤', cover: '顶班', tasks: '任务', done: '完成', open: '未完成', ho: '已移交', hours: '工时', hps: '每班工时', overdue: '超时未完成', hoOut: '移出', hoIn: '移入', avgH: '平均工时', noWorkers: '无参与人', members: '人数', perMember: '人均任务（最少/中位/最多）', idle: '出勤但无任务' },
+      note: '工时按「完成 − 开始」计算，多人参与的任务每人都计全部工时；出勤默认按排班。报告由 AI 根据统计数据撰写，仅供参考。',
+    },
     audit: { at: '时间', user: '操作人', action: '操作', entity: '对象', field: '字段', old: '修改前', new: '修改后' },
   },
   sr: {
@@ -172,6 +180,14 @@ const messages = {
     },
     pwa: { newVersion: 'Nova verzija', newVersionHint: 'Sačuvajte unos pa osvežite.', reload: 'Osveži', offline: 'Van mreže', offlineData: 'Van mreže: prikazani su podaci od {time}; novi zadaci i slike se šalju kad mreža proradi', offlineNoData: 'Van mreže: novi zadaci i slike se šalju kad mreža proradi', install: 'Dodaj na početni ekran' },
     menu: { more: 'Još', admin: 'Upravljanje' },
+    ai: {
+      title: 'AI analiza opterećenja', range: 'Period', team: 'Ekipa', allTeams: 'Sve ekipe', lang: 'Jezik izveštaja', start: 'Pokreni analizu', history: 'Raniji izveštaji',
+      running: 'Analiza je u toku, obično 30–120 s; možete napustiti stranicu', failed: 'Analiza nije uspela', retry: 'Ponovi', download: 'Preuzmi izveštaj', print: 'Štampaj',
+      stats: 'Statistika (svi brojevi u izveštaju potiču odavde)', teams: 'Ekipe', people: 'Radnici', notConfigured: 'AI servis nije podešen – podesite ga u „Podešavanjima”', empty: 'Još nema izveštaja',
+      st: { pending: 'Na čekanju', running: 'U toku', done: 'Gotovo', failed: 'Neuspešno' }, tokens: 'Potrošnja {i} / {o} tokena', by: 'pokrenuo {name}',
+      col: { name: 'Ime', team: 'Ekipa', sched: 'Smene po rasporedu', present: 'Prisutan', leave: 'Odsustvo', sick: 'Bolovanje', absent: 'Izostanak', cover: 'Zamene', tasks: 'Zadaci', done: 'Završeno', open: 'Otvoreno', ho: 'Predato', hours: 'Sati', hps: 'Sati po smeni', overdue: 'Kasni', hoOut: 'Predato', hoIn: 'Primljeno', avgH: 'Prosečno sati', noWorkers: 'Bez učesnika', members: 'Radnika', perMember: 'Zadataka po radniku (min/med/max)', idle: 'Prisutni bez zadataka' },
+      note: 'Sati = završetak − početak; kod zadataka sa više učesnika svakom se računaju svi sati; prisustvo po rasporedu. Izveštaj piše AI na osnovu statistike – samo kao pomoć.',
+    },
     audit: { at: 'Vreme', user: 'Korisnik', action: 'Radnja', entity: 'Objekat', field: 'Polje', old: 'Staro', new: 'Novo' },
   },
   en: {
@@ -256,6 +272,14 @@ const messages = {
     },
     pwa: { newVersion: 'New version available', newVersionHint: 'Save what you are typing, then reload.', reload: 'Reload', offline: 'Offline', offlineData: 'Offline: showing data from {time}; new tasks and photos upload when back online', offlineNoData: 'Offline: new tasks and photos upload when back online', install: 'Add to home screen' },
     menu: { more: 'More', admin: 'Admin' },
+    ai: {
+      title: 'AI workload analysis', range: 'Period', team: 'Team', allTeams: 'All teams', lang: 'Report language', start: 'Run analysis', history: 'Past reports',
+      running: 'Analysing, usually 30–120 s; you can leave this page', failed: 'Analysis failed', retry: 'Retry', download: 'Download report', print: 'Print',
+      stats: 'Statistics (every number in the report comes from here)', teams: 'Teams', people: 'People', notConfigured: 'AI API not configured – set it up in Settings', empty: 'No reports yet',
+      st: { pending: 'Queued', running: 'Running', done: 'Done', failed: 'Failed' }, tokens: 'Usage {i} / {o} tokens', by: 'by {name}',
+      col: { name: 'Name', team: 'Team', sched: 'Scheduled shifts', present: 'Present', leave: 'Leave', sick: 'Sick', absent: 'Absent', cover: 'Covers', tasks: 'Tasks', done: 'Done', open: 'Open', ho: 'Handed over', hours: 'Hours', hps: 'Hours/shift', overdue: 'Overdue', hoOut: 'Out', hoIn: 'In', avgH: 'Avg hours', noWorkers: 'No workers', members: 'Members', perMember: 'Tasks per member (min/med/max)', idle: 'Present, no tasks' },
+      note: 'Hours = finish − start; tasks with several workers count full hours for each; attendance follows the schedule. The report is written by AI from these statistics and is for guidance only.',
+    },
     audit: { at: 'Time', user: 'User', action: 'Action', entity: 'Object', field: 'Field', old: 'Before', new: 'After' },
   },
 }

@@ -3,7 +3,7 @@
 import csv
 import io
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -97,11 +97,11 @@ def translation_status(db: Session = Depends(get_db), _: User = Depends(require_
 
 
 @router.post("/translation/retry-failed")
-def retry_failed(bg: BackgroundTasks, db: Session = Depends(get_db), admin: User = Depends(require_admin)):
+def retry_failed(db: Session = Depends(get_db), admin: User = Depends(require_admin)):
     n = translation_service.reset_failed(db)
     audit.log(db, user_id=admin.id, action="retry_failed", entity="system", entity_id="translation", new=n)
     db.commit()
-    bg.add_task(translation_service.retry_pending)
+    translation_service.retry_pending()
     return {"reset": n}
 
 

@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
@@ -275,7 +275,7 @@ def get_task(task_id: int, db: Session = Depends(get_db), user: User = Depends(g
 
 
 @router.post("/tasks", response_model=TaskOut, status_code=201)
-def create_task(body: TaskCreate, bg: BackgroundTasks, db: Session = Depends(get_db),
+def create_task(body: TaskCreate, db: Session = Depends(get_db),
                 user: User = Depends(get_current_user)):
     # 离线草稿可能重复提交：同一个 client_id 直接返回已有任务
     existing = db.scalar(select(Task).where(Task.client_id == body.client_id))
@@ -333,12 +333,12 @@ def create_task(body: TaskCreate, bg: BackgroundTasks, db: Session = Depends(get
     })
     task.manual_fields = []
     db.commit()
-    bg.add_task(translation_service.translate_task, task.id)  # 响应返回后在后台翻译
+    translation_service.enqueue(task.id)  # 放进翻译队列，由后台线程翻译
     return one_out(db, _get_task(db, task.id), user)
 
 
 @router.patch("/tasks/{task_id}", response_model=TaskOut)
-def update_task(task_id: int, body: TaskUpdate, bg: BackgroundTasks, db: Session = Depends(get_db),
+def update_task(task_id: int, body: TaskUpdate, db: Session = Depends(get_db),
                 user: User = Depends(get_current_user)):
     task = _get_task(db, task_id)
     _require_edit(task, user)
@@ -384,7 +384,7 @@ def update_task(task_id: int, body: TaskUpdate, bg: BackgroundTasks, db: Session
         task.updated_at = utcnow()
     db.commit()
     if task.translation_status == "pending":
-        bg.add_task(translation_service.translate_task, task.id)
+        translation_service.enqueue(task.id)
     return one_out(db, _get_task(db, task.id), user)
 
 

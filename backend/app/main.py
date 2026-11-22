@@ -9,7 +9,7 @@ from . import audit  # noqa: F401  注册 audit_log 的 after_create 触发器
 from .db import SessionLocal, engine
 from . import migrate, translation_service
 from .config import get_settings
-from .routers import attendance, audit_log, auth, export, handover, llm_settings, schedule, tasks, translation, users, workers
+from .routers import analysis as analysis_router, attendance, audit_log, auth, export, handover, llm_settings, schedule, tasks, translation, users, workers
 from .seed import seed, seed_glossary
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"  # 前端构建产物
@@ -23,9 +23,11 @@ async def lifespan(_: FastAPI):
         seed(db)
         seed_glossary(db)
     if get_settings().run_scheduler:
-        translation_service.start_scheduler()  # 定时重试待翻译的任务
+        translation_service.start_workers()  # 翻译队列的后台线程
+        translation_service.start_scheduler()  # 定时把待翻译的任务放进队列
     yield
     translation_service.stop_scheduler()
+    translation_service.stop_workers()
 
 
 app = FastAPI(title="工作记录系统", lifespan=lifespan)
@@ -40,6 +42,7 @@ app.include_router(translation.router)
 app.include_router(attendance.router)
 app.include_router(export.router)
 app.include_router(llm_settings.router)
+app.include_router(analysis_router.router)
 
 
 @app.get("/api/health")

@@ -8,7 +8,7 @@ source_task_id 指回原任务；内容、译文、图片带过去，参与人�
 import uuid
 from datetime import timedelta
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
@@ -46,7 +46,7 @@ def handover_default(team_id: int, db: Session = Depends(get_db), _: User = Depe
 
 
 @router.post("/handover", response_model=list[TaskOut])
-def handover(body: HandoverRequest, bg: BackgroundTasks, db: Session = Depends(get_db),
+def handover(body: HandoverRequest, db: Session = Depends(get_db),
              user: User = Depends(get_current_user)):
     sched = load_schedule(db)
     now_local = local_now()
@@ -126,12 +126,12 @@ def handover(body: HandoverRequest, bg: BackgroundTasks, db: Session = Depends(g
     db.commit()
     for t in created:
         if t.translation_status == "pending":
-            bg.add_task(translation_service.translate_task, t.id)
+            translation_service.enqueue(t.id)
     return tasks_out(db, [_get_task(db, t.id) for t in created], user)
 
 
 @router.post("/tasks/{task_id}/discard", response_model=TaskOut)
-def discard(task_id: int, body: DiscardRequest, bg: BackgroundTasks, db: Session = Depends(get_db),
+def discard(task_id: int, body: DiscardRequest, db: Session = Depends(get_db),
             user: User = Depends(get_current_user)):
     task = _get_task(db, task_id)
     _require_edit(task, user)
@@ -149,7 +149,7 @@ def discard(task_id: int, body: DiscardRequest, bg: BackgroundTasks, db: Session
     task.updated_by = user.id
     task.updated_at = now
     db.commit()
-    bg.add_task(translation_service.translate_task, task.id)
+    translation_service.enqueue(task.id)
     return tasks_out(db, [_get_task(db, task.id)], user)[0]
 
 

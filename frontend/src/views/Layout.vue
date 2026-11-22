@@ -33,7 +33,7 @@ const main = computed(() => [
 ])
 const admin = computed(() => auth.isAdmin ? [
   { name: 'workers', label: t('nav2.workers') }, { name: 'glossary', label: t('nav2.glossary') },
-  { name: 'users', label: t('nav.users') }, { name: 'audit', label: t('nav.audit') }, { name: 'settings', label: t('sys.title') },
+  { name: 'analysis', label: t('ai.title') }, { name: 'users', label: t('nav.users') }, { name: 'audit', label: t('nav.audit') }, { name: 'settings', label: t('sys.title') },
 ] : [])
 const tabs = computed(() => main.value.slice(0, 4)) // 手机底部标签栏
 const adminActive = computed(() => admin.value.some((m) => m.name === route.name))

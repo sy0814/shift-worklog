@@ -5,6 +5,7 @@
 """
 
 import logging
+import queue
 import threading
 from collections.abc import Callable
 
@@ -153,15 +154,63 @@ def _translate_task(task_id: int) -> str:
         return task.translation_status
 
 
+# ---------------- 翻译队列 ----------------
+# 录入 / 修改后把任务放进队列，由后台线程翻译：请求立即返回、不占数据库连接，
+# 同时调用翻译接口的数量也有上限（WORKERS 个）。没有启动后台线程时（如测试）直接当场翻译。
+WORKERS = 2
+_queue: "queue.Queue[int | None]" = queue.Queue()
+_queued: set[int] = set()
+_threads: list[threading.Thread] = []
+
+
+def enqueue(task_id: int) -> None:
+    if not _threads:
+        translate_task(task_id)
+        return
+    with _lock:
+        if task_id in _queued:
+            return
+        _queued.add(task_id)
+    _queue.put(task_id)
+
+
+def _work() -> None:
+    while True:
+        tid = _queue.get()
+        if tid is None:
+            return
+        with _lock:
+            _queued.discard(tid)
+        try:
+            translate_task(tid)
+        except Exception:  # noqa: BLE001  一条出错不能让线程退出
+            log.exception("translate task %s crashed", tid)
+
+
+def start_workers() -> None:
+    if _threads:
+        return
+    for i in range(WORKERS):
+        t = threading.Thread(target=_work, daemon=True, name=f"translate-{i}")
+        t.start()
+        _threads.append(t)
+
+
+def stop_workers() -> None:
+    for _ in _threads:
+        _queue.put(None)
+    _threads.clear()
+
+
 def retry_pending() -> int:
-    """定时任务：重试所有待翻译的任务。返回处理条数。"""
+    """定时任务：把所有待翻译的任务放进队列。返回条数。"""
     if not translator.is_configured():
         return 0
     with SessionLocal() as db:
         ids = db.scalars(select(Task.id).where(Task.translation_status == "pending")
-                         .order_by(Task.updated_at).limit(50)).all()
+                         .order_by(Task.updated_at).limit(200)).all()
     for tid in ids:
-        translate_task(tid)
+        enqueue(tid)
     return len(ids)
 
 

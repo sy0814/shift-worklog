@@ -264,3 +264,24 @@ class Attendance(Base):
     source: Mapped[str] = mapped_column(String(10))  # import / manual
     updated_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AiReport(Base):
+    """AI 工作量分析报告。统计数据由程序算好（stats），模型只负责据此写报告（report_md）。"""
+
+    __tablename__ = "ai_reports"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    created_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    start: Mapped[date] = mapped_column(Date)
+    end: Mapped[date] = mapped_column(Date)
+    team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"), nullable=True)
+    lang: Mapped[str] = mapped_column(String(5))
+    status: Mapped[str] = mapped_column(String(10), default="pending")  # pending / running / done / failed
+    model: Mapped[str] = mapped_column(String(100), default="")
+    stats: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    report_md: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    usage: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # token 用量
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

@@ -14,3 +14,8 @@ body { font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", 
 .shift-night { background: var(--shift-night); }
 .shift-off { background: transparent; color: var(--shift-off); }
 .toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+
+@media print {
+  .topbar, .tabbar, .offline-bar { display: none !important; }
+  body { background: #fff; }
+}
