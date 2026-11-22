@@ -259,6 +259,8 @@ class TaskOut(BaseModel):
     team_id: int
     origin_team_id: int
     source_task_id: int | None
+    inspection_id: int | None = None
+    inspection_name: str | None = None
     status: str
     shift_date: date
     shift_kind: str

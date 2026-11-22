@@ -17,7 +17,7 @@ from .. import app_settings, audit, translation_service
 from ..config import get_settings
 from ..db import get_db
 from ..images import InvalidImage, parse_exif_datetime, process_upload
-from ..models import Attachment, AuditLog, Task, TaskHandover, Team, User, Worker, utcnow
+from ..models import Attachment, AuditLog, InspectionTemplate, Task, TaskHandover, Team, User, Worker, utcnow
 from ..schedule_service import load_schedule
 from ..schemas import (
     AttachmentOut,
@@ -96,6 +96,7 @@ class OutCtx:
     overdue_hours: int
     overdue_handovers: int
     now: datetime
+    inspections: dict[int, str]  # 巡查项 id → 名称
 
 
 def make_ctx(db: Session, tasks: list[Task]) -> OutCtx:
@@ -103,7 +104,11 @@ def make_ctx(db: Session, tasks: list[Task]) -> OutCtx:
     hos = db.scalars(select(TaskHandover).where(
         or_(TaskHandover.from_task_id.in_(ids), TaskHandover.to_task_id.in_(ids)))).all() if ids else []
     cfg = app_settings.get_all(db)
+    insp_ids = {t.inspection_id for t in tasks if t.inspection_id}
+    inspections = dict(db.execute(select(InspectionTemplate.id, InspectionTemplate.name)
+                                  .where(InspectionTemplate.id.in_(insp_ids))).all()) if insp_ids else {}
     return OutCtx(
+        inspections=inspections,
         names=_names(db),
         ho_from={h.from_task_id: h for h in hos},
         ho_to={h.to_task_id: h for h in hos},
@@ -147,6 +152,7 @@ def task_out(task: Task, user: User, ctx: OutCtx) -> TaskOut:
         translation_error=task.translation_error if user.role == "admin" else None,
         manual_fields=list(task.manual_fields or []),
         team_id=task.team_id, origin_team_id=task.origin_team_id, source_task_id=task.source_task_id,
+        inspection_id=task.inspection_id, inspection_name=ctx.inspections.get(task.inspection_id),
         status=task.status, shift_date=task.shift_date, shift_kind=task.shift_kind,
         start_at=task.start_at, end_at=task.end_at,
         confirmed_by=task.confirmed_by,

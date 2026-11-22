@@ -138,6 +138,7 @@ class Task(Base):
     team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"), index=True)  # 当前所属班组
     origin_team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"))  # 创建班组
     source_task_id: Mapped[int | None] = mapped_column(ForeignKey("tasks.id"), nullable=True)
+    inspection_id: Mapped[int | None] = mapped_column(ForeignKey("inspection_templates.id"), nullable=True, index=True)
 
     status: Mapped[str] = mapped_column(String(15), default="not_started", index=True)
     # 录入所在的班次（按 recorded_at 推算；夜班归属开始那天）
@@ -285,3 +286,47 @@ class AiReport(Base):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     usage: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # token 用量
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class InspectionTemplate(Base):
+    """定期巡查项：按周期自动生成任务。规则说明见 app/inspection_schedule.py。"""
+
+    __tablename__ = "inspection_templates"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100))  # 列表里显示的简称
+    content: Mapped[str] = mapped_column(Text)  # 生成任务的工作内容（原文）
+    lang: Mapped[str] = mapped_column(String(5))
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    kind: Mapped[str] = mapped_column(String(10))  # daily / weekly / monthly / shift
+    at_time: Mapped[time] = mapped_column(Time, default=time(8, 0))
+    every_n: Mapped[int] = mapped_column(Integer, default=1)
+    weekdays: Mapped[list] = mapped_column(JSON, default=list)
+    month_days: Mapped[list] = mapped_column(JSON, default=list)
+    shift_kinds: Mapped[list] = mapped_column(JSON, default=list)
+    start_date: Mapped[date] = mapped_column(Date)
+    assign: Mapped[str] = mapped_column(String(10), default="on_duty")  # on_duty / fixed
+    team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"), nullable=True)
+    worker_ids: Mapped[list] = mapped_column(JSON, default=list)  # 只在固定班组时使用
+    next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    updated_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class InspectionRun(Base):
+    """每次派发的记录。(template_id, occurrence_at) 唯一，保证同一次不会派两遍。"""
+
+    __tablename__ = "inspection_runs"
+    __table_args__ = (UniqueConstraint("template_id", "occurrence_at", name="uq_inspection_runs_occurrence"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    template_id: Mapped[int] = mapped_column(ForeignKey("inspection_templates.id"), index=True)
+    occurrence_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))  # 应触发的时间
+    task_id: Mapped[int | None] = mapped_column(ForeignKey("tasks.id"), nullable=True)
+    team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"), nullable=True)
+    status: Mapped[str] = mapped_column(String(10))  # created / skipped（补派时跳过的旧次数）/ manual / failed
+    note: Mapped[str] = mapped_column(String(300), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

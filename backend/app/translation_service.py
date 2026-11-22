@@ -240,6 +240,11 @@ def start_scheduler() -> None:
     _scheduler = BackgroundScheduler(timezone="UTC")
     _scheduler.add_job(retry_pending, "interval", seconds=get_settings().translate_retry_seconds,
                        id="translate_retry", max_instances=1, coalesce=True, next_run_time=utcnow())
+    # 定期巡查：每分钟检查一次有没有到时间的巡查项
+    from . import inspection_service
+
+    _scheduler.add_job(inspection_service.run_due, "interval", seconds=60, id="inspections",
+                       max_instances=1, coalesce=True, next_run_time=utcnow())
     _scheduler.start()
 
 

@@ -186,6 +186,7 @@ function histText(h) {
         <span class="team">{{ localName(auth.teamById(task.team_id)) }}</span>
         <ShiftTag :kind="task.shift_kind" />
         <span class="muted">{{ task.shift_date }}</span>
+        <el-tag v-if="task.inspection_id" size="small" type="success" effect="plain">{{ t('insp.tag') }} · {{ task.inspection_name }}</el-tag>
       </div>
 
       <el-alert v-if="task.overdue" type="error" :closable="false" show-icon class="mt"

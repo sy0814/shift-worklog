@@ -22,6 +22,7 @@ const leftover = computed(() => localText(props.task.leftover, props.task.leftov
       <ShiftTag :kind="task.shift_kind" />
       <span class="muted">{{ task.shift_date.slice(5) }}</span>
       <el-tag v-if="task.overdue" type="danger" size="small" effect="dark">{{ t('overdue.badge') }} {{ Math.floor(task.age_hours) }}h</el-tag>
+      <el-tag v-if="task.inspection_id" size="small" type="success" effect="plain">{{ t('insp.tag') }}</el-tag>
       <el-tag v-if="task.handover_in" size="small" effect="plain">← {{ localName(auth.teamById(task.handover_in.team_id)) }}</el-tag>
       <el-tag v-if="task.handover_out" size="small" type="warning" effect="plain">→ {{ localName(auth.teamById(task.handover_out.team_id)) }}</el-tag>
       <span class="spacer" />
