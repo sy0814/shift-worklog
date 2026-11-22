@@ -86,6 +86,8 @@ const messages = {
       fixedNote: '提示词、温度、超时和重试等基本设置固定不变；这里只改接口、Key 和模型。DeepSeek 会自动关闭思考模式。', saveHint: '建议先「测试连接」通过再保存',
       models: '{n} 个模型',
     },
+    pwa: { newVersion: '有新版本', newVersionHint: '保存好正在填写的内容后刷新。', reload: '刷新', offline: '离线模式', offlineData: '离线模式：显示的是 {time} 的数据，新建的任务和照片会在联网后自动上传', offlineNoData: '离线模式：新建的任务和照片会在联网后自动上传', install: '添加到主屏幕' },
+    menu: { more: '更多', admin: '管理' },
     audit: { at: '时间', user: '操作人', action: '操作', entity: '对象', field: '字段', old: '修改前', new: '修改后' },
   },
   sr: {
@@ -168,6 +170,8 @@ const messages = {
       fixedNote: 'Prompt, temperatura, vremensko ograničenje i ponavljanja ostaju isti; ovde se menjaju samo servis, ključ i model. Za DeepSeek se razmišljanje automatski isključuje.', saveHint: 'Preporuka: prvo testirajte vezu',
       models: '{n} modela',
     },
+    pwa: { newVersion: 'Nova verzija', newVersionHint: 'Sačuvajte unos pa osvežite.', reload: 'Osveži', offline: 'Van mreže', offlineData: 'Van mreže: prikazani su podaci od {time}; novi zadaci i slike se šalju kad mreža proradi', offlineNoData: 'Van mreže: novi zadaci i slike se šalju kad mreža proradi', install: 'Dodaj na početni ekran' },
+    menu: { more: 'Još', admin: 'Upravljanje' },
     audit: { at: 'Vreme', user: 'Korisnik', action: 'Radnja', entity: 'Objekat', field: 'Polje', old: 'Staro', new: 'Novo' },
   },
   en: {
@@ -250,6 +254,8 @@ const messages = {
       fixedNote: 'Prompt, temperature, timeout and retries stay fixed; only the API, key and model change here. Thinking mode is turned off automatically for DeepSeek.', saveHint: 'Test the connection before saving',
       models: '{n} models',
     },
+    pwa: { newVersion: 'New version available', newVersionHint: 'Save what you are typing, then reload.', reload: 'Reload', offline: 'Offline', offlineData: 'Offline: showing data from {time}; new tasks and photos upload when back online', offlineNoData: 'Offline: new tasks and photos upload when back online', install: 'Add to home screen' },
+    menu: { more: 'More', admin: 'Admin' },
     audit: { at: 'Time', user: 'User', action: 'Action', entity: 'Object', field: 'Field', old: 'Before', new: 'After' },
   },
 }

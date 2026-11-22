@@ -2,6 +2,7 @@ import axios from 'axios'
 import { ElMessage } from 'element-plus'
 import router from './router'
 import { i18n } from './i18n'
+import { net, noteResponse } from './net'
 
 const api = axios.create({ baseURL: '/api', timeout: 20000 })
 
@@ -12,8 +13,17 @@ api.interceptors.request.use((cfg) => {
 })
 
 api.interceptors.response.use(
-  (r) => r,
+  (r) => {
+    noteResponse(r)
+    return r
+  },
   (err) => {
+    if (!err.response) {
+      // 没有响应 = 网络不通；离线时不弹错误，由页面顶部的离线提示说明
+      net.online = false
+      if (!err.config?.silent && navigator.onLine) ElMessage.error(i18n.global.t('common.requestFailed'))
+      return Promise.reject(err)
+    }
     const status = err.response?.status
     if (status === 401 && router.currentRoute.value.name !== 'login') {
       localStorage.removeItem('token')

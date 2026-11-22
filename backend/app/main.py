@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -47,12 +47,29 @@ def health():
     return {"ok": True}
 
 
+# 缓存策略：带哈希的静态文件永久缓存；index.html / sw.js / manifest 每次都要检查更新（否则新版本推不下去）
+NO_CACHE_FILES = {"index.html", "sw.js", "manifest.webmanifest", "registerSW.js"}
+
+
+class ImmutableStatic(StaticFiles):
+    async def get_response(self, path, scope):
+        resp = await super().get_response(path, scope)
+        if resp.status_code == 200:
+            resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return resp
+
+
 if STATIC_DIR.exists():
-    app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="assets")
+    app.mount("/assets", ImmutableStatic(directory=STATIC_DIR / "assets"), name="assets")
 
     @app.get("/{path:path}", include_in_schema=False)
     def spa(path: str):
+        if path.startswith("api/"):
+            raise HTTPException(404)  # 不存在的接口不要返回页面
         f = STATIC_DIR / path
-        if path and f.is_file() and STATIC_DIR in f.resolve().parents:
-            return FileResponse(f)
-        return FileResponse(STATIC_DIR / "index.html")
+        if not (path and f.is_file() and STATIC_DIR in f.resolve().parents):
+            f = STATIC_DIR / "index.html"
+        headers = {"Cache-Control": "no-cache"} if f.name in NO_CACHE_FILES or f.name.startswith("workbox-") \
+            else {"Cache-Control": "public, max-age=86400"}
+        media = "application/manifest+json" if f.suffix == ".webmanifest" else None
+        return FileResponse(f, headers=headers, media_type=media)

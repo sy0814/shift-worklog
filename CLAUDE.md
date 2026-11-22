@@ -111,7 +111,7 @@
 - **现场有 Wi-Fi 死角，需要离线草稿**：新建任务和照片在断网时先存手机本地（IndexedDB），联网后自动同步
   - 任务和图片都带客户端生成的 `client_id`（UUID），服务器按它去重，重复提交不会产生重复数据
   - 草稿记录录入时间 `recorded_at`，任务归属的班次按录入时间计算，而不是同步时间
-  - 完全断网时也能打开页面需要 Service Worker，放在第 6 步（PWA + HTTPS）
+  - 完全断网时也能打开页面：第 6 步已做（Service Worker）
 
 ## 待确认
 
@@ -182,6 +182,20 @@
     - DeepSeek 预设自动带 `thinking: disabled`；其他接口不带附加参数
     - API Key 用 SECRET_KEY 派生的密钥加密存库（`app/secretbox.py`），页面只显示末 4 位，留痕不记 Key；**改 SECRET_KEY 后要重新填 Key**
     - 换了接口地址必须填新 Key；.env 里的 DeepSeek Key 只会发给 DeepSeek 的地址
+- [x] 第 6 步：移动端适配 + PWA + 内网 HTTPS（2026-11-22）
+  - **布局**：宽度 < 768 为手机布局（精简顶栏 + 底部标签栏「首页 / 交接班 / 任务 / 出勤 / 更多」+ 右侧抽屉菜单，含语言切换、全部页面、改密码、退出）；电脑顶部导航，管理类页面收进「管理」下拉；适配 iPhone 刘海和底部安全区
+  - **PWA**：`vite-plugin-pwa`，injectManifest 模式，Service Worker 在 `frontend/src/sw.js`
+    - 页面和静态文件预缓存，完全断网也能打开
+    - `GET /api/*` 优先联网（5 秒超时），失败用缓存，响应加 `X-From-Cache`（缓存时间），页面顶部显示「离线模式：显示的是 XX 的数据」；登录、导出、模板下载不缓存；写操作一律不缓存（离线新建靠发件箱）
+    - 图片按文件路径缓存（忽略签名参数）
+    - 有新版本时右上角提示，用户点「刷新」才更新（不自动刷新，避免冲掉正在填的表单）
+    - 退出登录时清掉缓存的数据和图片、员工名单缓存
+    - 后端缓存头：`/assets/*` 永久缓存；`index.html`、`sw.js`、`manifest.webmanifest` 为 no-cache
+  - **内网 HTTPS**：Caddy（`deploy/Caddyfile`）用内部 CA（`tls internal`）签证书、自动续期；`SITE_HOSTS` 写内网 IP / 主机名
+    - 80 端口只提供 `/ca.crt`（根证书下载）和 `/install`（三语安装说明，`deploy/install/install.html`），其他跳转 HTTPS；要关掉 Caddy 的自动跳转（`auto_https disable_redirects`），否则 /ca.crt 也会被跳走
+    - app 不再直接暴露端口，只经 Caddy；uvicorn 加 `--proxy-headers`
+    - 已在本地用 Caddy 2.6 + 浏览器信任根证书实测：HTTPS、Service Worker、断网重开、离线新建并联网后自动同步都通过
+  - 图标：`frontend/public/icons/`（Pillow 画的：记录板 + 对勾），含 maskable 和 apple-touch-icon
 - 工厂时区由 `APP_TIMEZONE` 配置，默认 `Europe/Belgrade`
 - 排班推算是纯函数，在 `backend/app/shifts.py`，测试在 `backend/tests/test_shifts.py`
 - 留痕：业务代码统一调用 `app/audit.py` 的 `log()` / `log_changes()`；数据库触发器禁止对 `audit_log` 做 UPDATE / DELETE（SQLite、PostgreSQL 都已验证）

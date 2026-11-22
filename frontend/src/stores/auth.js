@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import api from '../api'
 import { setLang } from '../i18n'
+import { clearOfflineData } from '../net'
 
 export const useAuth = defineStore('auth', {
   state: () => ({ user: null, teams: [] }),
@@ -40,6 +41,8 @@ export const useAuth = defineStore('auth', {
     logout() {
       // 离线草稿按用户保存在本机，退出登录不会删除，下次同一账号登录后继续同步
       localStorage.removeItem('token')
+      localStorage.removeItem('workers_cache')
+      clearOfflineData()
       this.user = null
     },
   },

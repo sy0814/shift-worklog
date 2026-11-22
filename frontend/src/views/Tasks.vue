@@ -111,7 +111,7 @@ function open(task) {
 .spacer { flex: 1; }
 .list { display: flex; flex-direction: column; gap: 8px; min-height: 120px; }
 .more { align-self: center; }
-.fab { display: none; position: fixed; right: 20px; bottom: 24px; width: 56px; height: 56px; font-size: 24px; box-shadow: 0 4px 12px rgba(0,0,0,.25); z-index: 10; }
+.fab { display: none; position: fixed; right: 20px; bottom: calc(76px + env(safe-area-inset-bottom)); width: 56px; height: 56px; font-size: 24px; box-shadow: 0 4px 12px rgba(0,0,0,.25); z-index: 10; }
 @media (max-width: 640px) {
   .fab { display: inline-flex; }
   .new-btn { display: none; }

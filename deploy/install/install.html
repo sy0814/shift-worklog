@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>安装证书 · Instalacija sertifikata · Install certificate</title>
+<style>
+  body { font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; margin: 0; background: #f4f5f7; color: #303133; }
+  main { max-width: 640px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 20px; }
+  h2 { font-size: 16px; margin-top: 24px; }
+  section { background: #fff; border-radius: 8px; padding: 12px 16px; margin: 12px 0; }
+  ol { padding-left: 20px; line-height: 1.7; }
+  .btn { display: inline-block; background: #409eff; color: #fff; padding: 12px 20px; border-radius: 6px; text-decoration: none; font-size: 16px; margin: 4px 8px 4px 0; }
+  .btn.green { background: #67c23a; }
+  .lang { color: #909399; font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>工作记录系统 · Radni dnevnik · Work log</h1>
+  <p>第一次使用时，手机需要安装一次本系统的证书，之后打开就不会再提示「不安全」。<br>
+     <span class="lang">Pre prvog korišćenja instalirajte sertifikat jednom. · Install the certificate once before first use.</span></p>
+  <p>
+    <a class="btn" href="/ca.crt">① 下载证书 · Preuzmi sertifikat · Download certificate</a><br>
+    <a class="btn green" id="open" href="/">② 打开系统 · Otvori · Open</a>
+  </p>
+
+  <section>
+    <h2>安卓 Android</h2>
+    <ol>
+      <li>点上面的「下载证书」。<span class="lang">Preuzmite sertifikat. · Download the certificate.</span></li>
+      <li>设置 → 安全 → 加密与凭据 → 安装证书 → <b>CA 证书</b> → 选刚下载的 <code>workrecord-ca.crt</code>（不同手机菜单名字略有不同，可在设置里搜索「证书」）。<br>
+        <span class="lang">Podešavanja → Bezbednost → Šifrovanje i akreditivi → Instaliraj sertifikat → CA sertifikat. · Settings → Security → Encryption &amp; credentials → Install a certificate → CA certificate.</span></li>
+      <li>用 Chrome 打开系统，菜单 → <b>添加到主屏幕</b>。<span class="lang">Chrome → meni → Dodaj na početni ekran. · Chrome → menu → Add to Home screen.</span></li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>苹果 iPhone / iPad</h2>
+    <ol>
+      <li>用 <b>Safari</b> 点「下载证书」，提示「已下载描述文件」。<span class="lang">U Safariju preuzmite sertifikat. · In Safari, download the certificate.</span></li>
+      <li>设置 → 通用 → VPN 与设备管理 → 点刚下载的描述文件 → 安装。<br>
+        <span class="lang">Podešavanja → Opšte → VPN i upravljanje uređajem → Instaliraj. · Settings → General → VPN &amp; Device Management → Install.</span></li>
+      <li><b>必须再做这一步：</b>设置 → 通用 → 关于本机 → 最下面「证书信任设置」→ 打开本证书的开关。<br>
+        <span class="lang">Obavezno: Opšte → O uređaju → Podešavanja poverenja sertifikata → uključite. · Required: General → About → Certificate Trust Settings → turn it on.</span></li>
+      <li>用 Safari 打开系统，分享按钮 → <b>添加到主屏幕</b>。<span class="lang">Safari → Deli → Dodaj na početni ekran. · Safari → Share → Add to Home Screen.</span></li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>电脑 Windows</h2>
+    <ol>
+      <li>下载证书后双击 → 安装证书 → 本地计算机 → 将所有证书放入下列存储 → <b>受信任的根证书颁发机构</b>。然后重启浏览器。<br>
+        <span class="lang">Instaliraj sertifikat → Pouzdani izdavači osnovnih sertifikata. · Install certificate → Trusted Root Certification Authorities.</span></li>
+    </ol>
+  </section>
+</main>
+<script>document.getElementById('open').href = 'https://' + location.host + '/'</script>
+</body>
+</html>

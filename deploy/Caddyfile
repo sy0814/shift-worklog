@@ -1,0 +1,37 @@
+# 内网 HTTPS：Caddy 自带的内部证书机构（tls internal）签发证书并自动续期。
+# 手机 / 电脑只需安装一次根证书（http://服务器地址/ca.crt），之后访问 https:// 就不会再报警告。
+{
+	local_certs
+	skip_install_trust
+	# 自动跳转关掉：由下面的 :80 块自己跳转，这样 /ca.crt 和 /install 在 HTTP 下也能打开
+	auto_https disable_redirects
+}
+
+# HTTP（80 端口）：只提供根证书下载和安装说明，其它一律跳转到 HTTPS
+:80 {
+	handle /ca.crt {
+		root * {$CA_DIR:/data/caddy/pki/authorities/local}
+		rewrite * /root.crt
+		header Content-Type application/x-x509-ca-cert
+		header Content-Disposition "attachment; filename=\"workrecord-ca.crt\""
+		file_server
+	}
+	handle /install* {
+		root * {$INSTALL_DIR:/srv/install}
+		rewrite * /install.html
+		file_server
+	}
+	handle {
+		redir https://{host}{uri} 302
+	}
+}
+
+# HTTPS：SITE_HOSTS 写服务器的内网 IP 和/或主机名，多个用逗号分隔，例如 192.168.1.50, worklog.local
+{$SITE_HOSTS} {
+	tls internal
+	encode gzip
+	request_body {
+		max_size 40MB
+	}
+	reverse_proxy {$APP_UPSTREAM:app:8000}
+}
