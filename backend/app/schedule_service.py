@@ -14,7 +14,9 @@ from .shifts import Schedule, TeamInfo
 def load_schedule(db: Session) -> Schedule:
     cfg = db.get(ShiftConfig, 1)
     teams = db.scalars(select(Team).order_by(Team.sort_order)).all()
-    holidays = frozenset(db.scalars(select(Holiday.day)).all())
+    rows = db.execute(select(Holiday.day, Holiday.kind)).all()
+    holidays = frozenset(d for d, k in rows if k != "workday")
+    workdays = frozenset(d for d, k in rows if k == "workday")
     return Schedule(
         base_date=cfg.base_date,
         teams=tuple(TeamInfo(t.id, t.kind, t.cycle_offset) for t in teams),
@@ -22,6 +24,7 @@ def load_schedule(db: Session) -> Schedule:
         middle_start=cfg.middle_start,
         night_start=cfg.night_start,
         holidays=holidays,
+        extra_workdays=workdays,
     )
 
 

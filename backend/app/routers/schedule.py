@@ -97,12 +97,12 @@ def put_holiday(day: date, body: HolidayIO, db: Session = Depends(get_db),
                 admin: User = Depends(require_admin)):
     h = db.get(Holiday, day)
     if h is None:
-        h = Holiday(day=day, name=body.name)
+        h = Holiday(day=day, name=body.name, kind=body.kind)
         db.add(h)
         audit.log(db, user_id=admin.id, action="create", entity="holiday", entity_id=day,
-                  new=body.name)
+                  new={"name": body.name, "kind": body.kind})
     else:
-        audit.log_changes(db, h, {"name": body.name}, user_id=admin.id,
+        audit.log_changes(db, h, {"name": body.name, "kind": body.kind}, user_id=admin.id,
                           entity="holiday", entity_id=day)
     db.commit()
     return h

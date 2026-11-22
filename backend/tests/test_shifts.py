@@ -88,3 +88,12 @@ def test_receiving_slot():
     assert S.receiving_slot(TEAM["T2"], datetime(2026, 11, 21, 10)) == (date(2026, 11, 21), MIDDLE)
     # 4 班 11-21、11-22 休息（位置 6、7），下一班是 11-23 白班
     assert S.receiving_slot(TEAM["T4"], datetime(2026, 11, 21, 10)) == (date(2026, 11, 23), DAY)
+
+
+def test_extra_workday_for_day_team():
+    s = Schedule(base_date=date(2026, 11, 1), teams=tuple(TEAM.values()),
+                 extra_workdays=frozenset({date(2026, 11, 21)}))  # 周六调休上班
+    assert s.shift_of(TEAM["DAY"], date(2026, 11, 21)) == DAY
+    assert s.shift_of(TEAM["DAY"], date(2026, 11, 22)) == OFF
+    # 倒班不受影响
+    assert s.shift_of(TEAM["T4"], date(2026, 11, 21)) == OFF

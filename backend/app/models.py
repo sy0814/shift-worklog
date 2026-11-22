@@ -74,6 +74,8 @@ class Holiday(Base):
 
     day: Mapped[date] = mapped_column(Date, primary_key=True)
     name: Mapped[str] = mapped_column(String(100), default="")
+    # holiday：节假日（常白班休息）；workday：调休上班（周末常白班也上班）
+    kind: Mapped[str] = mapped_column(String(10), default="holiday")
 
 
 class AuditLog(Base):

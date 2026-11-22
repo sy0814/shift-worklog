@@ -41,20 +41,10 @@ async function saveConfig() {
   ElMessage.success(t('common.saved'))
 }
 
-// ---- 管理员：未闭环警示设置 ----
-const alertCfg = reactive({ overdue_hours: 24, overdue_handovers: 3 })
-async function loadAlert() {
-  Object.assign(alertCfg, (await api.get('/settings')).data)
-}
-async function saveAlert() {
-  Object.assign(alertCfg, (await api.put('/settings', alertCfg)).data)
-  ElMessage.success(t('common.saved'))
-}
-
 // ---- 管理员：节假日 ----
 const year = ref(dayjs().year())
 const holidays = ref([])
-const newHoliday = reactive({ day: '', name: '' })
+const newHoliday = reactive({ day: '', name: '', kind: 'holiday' })
 async function loadHolidays() {
   holidays.value = (await api.get('/holidays', { params: { year: year.value } })).data
 }
@@ -62,6 +52,7 @@ async function addHoliday() {
   if (!newHoliday.day) return
   await api.put(`/holidays/${newHoliday.day}`, { ...newHoliday })
   newHoliday.day = newHoliday.name = ''
+  newHoliday.kind = 'holiday'
   await Promise.all([loadHolidays(), loadCalendar()])
 }
 async function removeHoliday(day) {
@@ -72,7 +63,7 @@ watch(year, loadHolidays)
 
 onMounted(async () => {
   await loadCalendar()
-  if (auth.isAdmin) await Promise.all([loadConfig(), loadHolidays(), loadAlert()])
+  if (auth.isAdmin) await Promise.all([loadConfig(), loadHolidays()])
 })
 </script>
 
@@ -114,24 +105,25 @@ onMounted(async () => {
         <div class="toolbar">
           <el-input-number v-model="year" :min="2020" :max="2100" controls-position="right" />
           <el-date-picker v-model="newHoliday.day" value-format="YYYY-MM-DD" :placeholder="t('schedule.date')" />
+          <el-select v-model="newHoliday.kind" style="width: 150px">
+            <el-option value="holiday" :label="t('schedule.kindHoliday')" />
+            <el-option value="workday" :label="t('schedule.kindWorkday')" />
+          </el-select>
           <el-input v-model="newHoliday.name" :placeholder="t('schedule.holidayName')" style="width: 200px" />
           <el-button type="primary" @click="addHoliday">{{ t('common.add') }}</el-button>
         </div>
         <el-table :data="holidays" size="small" style="max-width: 520px">
           <el-table-column prop="day" :label="t('schedule.date')" width="130" />
+          <el-table-column width="130">
+            <template #default="{ row }">
+              <el-tag :type="row.kind === 'workday' ? 'warning' : 'success'" size="small">{{ row.kind === 'workday' ? t('schedule.kindWorkday') : t('schedule.kindHoliday') }}</el-tag>
+            </template>
+          </el-table-column>
           <el-table-column prop="name" :label="t('schedule.holidayName')" />
           <el-table-column width="90">
             <template #default="{ row }"><el-button link type="danger" @click="removeHoliday(row.day)">{{ t('common.delete') }}</el-button></template>
           </el-table-column>
         </el-table>
-      </el-tab-pane>
-      <el-tab-pane v-if="auth.isAdmin" :label="t('overdue.settings')">
-        <el-form label-width="auto" style="max-width: 520px">
-          <el-form-item :label="t('overdue.hoursLabel')"><el-input-number v-model="alertCfg.overdue_hours" :min="1" :max="1440" /></el-form-item>
-          <el-form-item :label="t('overdue.handoversLabel')"><el-input-number v-model="alertCfg.overdue_handovers" :min="1" :max="100" /></el-form-item>
-          <el-form-item><span class="muted">{{ t('overdue.hint') }}</span></el-form-item>
-          <el-form-item><el-button type="primary" @click="saveAlert">{{ t('common.save') }}</el-button></el-form-item>
-        </el-form>
       </el-tab-pane>
     </el-tabs>
   </div>

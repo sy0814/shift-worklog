@@ -30,6 +30,7 @@ class Schedule:
     middle_start: time = time(15)
     night_start: time = time(23)
     holidays: frozenset[date] = frozenset()
+    extra_workdays: frozenset[date] = frozenset()  # 调休上班的周末
 
     # ---- 单个班组 ----
     def cycle_pos(self, team: TeamInfo, d: date) -> int:
@@ -37,6 +38,8 @@ class Schedule:
         return (team.cycle_offset + (d - self.base_date).days) % len(CYCLE)
 
     def is_workday(self, d: date) -> bool:
+        if d in self.extra_workdays:
+            return True
         return d.weekday() < 5 and d not in self.holidays
 
     def shift_of(self, team: TeamInfo, d: date) -> str:

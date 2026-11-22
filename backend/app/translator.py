@@ -8,10 +8,10 @@ import json
 import re
 import time
 from dataclasses import dataclass
-from functools import lru_cache
 
 import httpx
 
+from . import llm_config
 from .config import get_settings
 
 LANGS = ("zh", "sr", "en")
@@ -84,14 +84,8 @@ def build_messages(text: str, glossary: list[GlossaryEntry]) -> list[dict]:
 
 
 # ---------------- 调用 ----------------
-@lru_cache
-def _extra_body() -> dict:
-    raw = get_settings().deepseek_extra_body.strip()
-    return json.loads(raw) if raw else {}
-
-
 def is_configured() -> bool:
-    return bool(get_settings().deepseek_api_key)
+    return llm_config.current().configured
 
 
 def parse_result(raw: str, original: str) -> Translation:
@@ -119,22 +113,27 @@ def parse_result(raw: str, original: str) -> Translation:
     return Translation(source_lang=src, **out)
 
 
-def translate(text: str, glossary: list[GlossaryEntry], *, client: httpx.Client | None = None) -> Translation:
-    """翻译一段文字。超时 / 网络错误 / 5xx 会重试，最终失败抛 TranslationError。"""
+def translate(text: str, glossary: list[GlossaryEntry], *, client: httpx.Client | None = None,
+              cfg: "llm_config.LLMConfig | None" = None) -> Translation:
+    """翻译一段文字。超时 / 网络错误 / 5xx 会重试，最终失败抛 TranslationError。
+
+    cfg 不传时用当前生效的 AI 接口配置（系统设置 > .env）；温度、超时、重试次数固定来自 .env。
+    """
     s = get_settings()
-    if not s.deepseek_api_key:
-        raise TranslationError("DEEPSEEK_API_KEY not configured")
+    cfg = cfg or llm_config.current()
+    if not cfg.configured:
+        raise TranslationError("AI API not configured")
     text = text.strip()
     body = {
-        "model": s.deepseek_model,
+        "model": cfg.translate_model,
         "messages": build_messages(text, glossary),
         "response_format": {"type": "json_object"},
         "temperature": s.translate_temperature,
         "stream": False,
-        **_extra_body(),
+        **cfg.extra_body,
     }
-    headers = {"Authorization": f"Bearer {s.deepseek_api_key}"}
-    url = s.deepseek_base_url.rstrip("/") + "/chat/completions"
+    headers = {"Authorization": f"Bearer {cfg.api_key}"}
+    url = cfg.base_url.rstrip("/") + "/chat/completions"
     own = client is None
     client = client or httpx.Client(timeout=s.translate_timeout)
     last: Exception | None = None

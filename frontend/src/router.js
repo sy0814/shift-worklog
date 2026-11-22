@@ -15,6 +15,7 @@ const routes = [
       { path: 'users', name: 'users', component: () => import('./views/Users.vue'), meta: { admin: true } },
       { path: 'workers', name: 'workers', component: () => import('./views/Workers.vue'), meta: { admin: true } },
       { path: 'glossary', name: 'glossary', component: () => import('./views/Glossary.vue'), meta: { admin: true } },
+      { path: 'settings', name: 'settings', component: () => import('./views/Settings.vue'), meta: { admin: true } },
       { path: 'audit', name: 'audit', component: () => import('./views/Audit.vue'), meta: { admin: true } },
     ],
   },

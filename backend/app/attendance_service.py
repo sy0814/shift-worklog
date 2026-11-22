@@ -51,7 +51,15 @@ def effective(db: Session, workers: list[Worker], start: date, end: date) -> dic
             base = default_for(sched, w, d)
             a = overrides.get((w.id, d))
             if a is not None:
-                kind = a.shift_kind or (base.shift_kind if a.status == "present" else None)
+                kind = a.shift_kind
+                if a.status == "present" and not kind:
+                    if a.team_id and a.team_id != w.team_id:
+                        # 去顶别的班组、没指定班次 → 按被顶班组当天的班次
+                        cover = next((t for t in sched.teams if t.id == a.team_id), None)
+                        k = sched.shift_of(cover, d) if cover else None
+                        kind = k if k and k != OFF else None
+                    else:
+                        kind = base.shift_kind
                 row[d] = DayAttendance(a.status, kind if a.status == "present" else None,
                                        a.team_id or w.team_id, a.source, a.note)
             else:

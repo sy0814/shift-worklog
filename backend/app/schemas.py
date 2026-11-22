@@ -96,6 +96,7 @@ class ShiftConfigIn(BaseModel):
 class HolidayIO(ORM):
     day: date
     name: str = ""
+    kind: Literal["holiday", "workday"] = "holiday"
 
 
 class ShiftSlot(BaseModel):

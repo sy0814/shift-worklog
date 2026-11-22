@@ -8,7 +8,7 @@ from fastapi.responses import Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .. import audit, translation_service, translator
+from .. import audit, llm_config, translation_service, translator
 from ..config import get_settings
 from ..db import get_db
 from ..models import GlossaryTerm, Task, User, utcnow
@@ -92,7 +92,7 @@ def retranslate(task_id: int, keep_manual: bool = True, db: Session = Depends(ge
 @router.get("/translation/status", response_model=TranslationStatus)
 def translation_status(db: Session = Depends(get_db), _: User = Depends(require_admin)):
     counts = dict(db.execute(select(Task.translation_status, func.count()).group_by(Task.translation_status)).all())
-    return TranslationStatus(configured=translator.is_configured(), model=get_settings().deepseek_model,
+    return TranslationStatus(configured=translator.is_configured(), model=llm_config.current().translate_model,
                              counts=counts)
 
 

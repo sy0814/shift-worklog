@@ -52,11 +52,20 @@ const counts = computed(() => {
 // ---- 点格子：当天任务 + 修改出勤 ----
 const dlg = ref(false)
 const cur = reactive({ worker: null, day: null, cell: null, tasks: [], loading: false })
-const form = reactive({ status: 'present', shift_kind: null, team_id: null, note: '' })
+const form = reactive({ status: 'present', shift_kind: null, team_id: null, note: '', until: null })
+const allWorkers = ref([])
+const swapWith = ref(null)
+async function ensureWorkers() {
+  if (!allWorkers.value.length) allWorkers.value = (await api.get('/workers')).data
+}
+const isGuest = (w) => data.value?.guest_ids?.includes(w.id)
 async function openCell(w, day) {
   Object.assign(cur, { worker: w, day, cell: data.value.cells[w.id][day], tasks: [], loading: true })
-  Object.assign(form, { status: cur.cell.status || 'present', shift_kind: cur.cell.shift_kind, team_id: null, note: cur.cell.note || '' })
+  Object.assign(form, { status: cur.cell.status || 'present', shift_kind: cur.cell.shift_kind,
+    team_id: cur.cell.team_id !== w.team_id ? cur.cell.team_id : null, note: cur.cell.note || '', until: null })
+  swapWith.value = null
   dlg.value = true
+  ensureWorkers()
   try {
     cur.tasks = (await api.get(`/workers/${w.id}/day`, { params: { day } })).data.tasks
   } finally {
@@ -64,13 +73,52 @@ async function openCell(w, day) {
   }
 }
 async function save(status) {
-  const body = { worker_id: cur.worker.id, day: cur.day, status: status || form.status, note: form.note,
-    shift_kind: form.status === 'present' ? form.shift_kind : null, team_id: form.status === 'present' ? form.team_id : null }
-  await api.put('/attendance', body)
+  const st = status || form.status
+  const common = { status: st, note: form.note,
+    shift_kind: st === 'present' ? form.shift_kind : null, team_id: st === 'present' ? form.team_id : null }
+  if (form.until && form.until > cur.day) {
+    // 连续多天：走批量接口
+    await api.put('/attendance/batch', { worker_ids: [cur.worker.id], start: cur.day, end: form.until, ...common })
+  } else {
+    await api.put('/attendance', { worker_id: cur.worker.id, day: cur.day, ...common })
+  }
   dlg.value = false
   ElMessage.success(t('common.saved'))
   load()
 }
+
+async function doSwap() {
+  await api.post('/attendance/swap', { day: cur.day, worker_a: cur.worker.id, worker_b: swapWith.value, note: form.note })
+  dlg.value = false
+  ElMessage.success(t('att.swapped'))
+  load()
+}
+
+// ---- 批量安排（例如周末临时几个人去顶某个班组）----
+const batchOpen = ref(false)
+const batch = reactive({ worker_ids: [], range: null, status: 'present', shift_kind: null, team_id: null, note: '' })
+async function openBatch() {
+  await ensureWorkers()
+  Object.assign(batch, { worker_ids: [], range: null, status: 'present', shift_kind: null, team_id: teamId.value, note: '' })
+  batchOpen.value = true
+}
+async function saveBatch() {
+  const { data: r } = await api.put('/attendance/batch', {
+    worker_ids: batch.worker_ids, start: batch.range[0], end: batch.range[1], status: batch.status, note: batch.note,
+    shift_kind: batch.status === 'present' ? batch.shift_kind : null, team_id: batch.status === 'present' ? batch.team_id : null,
+  })
+  batchOpen.value = false
+  ElMessage.success(t('att.batchDone', { n: r.updated }))
+  load()
+}
+const workerGroups = computed(() => {
+  const g = new Map()
+  for (const w of allWorkers.value) {
+    if (!g.has(w.team_id)) g.set(w.team_id, [])
+    g.get(w.team_id).push(w)
+  }
+  return [...g.entries()].map(([tid, list]) => ({ label: tid ? localName(auth.teamById(tid)) : t('workers.noTeam'), list }))
+})
 
 // ---- 导入 ----
 const fileInput = ref()
@@ -104,6 +152,7 @@ const exportOpen = ref(false)
         <el-radio-button v-for="tm in auth.teams" :key="tm.id" :value="tm.id">{{ localName(tm) }}</el-radio-button>
       </el-radio-group>
       <span class="spacer" />
+      <el-button @click="openBatch">{{ t('att.batch') }}</el-button>
       <el-button @click="exportOpen = true">{{ t('exp.title') }}</el-button>
       <template v-if="auth.isAdmin">
         <el-button @click="download('/attendance/template', {}, 'attendance_template.xlsx')">{{ t('att.template') }}</el-button>
@@ -123,8 +172,8 @@ const exportOpen = ref(false)
           </tr>
         </thead>
         <tbody>
-          <tr v-for="w in data.workers" :key="w.id">
-            <td class="name">{{ w.name }}</td>
+          <tr v-for="w in data.workers" :key="w.id" :class="{ guest: isGuest(w) }">
+            <td class="name">{{ w.name }}<el-tag v-if="isGuest(w)" size="small" type="warning" class="gtag">{{ t('att.guest') }} · {{ localName(auth.teamById(w.team_id)) }}</el-tag></td>
             <td v-for="d in data.days" :key="d"
                 :class="['c', `s-${data.cells[w.id][d].status}`, { ex: data.cells[w.id][d].source !== 'default', today: d === todayStr }]"
                 @click="openCell(w, d)">{{ code(data.cells[w.id][d]) }}</td>
@@ -159,17 +208,71 @@ const exportOpen = ref(false)
             </el-form-item>
           </template>
           <el-form-item :label="t('att.note')"><el-input v-model="form.note" maxlength="200" /></el-form-item>
+          <el-form-item :label="t('att.until')">
+            <el-date-picker v-model="form.until" value-format="YYYY-MM-DD" :disabled-date="(d) => dayjs(d).format('YYYY-MM-DD') <= cur.day || dayjs(d).diff(cur.day, 'day') > 30" clearable style="width: 160px" />
+          </el-form-item>
         </el-form>
         <div v-if="canEdit(cur.worker)" class="btns">
           <el-button v-if="cur.cell.source !== 'default'" @click="save('default')">{{ t('att.reset') }}</el-button>
           <el-button type="primary" @click="save()">{{ t('common.save') }}</el-button>
         </div>
 
+        <template v-if="canEdit(cur.worker) || auth.isAdmin">
+          <h4>{{ t('att.swapWith') }}</h4>
+          <div class="btns left">
+            <el-select v-model="swapWith" filterable clearable :placeholder="t('att.swapPick')" style="width: 220px">
+              <el-option-group v-for="g in workerGroups" :key="g.label" :label="g.label">
+                <el-option v-for="x in g.list.filter((x) => x.id !== cur.worker.id)" :key="x.id" :label="x.name" :value="x.id" />
+              </el-option-group>
+            </el-select>
+            <el-button type="warning" :disabled="!swapWith" @click="doSwap">{{ t('att.swap') }}</el-button>
+          </div>
+        </template>
+
         <h4>{{ t('att.dayTasks') }}</h4>
         <div v-loading="cur.loading" class="tasks">
           <TaskCard v-for="task in cur.tasks" :key="task.id" :task="task" @click="detailId = task.id; detailOpen = true" />
           <div v-if="!cur.loading && !cur.tasks.length" class="muted">{{ t('att.noTasks') }}</div>
         </div>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="batchOpen" :title="t('att.batch')" width="min(520px, 96vw)" :fullscreen="isNarrow()" append-to-body>
+      <el-form label-width="auto">
+        <el-form-item :label="t('att.workers')">
+          <el-select v-model="batch.worker_ids" multiple filterable style="width: 100%">
+            <el-option-group v-for="g in workerGroups" :key="g.label" :label="g.label">
+              <el-option v-for="x in g.list" :key="x.id" :label="x.name" :value="x.id" />
+            </el-option-group>
+          </el-select>
+        </el-form-item>
+        <el-form-item :label="t('att.range')">
+          <el-date-picker v-model="batch.range" type="daterange" value-format="YYYY-MM-DD" unlink-panels style="width: 100%" />
+        </el-form-item>
+        <el-form-item :label="t('att.status')">
+          <el-radio-group v-model="batch.status">
+            <el-radio-button v-for="s in ['present', 'leave', 'sick', 'absent', 'off']" :key="s" :value="s">{{ t(`att.st.${s}`) }}</el-radio-button>
+          </el-radio-group>
+        </el-form-item>
+        <template v-if="batch.status === 'present'">
+          <el-form-item :label="t('att.shiftActual')">
+            <el-radio-group v-model="batch.shift_kind">
+              <el-radio-button v-for="k in ['day', 'middle', 'night']" :key="k" :value="k">{{ t(`shift.${k}`) }}</el-radio-button>
+            </el-radio-group>
+            <el-button v-if="batch.shift_kind" link size="small" @click="batch.shift_kind = null">✕</el-button>
+            <div class="muted small" style="width: 100%">{{ t('att.shiftAuto') }}</div>
+          </el-form-item>
+          <el-form-item :label="t('att.teamActual')">
+            <el-select v-model="batch.team_id" clearable style="width: 160px">
+              <el-option v-for="tm in auth.teams" :key="tm.id" :label="localName(tm)" :value="tm.id" />
+            </el-select>
+          </el-form-item>
+        </template>
+        <el-form-item :label="t('att.note')"><el-input v-model="batch.note" maxlength="200" /></el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="batchOpen = false">{{ t('common.cancel') }}</el-button>
+        <el-button type="primary" :disabled="!batch.worker_ids.length || !batch.range" @click="saveBatch">{{ t('common.save') }}</el-button>
       </template>
     </el-dialog>
 
@@ -198,6 +301,9 @@ const exportOpen = ref(false)
 .today { box-shadow: inset 0 0 0 2px #409eff; }
 .sum { font-weight: 600; background: #f5f7fa; }
 .btns { display: flex; justify-content: flex-end; gap: 8px; }
+.btns.left { justify-content: flex-start; }
+.gtag { margin-left: 6px; }
+tr.guest .name { background: #fdf6ec; }
 h4 { margin: 16px 0 8px; }
 .tasks { display: flex; flex-direction: column; gap: 8px; min-height: 40px; }
 </style>

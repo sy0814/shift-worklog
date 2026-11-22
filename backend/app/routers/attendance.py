@@ -36,7 +36,25 @@ class Cell(BaseModel):
 class AttendanceGrid(BaseModel):
     days: list[date]
     workers: list[WorkerOut]
+    guest_ids: list[int] = []  # 其他班组来顶班 / 支援的人
     cells: dict[int, dict[date, Cell]]
+
+
+class AttendanceBatch(BaseModel):
+    worker_ids: list[int] = Field(min_length=1, max_length=100)
+    start: date
+    end: date
+    status: str
+    shift_kind: str | None = None
+    team_id: int | None = None
+    note: str = Field(default="", max_length=200)
+
+
+class AttendanceSwap(BaseModel):
+    day: date
+    worker_a: int
+    worker_b: int
+    note: str = Field(default="", max_length=200)
 
 
 class AttendanceSet(BaseModel):
@@ -80,10 +98,20 @@ def grid(start: date, end: date, team_id: int | None = None, db: Session = Depen
     if end < start or (end - start).days >= MAX_DAYS:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"range must be 1..{MAX_DAYS} days")
     workers = _workers(db, team_id)
-    eff = att.effective(db, workers, start, end)
+    guests: list[Worker] = []
+    if team_id:
+        # 这段时间里来这个班组顶班的其他班组员工，也显示出来
+        gids = db.scalars(select(Attendance.worker_id).where(
+            Attendance.team_id == team_id, Attendance.status == "present",
+            Attendance.day >= start, Attendance.day <= end).distinct()).all()
+        own = {w.id for w in workers}
+        guests = [w for w in db.scalars(select(Worker).where(Worker.id.in_(gids))) if w.id not in own]
+        guests.sort(key=lambda w: (w.team_id or 999, w.name))
+    eff = att.effective(db, workers + guests, start, end)
     days = [start + timedelta(days=i) for i in range((end - start).days + 1)]
     return AttendanceGrid(
-        days=days, workers=[WorkerOut.model_validate(w) for w in workers],
+        days=days, workers=[WorkerOut.model_validate(w) for w in workers + guests],
+        guest_ids=[w.id for w in guests],
         cells={wid: {d: Cell(**vars(c)) for d, c in row.items()} for wid, row in eff.items()},
     )
 
@@ -118,16 +146,74 @@ def set_attendance(body: AttendanceSet, db: Session = Depends(get_db), user: Use
         raise HTTPException(status.HTTP_404_NOT_FOUND)
     if user.role != "admin" and w.team_id != user.team_id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "not your team's worker")
-    if body.status not in (*att.STATUSES, "default"):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "bad status")
-    if body.shift_kind not in (None, "day", "middle", "night"):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "bad shift_kind")
-    if body.team_id is not None and db.get(Team, body.team_id) is None:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "team not found")
+    _validate(db, body.status, body.shift_kind, body.team_id)
     _apply(db, w, body.day, body.status, body.shift_kind, body.team_id, body.note, "manual", user.id)
     db.commit()
     c = att.effective(db, [w], body.day, body.day)[w.id][body.day]
     return Cell(**vars(c))
+
+
+def _validate(db: Session, status_: str, shift_kind: str | None, team_id: int | None) -> None:
+    if status_ not in (*att.STATUSES, "default"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "bad status")
+    if shift_kind not in (None, "day", "middle", "night"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "bad shift_kind")
+    if team_id is not None and db.get(Team, team_id) is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "team not found")
+
+
+@router.put("/attendance/batch", response_model=dict)
+def set_batch(body: AttendanceBatch, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """批量设置：多人 × 连续多天。典型用法：周末临时安排几个人去顶某个班组的夜班。
+
+    班长可以改本班组的人；也可以把其他班组的人安排来「本班组」上班（出勤 + 顶本班组）。
+    """
+    if body.end < body.start or (body.end - body.start).days >= 31:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "range must be 1..31 days")
+    _validate(db, body.status, body.shift_kind, body.team_id)
+    workers = [db.get(Worker, i) for i in dict.fromkeys(body.worker_ids)]
+    if any(w is None for w in workers):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "unknown worker")
+    if user.role != "admin":
+        helping_me = body.status == "present" and body.team_id == user.team_id
+        if not all(w.team_id == user.team_id or helping_me for w in workers):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "not your team's worker")
+    n = 0
+    d = body.start
+    while d <= body.end:
+        for w in workers:
+            _apply(db, w, d, body.status, body.shift_kind, body.team_id, body.note, "manual", user.id)
+            n += 1
+        d += timedelta(days=1)
+    audit.log(db, user_id=user.id, action="batch", entity="attendance", entity_id=f"{body.start}~{body.end}",
+              new=body.model_dump(mode="json"))
+    db.commit()
+    return {"updated": n}
+
+
+@router.post("/attendance/swap", response_model=dict)
+def swap(body: AttendanceSwap, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """两人互换某一天的班：A 上 B 原来的班，B 上 A 原来的班（含休息）。"""
+    a, b = db.get(Worker, body.worker_a), db.get(Worker, body.worker_b)
+    if a is None or b is None or a.id == b.id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "need two different workers")
+    if user.role != "admin" and user.team_id not in (a.team_id, b.team_id):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "neither worker is in your team")
+    eff = att.effective(db, [a, b], body.day, body.day)
+    ea, eb = eff[a.id][body.day], eff[b.id][body.day]
+    if (ea.status, ea.shift_kind, ea.team_id) == (eb.status, eb.shift_kind, eb.team_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "both have the same shift that day")
+    note = body.note.strip() or f"swap {a.name} ⇄ {b.name}"
+    for w, other in ((a, eb), (b, ea)):
+        if other.status is None:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "worker without team cannot be swapped")
+        team = other.team_id if other.status == "present" and other.team_id != w.team_id else None
+        _apply(db, w, body.day, other.status, other.shift_kind, team, note, "manual", user.id)
+    audit.log(db, user_id=user.id, action="swap", entity="attendance", entity_id=f"{a.id}:{b.id}:{body.day}",
+              new={"day": body.day, "a": a.name, "b": b.name, "note": note})
+    db.commit()
+    eff = att.effective(db, [a, b], body.day, body.day)
+    return {str(w.id): vars(eff[w.id][body.day]) for w in (a, b)}
 
 
 # ---------------- Excel 模板与导入 ----------------

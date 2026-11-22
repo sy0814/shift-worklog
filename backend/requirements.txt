@@ -12,3 +12,4 @@ pillow-heif==1.8.1
 httpx==0.28.1
 APScheduler==3.11.3
 openpyxl==3.1.5
+cryptography==50.0.2
