@@ -303,11 +303,12 @@ class InspectionTemplate(Base):
     content: Mapped[str] = mapped_column(Text)  # 生成任务的工作内容（原文）
     lang: Mapped[str] = mapped_column(String(5))
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
-    kind: Mapped[str] = mapped_column(String(10))  # daily / weekly / monthly / shift
+    kind: Mapped[str] = mapped_column(String(10))  # daily / weekly / monthly / yearly / shift
     at_time: Mapped[time] = mapped_column(Time, default=time(8, 0))
     every_n: Mapped[int] = mapped_column(Integer, default=1)
     weekdays: Mapped[list] = mapped_column(JSON, default=list)
     month_days: Mapped[list] = mapped_column(JSON, default=list)
+    year_dates: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")  # 每年："MM-DD"
     shift_kinds: Mapped[list] = mapped_column(JSON, default=list)
     start_date: Mapped[date] = mapped_column(Date)
     assign: Mapped[str] = mapped_column(String(10), default="on_duty")  # on_duty / fixed

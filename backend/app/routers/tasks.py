@@ -96,7 +96,17 @@ def editable_team_ids(db: Session, user: User) -> set[int] | None:
 def _can_edit(task: Task, editable: set[int] | None) -> bool:
     if task.status in TERMINAL:
         return False
-    return editable is None or task.team_id in editable
+    if editable is None:  # 管理员
+        return True
+    # 班长：已完成的任务不能再改（包括重新打开），只有管理员能改
+    return task.status != "done" and task.team_id in editable
+
+
+def can_correct(task: Task, editable: set[int] | None) -> bool:
+    """校对译文：已移交 / 已废弃的也可以；已完成的只有管理员。"""
+    if editable is None:
+        return True
+    return task.status != "done" and task.team_id in editable
 
 
 def _aware(d: datetime) -> datetime:
@@ -184,6 +194,7 @@ def task_out(task: Task, user: User, ctx: OutCtx) -> TaskOut:
         workers=[WorkerOut.model_validate(w) for w in task.workers if w.id != task.lead_worker_id],
         attachments=[_att_out(a, names) for a in task.attachments],
         can_edit=_can_edit(task, ctx.editable),
+        can_correct=can_correct(task, ctx.editable),
         chain_started_at=task.chain_started_at, handover_count=task.handover_count,
         age_hours=round(age, 1), overdue=overdue,
         handover_in=_ho_info(ctx.ho_to.get(task.id), True, names),
@@ -215,6 +226,8 @@ def _require_edit(db: Session, task: Task, user: User) -> None:
     if task.status in TERMINAL:
         raise HTTPException(status.HTTP_409_CONFLICT, f"task is {task.status}")
     if not _can_edit(task, editable_team_ids(db, user)):
+        if task.status == "done":
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "task is done; only admin can edit it")
         raise HTTPException(status.HTTP_403_FORBIDDEN, "not your team's task")
 
 

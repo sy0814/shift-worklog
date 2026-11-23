@@ -1,5 +1,5 @@
 <script setup>
-// 首页的交接班：上一班移交过来的 + 本班待办 + 最近 12 小时完成，可多选一起移交
+// 首页的交接班：上一班移交过来的 + 本班待办 + 本班完成（不在班时显示上个班完成的），可多选一起移交
 // 常白班上班的日子，常白班和当天白班的倒班班组合并成一块（两边班长都能操作）
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -67,7 +67,9 @@ const switchTeams = computed(() => auth.teams)
 const sections = computed(() => board.value && [
   { key: 'received', title: t('board.received'), list: board.value.received, selectable: true },
   { key: 'todo', title: t('board.todo'), list: board.value.todo, selectable: true },
-  { key: 'done', title: t('board.doneRecent'), list: board.value.done_recent },
+  { key: 'done', list: board.value.done_recent,
+    title: board.value.on_duty ? t('board.doneRecent')
+      : t('board.doneLast', { date: board.value.done_shift_date.slice(5), shift: t(`shift.${board.value.done_shift_kind}`) }) },
 ])
 </script>
 
@@ -93,8 +95,9 @@ const sections = computed(() => board.value && [
       </div>
     </el-card>
 
-    <div v-if="selectable.length" class="batch">
-      <el-checkbox :model-value="allSelected" :indeterminate="selected.length > 0 && !allSelected" @change="toggleAll">{{ t('ho.selectAll') }}</el-checkbox>
+    <!-- 批量移交栏一直占位（没有可选的任务时变灰），切换班组时下面的列表不会上下跳 -->
+    <div class="batch">
+      <el-checkbox :model-value="allSelected" :indeterminate="selected.length > 0 && !allSelected" :disabled="!selectable.length" @change="toggleAll">{{ t('ho.selectAll') }}</el-checkbox>
       <span class="muted">{{ t('ho.selected', { n: selected.length }) }}</span>
       <el-button type="primary" size="small" :disabled="!selected.length" @click="hoOpen = true">{{ t('ho.batch') }}</el-button>
     </div>

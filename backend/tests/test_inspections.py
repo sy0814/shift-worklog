@@ -29,7 +29,8 @@ def _force_due(iid, when):
 
 
 def test_permissions_and_validation(client, admin_h, leader_h, teams):
-    assert _mk(client, leader_h).status_code == 403
+    assert _mk(client, leader_h).status_code == 403  # 班长不能建「派给在班班组」的
+    assert _mk(client, leader_h, assign="fixed", team_id=teams["T2"]).status_code == 403  # 也不能派给别的班组
     assert client.get("/api/inspections", headers=leader_h).status_code == 200
     assert _mk(client, admin_h, kind="weekly").status_code == 400          # 没选周几
     assert _mk(client, admin_h, kind="monthly", month_days=[32]).status_code == 400
@@ -124,3 +125,34 @@ def test_translation_reused(client, admin_h, leader_h, monkeypatch):
     tb = client.get(f"/api/tasks/{b['task_id']}", headers=leader_h).json()
     assert tb["content"]["sr"] == "Pregled mlina" and tb["translation_status"] == "done"
     assert a["task_id"] != b["task_id"]
+
+
+def test_leader_manages_own_team(client, admin_h, leader_h, teams):
+    r = _mk(client, leader_h, name="班长建的", assign="fixed", team_id=teams["T1"])
+    assert r.status_code == 201 and r.json()["can_edit"] is True
+    iid = r.json()["id"]
+    body = {k: r.json()[k] for k in ("name", "content", "lang", "kind", "at_time", "start_date", "assign", "team_id")}
+    assert client.put(f"/api/inspections/{iid}", headers=leader_h, json=body | {"at_time": "09:00"}).status_code == 200
+    # 不能改成派给别的班组
+    assert client.put(f"/api/inspections/{iid}", headers=leader_h, json=body | {"team_id": teams["T2"]}).status_code == 403
+    # 管理员建的「在班班组」巡查项：班长能看不能改
+    other = _mk(client, admin_h, name="管理员建的").json()
+    mine = {x["id"]: x for x in client.get("/api/inspections", headers=leader_h).json()}
+    assert mine[other["id"]]["can_edit"] is False and mine[iid]["can_edit"] is True
+    assert client.post(f"/api/inspections/{other['id']}/run-now", headers=leader_h).status_code == 403
+    assert client.delete(f"/api/inspections/{other['id']}", headers=leader_h).status_code == 403
+    assert client.delete(f"/api/inspections/{iid}", headers=leader_h).status_code == 204
+
+
+def test_yearly(client, admin_h, teams):
+    base = {"name": "x", "content": "x", "kind": "yearly", "at_time": "09:00", "start_date": "2026-01-01"}
+    assert client.post("/api/inspections/preview", headers=admin_h, json=base).status_code == 400  # 没选日期
+    assert client.post("/api/inspections/preview", headers=admin_h, json=base | {"year_dates": ["02-30"]}).status_code == 400
+    r = client.post("/api/inspections/preview", headers=admin_h, json=base | {"year_dates": ["3-15", "11-30"]}).json()
+    assert [o["at"][:10] for o in r] == ["2026-11-30", "2027-03-15", "2027-11-30", "2028-03-15", "2028-11-30"]
+    # 每 2 年一次（从起算日期的年份算），02-29 在平年按 02-28
+    r = client.post("/api/inspections/preview", headers=admin_h,
+                    json=base | {"year_dates": ["02-29"], "every_n": 2, "start_date": "2027-01-01"}).json()
+    assert [o["at"][:10] for o in r][:3] == ["2027-02-28", "2029-02-28", "2031-02-28"]
+    t = _mk(client, admin_h, kind="yearly", year_dates=["12-31"]).json()
+    assert t["year_dates"] == ["12-31"] and t["next_run_at"].startswith("2026-12-31")

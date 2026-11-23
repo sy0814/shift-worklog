@@ -1,5 +1,7 @@
-"""定期巡查项管理：查看（所有人）、增删改 / 预览 / 立即派发（管理员）。"""
+"""定期巡查项管理：查看（所有人）；增删改 / 预览 / 立即派发：管理员任何巡查项，
+班长只能管「固定派给本班组」的巡查项。"""
 
+import calendar
 from datetime import date, datetime, time
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -14,7 +16,7 @@ from ..inspection_schedule import Rule, assignment, upcoming
 from ..models import InspectionRun, InspectionTemplate, Team, User, Worker, utcnow
 from ..schedule_service import load_schedule
 from ..schemas import UTCDateTime
-from ..security import get_current_user, require_admin
+from ..security import get_current_user
 
 router = APIRouter(prefix="/api/inspections", tags=["inspections"])
 
@@ -24,11 +26,12 @@ class InspectionIn(BaseModel):
     content: str = Field(min_length=1, max_length=2000)
     lang: str = Field(default="zh", pattern="^(zh|sr|en)$")
     enabled: bool = True
-    kind: str = Field(pattern="^(daily|weekly|monthly|shift)$")
+    kind: str = Field(pattern="^(daily|weekly|monthly|yearly|shift)$")
     at_time: time = time(8, 0)
     every_n: int = Field(default=1, ge=1, le=365)
     weekdays: list[int] = Field(default_factory=list)
     month_days: list[int] = Field(default_factory=list)
+    year_dates: list[str] = Field(default_factory=list, max_length=24)  # "MM-DD"
     shift_kinds: list[str] = Field(default_factory=list)
     start_date: date | None = None
     assign: str = Field(default="on_duty", pattern="^(on_duty|fixed)$")
@@ -43,6 +46,7 @@ class InspectionOut(InspectionIn):
     last_run_at: UTCDateTime | None
     runs: int
     updated_at: UTCDateTime
+    can_edit: bool = False
 
 
 class Occurrence(BaseModel):
@@ -74,6 +78,22 @@ def _validate(db: Session, b: InspectionIn) -> dict:
         if not b.month_days or any(not 1 <= x <= 31 for x in b.month_days):
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "month_days required (1..31)")
         d["month_days"] = sorted(set(b.month_days))
+    if b.kind == "yearly":
+        out = set()
+        for x in b.year_dates:
+            try:
+                m, dd = (int(v) for v in x.split("-"))
+                ok = 1 <= m <= 12 and 1 <= dd <= calendar.monthrange(2024, m)[1]  # 2024 是闰年，允许 02-29
+            except ValueError:
+                ok = False
+            if not ok:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, f"bad date {x!r} (MM-DD)")
+            out.add(f"{m:02d}-{dd:02d}")
+        if not out:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "year_dates required (MM-DD)")
+        if b.every_n > 10:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "every_n ≤ 10 years")
+        d["year_dates"] = sorted(out)
     if b.kind == "shift":
         if not b.shift_kinds or any(k not in ("day", "middle", "night") for k in b.shift_kinds):
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "shift_kinds required (day/middle/night)")
@@ -88,13 +108,25 @@ def _validate(db: Session, b: InspectionIn) -> dict:
     return d
 
 
-def _out(db: Session, t: InspectionTemplate) -> InspectionOut:
+def _may_manage(user: User, assign: str, team_id: int | None) -> bool:
+    """管理员：全部；班长：只能管固定派给本班组的巡查项。"""
+    return user.role == "admin" or (assign == "fixed" and team_id is not None and team_id == user.team_id)
+
+
+def _require_manage(user: User, assign: str, team_id: int | None) -> None:
+    if not _may_manage(user, assign, team_id):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "leaders can only manage inspections fixed to their own team")
+
+
+def _out(db: Session, t: InspectionTemplate, user: User | None = None) -> InspectionOut:
     n = db.scalar(select(func.count()).select_from(InspectionRun).where(InspectionRun.template_id == t.id))
     return InspectionOut(
         id=t.id, name=t.name, content=t.content, lang=t.lang, enabled=t.enabled, kind=t.kind, at_time=t.at_time,
-        every_n=t.every_n, weekdays=t.weekdays or [], month_days=t.month_days or [], shift_kinds=t.shift_kinds or [],
+        every_n=t.every_n, weekdays=t.weekdays or [], month_days=t.month_days or [],
+        year_dates=t.year_dates or [], shift_kinds=t.shift_kinds or [],
         start_date=t.start_date, assign=t.assign, team_id=t.team_id, worker_ids=t.worker_ids or [],
-        next_run_at=t.next_run_at, last_run_at=t.last_run_at, runs=n, updated_at=t.updated_at)
+        next_run_at=t.next_run_at, last_run_at=t.last_run_at, runs=n, updated_at=t.updated_at,
+        can_edit=user is not None and _may_manage(user, t.assign, t.team_id))
 
 
 def _get(db: Session, iid: int) -> InspectionTemplate:
@@ -105,17 +137,18 @@ def _get(db: Session, iid: int) -> InspectionTemplate:
 
 
 @router.get("", response_model=list[InspectionOut])
-def list_inspections(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
-    return [_out(db, t) for t in db.scalars(select(InspectionTemplate).order_by(InspectionTemplate.id))]
+def list_inspections(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    return [_out(db, t, user) for t in db.scalars(select(InspectionTemplate).order_by(InspectionTemplate.id))]
 
 
 @router.post("/preview", response_model=list[Occurrence])
 def preview(body: InspectionIn, count: int = Query(default=5, le=20), db: Session = Depends(get_db),
-            _: User = Depends(require_admin)):
+            user: User = Depends(get_current_user)):
     """按表单里的设置（不保存）算出接下来几次的时间和派给谁。"""
     d = _validate(db, body)
+    _require_manage(user, d["assign"], d["team_id"])
     rule = Rule(kind=d["kind"], at_time=d["at_time"], every_n=d["every_n"], weekdays=d["weekdays"],
-                month_days=d["month_days"], shift_kinds=d["shift_kinds"], start_date=d["start_date"],
+                month_days=d["month_days"], year_dates=d.get("year_dates", []), shift_kinds=d["shift_kinds"], start_date=d["start_date"],
                 assign=d["assign"], team_id=d["team_id"])
     sched = load_schedule(db)
     out = []
@@ -126,8 +159,9 @@ def preview(body: InspectionIn, count: int = Query(default=5, le=20), db: Sessio
 
 
 @router.post("", response_model=InspectionOut, status_code=201)
-def create(body: InspectionIn, db: Session = Depends(get_db), admin: User = Depends(require_admin)):
+def create(body: InspectionIn, db: Session = Depends(get_db), admin: User = Depends(get_current_user)):
     d = _validate(db, body)
+    _require_manage(admin, d["assign"], d["team_id"])
     t = InspectionTemplate(**d, created_by=admin.id, updated_by=admin.id, created_at=utcnow(), updated_at=utcnow())
     db.add(t)
     db.flush()
@@ -135,23 +169,26 @@ def create(body: InspectionIn, db: Session = Depends(get_db), admin: User = Depe
     audit.log(db, user_id=admin.id, action="create", entity="inspection", entity_id=t.id,
               new=body.model_dump(mode="json"))
     db.commit()
-    return _out(db, t)
+    return _out(db, t, admin)
 
 
 @router.put("/{iid}", response_model=InspectionOut)
-def update(iid: int, body: InspectionIn, db: Session = Depends(get_db), admin: User = Depends(require_admin)):
+def update(iid: int, body: InspectionIn, db: Session = Depends(get_db), admin: User = Depends(get_current_user)):
     t = _get(db, iid)
+    _require_manage(admin, t.assign, t.team_id)
     d = _validate(db, body)
+    _require_manage(admin, d["assign"], d["team_id"])
     if audit.log_changes(db, t, d, user_id=admin.id, entity="inspection", entity_id=t.id):
         t.updated_by, t.updated_at = admin.id, utcnow()
     inspection_service.schedule_next(db, t)  # 改了规则就从现在起重新算
     db.commit()
-    return _out(db, t)
+    return _out(db, t, admin)
 
 
 @router.delete("/{iid}", status_code=204)
-def delete(iid: int, db: Session = Depends(get_db), admin: User = Depends(require_admin)):
+def delete(iid: int, db: Session = Depends(get_db), admin: User = Depends(get_current_user)):
     t = _get(db, iid)
+    _require_manage(admin, t.assign, t.team_id)
     if db.scalar(select(InspectionRun.id).where(InspectionRun.template_id == t.id).limit(1)):
         raise HTTPException(status.HTTP_409_CONFLICT, "already has runs; disable it instead")
     audit.log(db, user_id=admin.id, action="delete", entity="inspection", entity_id=t.id, old={"name": t.name})
@@ -160,9 +197,10 @@ def delete(iid: int, db: Session = Depends(get_db), admin: User = Depends(requir
 
 
 @router.post("/{iid}/run-now", response_model=RunOut)
-def run_now(iid: int, db: Session = Depends(get_db), admin: User = Depends(require_admin)):
+def run_now(iid: int, db: Session = Depends(get_db), admin: User = Depends(get_current_user)):
     """立即派发一次（不影响正常周期）。"""
     t = _get(db, iid)
+    _require_manage(admin, t.assign, t.team_id)
     # 手动派发用精确到微秒的时间，连点两次也不会和「同一次不能派两遍」的规则冲突
     run = inspection_service.create_task(db, t, inspection_service.to_local(utcnow()),
                                          run_status="manual", user_id=admin.id)

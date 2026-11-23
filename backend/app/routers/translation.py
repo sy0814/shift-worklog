@@ -21,15 +21,14 @@ from ..schemas import (
     TranslationStatus,
 )
 from ..security import get_current_user, require_admin
-from .tasks import _get_task, editable_team_ids, one_out
+from .tasks import _get_task, can_correct, editable_team_ids, one_out
 
 router = APIRouter(prefix="/api", tags=["translation"])
 
 
 def _can_correct(db: Session, task: Task, user: User) -> bool:
-    # 已移交 / 已废弃的任务也允许校对译文（只改译文，不改原文）；搭班的班组也可以
-    editable = editable_team_ids(db, user)
-    return editable is None or task.team_id in editable
+    # 已移交 / 已废弃的任务也允许校对译文（只改译文，不改原文）；搭班的班组也可以；已完成的只有管理员
+    return can_correct(task, editable_team_ids(db, user))
 
 
 @router.put("/tasks/{task_id}/translation", response_model=TaskOut)

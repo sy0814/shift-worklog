@@ -235,6 +235,12 @@
   - **任务归属班次**改为按录入班组算（`Schedule.recording_slot`）：在班 → 当前班；下班 2 小时内补录 → 刚结束的班；否则（提前安排）→ 它的下一个班
   - **操作记录**改成句子（「谁 做了什么 对象『名称』：字段 旧 → 新」，同一次操作的多个字段合成一条）；左边下拉选账号（带条数）、类型、日期；登录记录只在筛「账号」时显示，自动翻译只在筛「系统自动」时显示；`GET /api/audit` 返回 `{items,total}`，每条带 `user_name` 和对象名称 `label`
   - **部署修正**：`alembic.ini` 必须纯 ASCII（中文 Windows 按 GBK 读，测试会检查）；安装脚本和服务都设 `PYTHONUTF8=1`；Caddy 改从 GitHub Releases 下载（caddyserver.com 接口返回 401），失败时提示手动放 `C:\WorkRecord\tools\caddy.exe`
+- [x] 用户反馈第二轮修改（2026-11-23）
+  - **已完成的任务班长不能再改**（编辑、改状态 / 重新打开、图片、校对译文都不行，接口返回 403），只有管理员能改；未完成的照常改、照常移交，移交到下一班的新任务由接收班组改。`TaskOut.can_correct` 表示能否校对译文（已移交 / 已废弃的班长仍可校对）
+  - **首页「本班完成」**代替「最近 12 小时完成」：在班 → 本班次开始以来完成的；不在班 → 它上一个班完成的（标题显示「上个班完成（日期 班次）」）；`BoardOut.done_shift_date / done_shift_kind`
+  - **每年巡查**：`kind=yearly`，`year_dates` 为 "MM-DD" 列表（迁移 0005），02-29 在平年按 02-28；可每隔 N 年（≤10，从起算日期的年份算）
+  - **定期巡查开放给班长**：班长导航里有「定期巡查」；可新建 / 修改 / 停用 / 删除 / 立即派发「固定派给本班组」的巡查项，其他的只读（`InspectionOut.can_edit`）；管理员不变
+  - **首页切换班组时页面跳动**：原因是任务少的班组页面变短 → 滚动条消失 → 居中布局左右跳；以及批量移交栏时有时无 → 列表上下跳。已改为 `html { scrollbar-gutter: stable }`，批量移交栏一直占位（没有可选任务时变灰）
 - 工厂时区由 `APP_TIMEZONE` 配置，默认 `Europe/Belgrade`
 - 排班推算是纯函数，在 `backend/app/shifts.py`，测试在 `backend/tests/test_shifts.py`
 - 留痕：业务代码统一调用 `app/audit.py` 的 `log()` / `log_changes()`；数据库触发器禁止对 `audit_log` 做 UPDATE / DELETE（SQLite、PostgreSQL 都已验证）

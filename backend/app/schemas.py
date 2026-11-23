@@ -294,6 +294,7 @@ class TaskOut(BaseModel):
     workers: list[WorkerOut]  # 参与人员（不含带队人）
     attachments: list[AttachmentOut]
     can_edit: bool
+    can_correct: bool = False  # 能否校对译文
     # 移交 / 废弃 / 警示
     chain_started_at: UTCDateTime
     handover_count: int
@@ -326,7 +327,9 @@ class BoardOut(BaseModel):
     next_team_id: int | None  # 默认移交对象
     received: list[TaskOut]  # 别的班组移交过来、尚未完成
     todo: list[TaskOut]  # 本班组自己的未完成任务
-    done_recent: list[TaskOut]  # 最近 12 小时完成的
+    done_recent: list[TaskOut]  # 本班完成的（不在班时：它上一个班完成的）
+    done_shift_date: date  # done_recent 对应的班次
+    done_shift_kind: str
 
 
 # ---------------- 翻译 / 术语表 ----------------

@@ -32,7 +32,7 @@ const messages = {
     task: {
       new: '新建任务', edit: '编辑任务', content: '工作内容', contentPh: '可以用中文、塞语或英语填写', workers: '参与人员', team: '班组',
       start: '开始时间', end: '完成时间', leftover: '遗留问题', status: '状态', publisher: '发布人', updater: '最后修改',
-      recorded: '录入', shift: '班次', confirmedBy: '完成确认', start_action: '开始', done_action: '完成', reopen: '重新打开', undo_start: '改回未开始',
+      recorded: '录入', shift: '班次', confirmedBy: '完成确认', start_action: '开始', done_action: '完成', reopen: '重新打开', doneLocked: '已完成的任务只有管理员可以修改', undo_start: '改回未开始',
       history: '修改记录', original: '原文', pendingTr: '待翻译', search: '搜索内容', empty: '没有任务', allTeams: '全部班组',
       dateRange: '日期', noWorkers: '未选择', created: '已创建', confirmDone: '确认这项工作已完成？', loadMore: '加载更多',
     },
@@ -56,7 +56,7 @@ const messages = {
     },
     board: {
       title: '交接班', onDuty: '当前在班 · {shift}', next: '下一班 · {date} {shift}', prev: '上一班', nextTeam: '默认移交给',
-      received: '上一班移交过来', todo: '本班待办', doneRecent: '最近 12 小时完成', outRecent: '最近 12 小时移交出去', empty: '无',
+      received: '上一班移交过来', todo: '本班待办', doneRecent: '本班完成', doneLast: '上个班完成（{date} {shift}）', outRecent: '最近 12 小时移交出去', empty: '无',
     },
     overdue: {
       title: '未闭环警示', badge: '超时', hours: '{n} 小时', none: '没有超时未完成的任务', settings: '警示设置',
@@ -98,13 +98,14 @@ const messages = {
     },
     insp: {
       title: '定期巡查', add: '新建巡查项', name: '名称', content: '巡查内容（生成任务的工作内容）', enabled: '启用', kind: '周期',
-      kinds: { daily: '每天 / 每隔几天', weekly: '每周', monthly: '每月', shift: '按班次' },
+      kinds: { daily: '每天 / 每隔几天', weekly: '每周', monthly: '每月', yearly: '每年', shift: '按班次' },
+      yearDates: '哪几天', yearPick: '选日期（可多选）', everyYears: '每隔几年', yearHint: '选 2 月 29 日时，平年按 2 月 28 日', leaderHint: '班长只能管理固定派给本班组的巡查项', readonly: '只读',
       everyDays: '每隔几天', atTime: '时间', startDate: '起算日期', weekdays: '周几', monthDays: '几号', monthHint: '选 29~31 号时，没有这一天的月份按最后一天',
       shiftKinds: '哪种班', everyShifts: '每隔几个班', assign: '派给谁', onDuty: '到时间正在上班的班组', fixed: '固定班组',
       fixedHint: '该班组到时间在休息的话，派到它的下一个班次；按班次时只算这个班组自己上的班', team: '班组', workers: '预设参与人员（可不选）',
       preview: '接下来 5 次', nextRun: '下次', lastRun: '上次', runs: '已派发', runNow: '立即派发', history: '派发记录', dispatched: '已派发',
       wd: ['一', '二', '三', '四', '五', '六', '日'], st: { created: '已派发', manual: '手动派发', skipped: '停机错过（未派）', failed: '失败' },
-      sum: { daily: '每天 {t}', dailyN: '每 {n} 天 {t}', weekly: '每周{d} {t}', monthly: '每月 {d} 号 {t}', shift: '每个{k}开始时', shiftN: '每隔 {n} 个{k}', own: '（{team}自己的班）' },
+      sum: { daily: '每天 {t}', dailyN: '每 {n} 天 {t}', weekly: '每周{d} {t}', monthly: '每月 {d} 号 {t}', yearly: '每年 {d} {t}', yearlyN: '每 {n} 年 {d} {t}', shift: '每个{k}开始时', shiftN: '每隔 {n} 个{k}', own: '（{team}自己的班）' },
       noRule: '规则不完整，算不出时间', confirmDelete: '删除这个巡查项？', noDelete: '已经派发过的巡查项不能删除，请改为停用', tag: '巡查',
     },
     lead: { title: '带队人员', none: '未指定', members: '参与人员', pick: '选择带队人（可不选）' },
@@ -148,7 +149,7 @@ const messages = {
     task: {
       new: 'Novi zadatak', edit: 'Izmena zadatka', content: 'Opis posla', contentPh: 'Možete pisati na srpskom, kineskom ili engleskom', workers: 'Učesnici', team: 'Smena',
       start: 'Početak', end: 'Završetak', leftover: 'Preostali problemi', status: 'Status', publisher: 'Uneo', updater: 'Poslednja izmena',
-      recorded: 'Uneto', shift: 'Smena', confirmedBy: 'Potvrdio završetak', start_action: 'Započni', done_action: 'Završi', reopen: 'Ponovo otvori', undo_start: 'Vrati na nije započeto',
+      recorded: 'Uneto', shift: 'Smena', confirmedBy: 'Potvrdio završetak', start_action: 'Započni', done_action: 'Završi', reopen: 'Ponovo otvori', doneLocked: 'Završen zadatak može da menja samo administrator', undo_start: 'Vrati na nije započeto',
       history: 'Istorija izmena', original: 'Original', pendingTr: 'Čeka prevod', search: 'Pretraga', empty: 'Nema zadataka', allTeams: 'Sve smene',
       dateRange: 'Datum', noWorkers: 'Nije izabrano', created: 'Kreirano', confirmDone: 'Potvrditi da je posao završen?', loadMore: 'Učitaj još',
     },
@@ -172,7 +173,7 @@ const messages = {
     },
     board: {
       title: 'Primopredaja', onDuty: 'Sada na smeni · {shift}', next: 'Sledeća smena · {date} {shift}', prev: 'Prethodna smena', nextTeam: 'Podrazumevano predati',
-      received: 'Predato od prethodne smene', todo: 'Zadaci smene', doneRecent: 'Završeno u poslednjih 12 h', outRecent: 'Predato u poslednjih 12 h', empty: 'Nema',
+      received: 'Predato od prethodne smene', todo: 'Zadaci smene', doneRecent: 'Završeno u ovoj smeni', doneLast: 'Završeno u prethodnoj smeni ({date} {shift})', outRecent: 'Predato u poslednjih 12 h', empty: 'Nema',
     },
     overdue: {
       title: 'Nezatvoreni zadaci', badge: 'Kasni', hours: '{n} h', none: 'Nema zadataka koji kasne', settings: 'Podešavanje upozorenja',
@@ -214,13 +215,14 @@ const messages = {
     },
     insp: {
       title: 'Periodični obilasci', add: 'Novi obilazak', name: 'Naziv', content: 'Sadržaj (opis posla za zadatak)', enabled: 'Aktivno', kind: 'Učestalost',
-      kinds: { daily: 'Dnevno / na N dana', weekly: 'Nedeljno', monthly: 'Mesečno', shift: 'Po smenama' },
+      kinds: { daily: 'Dnevno / na N dana', weekly: 'Nedeljno', monthly: 'Mesečno', yearly: 'Godišnje', shift: 'Po smenama' },
+      yearDates: 'Datumi', yearPick: 'Izaberite datume (više)', everyYears: 'Na koliko godina', yearHint: '29. februar: u neprestupnim godinama 28. februar', leaderHint: 'Šef smene upravlja samo obilascima dodeljenim svojoj ekipi', readonly: 'Samo pregled',
       everyDays: 'Na koliko dana', atTime: 'Vreme', startDate: 'Od datuma', weekdays: 'Dani', monthDays: 'Datumi', monthHint: 'Za 29–31: u kraćim mesecima poslednji dan meseca',
       shiftKinds: 'Smene', everyShifts: 'Svaka N-ta smena', assign: 'Kome', onDuty: 'Ekipi koja je tada na smeni', fixed: 'Određenoj ekipi',
       fixedHint: 'Ako ekipa tada ne radi, zadatak ide u njenu sledeću smenu; kod smena se broje samo smene te ekipe', team: 'Ekipa', workers: 'Unapred izabrani radnici (opciono)',
       preview: 'Sledećih 5 puta', nextRun: 'Sledeće', lastRun: 'Poslednje', runs: 'Poslato', runNow: 'Pošalji sada', history: 'Istorija', dispatched: 'Poslato',
       wd: ['pon', 'uto', 'sre', 'čet', 'pet', 'sub', 'ned'], st: { created: 'Poslato', manual: 'Ručno', skipped: 'Propušteno (server isključen)', failed: 'Greška' },
-      sum: { daily: 'Svaki dan u {t}', dailyN: 'Na {n} dana u {t}', weekly: 'Svake nedelje ({d}) u {t}', monthly: 'Mesečno ({d}.) u {t}', shift: 'Na početku svake smene: {k}', shiftN: 'Svaka {n}. smena: {k}', own: ' ({team})' },
+      sum: { daily: 'Svaki dan u {t}', dailyN: 'Na {n} dana u {t}', weekly: 'Svake nedelje ({d}) u {t}', monthly: 'Mesečno ({d}.) u {t}', yearly: 'Godišnje ({d}) u {t}', yearlyN: 'Na {n} godine ({d}) u {t}', shift: 'Na početku svake smene: {k}', shiftN: 'Svaka {n}. smena: {k}', own: ' ({team})' },
       noRule: 'Pravilo nije potpuno', confirmDelete: 'Obrisati ovaj obilazak?', noDelete: 'Već je slat – isključite ga umesto brisanja', tag: 'Obilazak',
     },
     lead: { title: 'Vođa ekipe', none: 'Nije određen', members: 'Učesnici', pick: 'Izaberite vođu (opciono)' },
@@ -264,7 +266,7 @@ const messages = {
     task: {
       new: 'New task', edit: 'Edit task', content: 'Work', contentPh: 'Chinese, Serbian or English', workers: 'Workers', team: 'Team',
       start: 'Start', end: 'Finish', leftover: 'Open issues', status: 'Status', publisher: 'Posted by', updater: 'Last edited',
-      recorded: 'Recorded', shift: 'Shift', confirmedBy: 'Confirmed by', start_action: 'Start', done_action: 'Done', reopen: 'Reopen', undo_start: 'Back to not started',
+      recorded: 'Recorded', shift: 'Shift', confirmedBy: 'Confirmed by', start_action: 'Start', done_action: 'Done', reopen: 'Reopen', doneLocked: 'Only an administrator can change a completed task', undo_start: 'Back to not started',
       history: 'History', original: 'Original', pendingTr: 'Awaiting translation', search: 'Search', empty: 'No tasks', allTeams: 'All teams',
       dateRange: 'Date', noWorkers: 'None', created: 'Created', confirmDone: 'Confirm this work is done?', loadMore: 'Load more',
     },
@@ -288,7 +290,7 @@ const messages = {
     },
     board: {
       title: 'Handover', onDuty: 'On shift · {shift}', next: 'Next shift · {date} {shift}', prev: 'Previous shift', nextTeam: 'Hands over to',
-      received: 'Received from previous shift', todo: 'Team to-do', doneRecent: 'Done in last 12 h', outRecent: 'Handed over in last 12 h', empty: 'None',
+      received: 'Received from previous shift', todo: 'Team to-do', doneRecent: 'Done this shift', doneLast: 'Done in last shift ({date} {shift})', outRecent: 'Handed over in last 12 h', empty: 'None',
     },
     overdue: {
       title: 'Overdue', badge: 'Overdue', hours: '{n} h', none: 'Nothing overdue', settings: 'Alert settings',
@@ -330,13 +332,14 @@ const messages = {
     },
     insp: {
       title: 'Scheduled inspections', add: 'New inspection', name: 'Name', content: 'Content (work text of the generated task)', enabled: 'Enabled', kind: 'Schedule',
-      kinds: { daily: 'Daily / every N days', weekly: 'Weekly', monthly: 'Monthly', shift: 'By shift' },
+      kinds: { daily: 'Daily / every N days', weekly: 'Weekly', monthly: 'Monthly', yearly: 'Yearly', shift: 'By shift' },
+      yearDates: 'Dates', yearPick: 'Pick dates (multiple)', everyYears: 'Every N years', yearHint: 'Feb 29: Feb 28 in non-leap years', leaderHint: 'Leaders can only manage inspections fixed to their own team', readonly: 'Read only',
       everyDays: 'Every N days', atTime: 'Time', startDate: 'Starting', weekdays: 'Weekdays', monthDays: 'Days of month', monthHint: '29–31: shorter months use their last day',
       shiftKinds: 'Shifts', everyShifts: 'Every N-th shift', assign: 'Assign to', onDuty: 'The team on shift at that time', fixed: 'A fixed team',
       fixedHint: 'If the team is off at that time, the task goes to its next shift; by shift counts only that team\'s own shifts', team: 'Team', workers: 'Preset workers (optional)',
       preview: 'Next 5 times', nextRun: 'Next', lastRun: 'Last', runs: 'Dispatched', runNow: 'Dispatch now', history: 'History', dispatched: 'Dispatched',
       wd: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], st: { created: 'Dispatched', manual: 'Manual', skipped: 'Missed (server down)', failed: 'Failed' },
-      sum: { daily: 'Daily at {t}', dailyN: 'Every {n} days at {t}', weekly: 'Weekly ({d}) at {t}', monthly: 'Monthly ({d}) at {t}', shift: 'At the start of every {k} shift', shiftN: 'Every {n}th {k} shift', own: ' ({team})' },
+      sum: { daily: 'Daily at {t}', dailyN: 'Every {n} days at {t}', weekly: 'Weekly ({d}) at {t}', monthly: 'Monthly ({d}) at {t}', yearly: 'Yearly ({d}) at {t}', yearlyN: 'Every {n} years ({d}) at {t}', shift: 'At the start of every {k} shift', shiftN: 'Every {n}th {k} shift', own: ' ({team})' },
       noRule: 'Rule incomplete', confirmDelete: 'Delete this inspection?', noDelete: 'Already dispatched – disable it instead', tag: 'Inspection',
     },
     lead: { title: 'Lead', none: 'Not set', members: 'Workers', pick: 'Choose a lead (optional)' },

@@ -94,7 +94,7 @@ def test_batch_handover(client, leader_h, teams):
     # 其中一条不能移交 → 整批都不移交
     c, d = new_task(client, leader_h), new_task(client, leader_h, status="done")
     r = client.post("/api/handover", headers=leader_h, json={"task_ids": [c["id"], d["id"]], "to_team_id": teams["T4"]})
-    assert r.status_code == 409
+    assert r.status_code == 403  # 已完成的任务班长不能再动
     assert client.get(f"/api/tasks/{c['id']}", headers=leader_h).json()["status"] == "not_started"
 
 

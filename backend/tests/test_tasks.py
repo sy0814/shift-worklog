@@ -137,18 +137,26 @@ def test_update_content_and_workers_audited(client, leader_h, workers):
     assert len(client.get(f"/api/tasks/{t['id']}/history", headers=leader_h).json()) == len(hist)
 
 
-def test_status_flow(client, leader_h):
+def test_status_flow(client, leader_h, admin_h):
     t = new_task(client, leader_h)
-    s = lambda st: client.post(f"/api/tasks/{t['id']}/status", headers=leader_h, json={"status": st})
+    s = lambda st, h=leader_h: client.post(f"/api/tasks/{t['id']}/status", headers=h, json={"status": st})
     r = s("in_progress").json()
     assert r["status"] == "in_progress" and r["start_at"]
     r = s("done").json()
     assert r["status"] == "done" and r["end_at"] and r["confirmed_by_name"] == "t1_leader1"
-    assert s("not_started").status_code == 409  # done 只能重新打开为 in_progress
-    r = s("in_progress").json()
+    assert r["can_edit"] is False and r["can_correct"] is False  # 完成后班长不能再改
+    assert s("in_progress").status_code == 403
+    assert client.patch(f"/api/tasks/{t['id']}", headers=leader_h, json={"content": "x"}).status_code == 403
+    assert client.put(f"/api/tasks/{t['id']}/translation", headers=leader_h,
+                      json={"field": "content", "lang": "en", "text": "x"}).status_code == 403
+    assert client.get(f"/api/tasks/{t['id']}", headers=admin_h).json()["can_edit"] is True
+    assert s("not_started", admin_h).status_code == 409  # done 只能重新打开为 in_progress
+    r = s("in_progress", admin_h).json()  # 只有管理员能重新打开
     assert r["end_at"] is None and r["confirmed_by"] is None
     hist = client.get(f"/api/tasks/{t['id']}/history", headers=leader_h).json()
     assert [h["new_value"] for h in hist if h["field"] == "status"] == ["in_progress", "done", "in_progress"]
+    assert r["can_edit"] is True  # 重新打开后班长又能改了
+    assert client.patch(f"/api/tasks/{t['id']}", headers=leader_h, json={"content": "y"}).status_code == 200
 
 
 def test_create_done_directly(client, leader_h):

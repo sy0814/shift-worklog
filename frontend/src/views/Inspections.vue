@@ -1,5 +1,6 @@
 <script setup>
-// 定期巡查（管理员）：巡查项列表、编辑（带「接下来 5 次」实时预览）、立即派发、派发记录
+// 定期巡查：巡查项列表、编辑（带「接下来 5 次」实时预览）、立即派发、派发记录
+// 管理员管理全部；班长只能管理「固定派给本班组」的巡查项，其他的只读
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -33,9 +34,20 @@ function summary(r) {
   if (r.kind === 'daily') s = r.every_n > 1 ? t('insp.sum.dailyN', { n: r.every_n, t: tt }) : t('insp.sum.daily', { t: tt })
   else if (r.kind === 'weekly') s = t('insp.sum.weekly', { d: r.weekdays.map((d) => tm('insp.wd')[d]).join('、'), t: tt })
   else if (r.kind === 'monthly') s = t('insp.sum.monthly', { d: r.month_days.join('、'), t: tt })
+  else if (r.kind === 'yearly') {
+    const d = r.year_dates.map(ymd).join('、')
+    s = r.every_n > 1 ? t('insp.sum.yearlyN', { n: r.every_n, d, t: tt }) : t('insp.sum.yearly', { d, t: tt })
+  }
   else s = r.every_n > 1 ? t('insp.sum.shiftN', { n: r.every_n, k }) : t('insp.sum.shift', { k })
   if (r.kind === 'shift' && r.assign === 'fixed') s += t('insp.sum.own', { team: teamName(r.team_id) })
   return s
+}
+// "MM-DD" → 按界面语言显示：3月15日 / 15.3. / Mar 15
+function ymd(v) {
+  const [m, d] = v.split('-').map(Number)
+  if (locale.value === 'zh') return `${m}月${d}日`
+  if (locale.value === 'sr') return `${d}.${m}.`
+  return dayjs(new Date(2024, m - 1, d)).format('MMM D')
 }
 const who = (r) => (r.assign === 'fixed' ? teamName(r.team_id) : t('insp.onDuty'))
 
@@ -51,13 +63,14 @@ const editing = ref(null)
 const form = reactive({})
 const blank = () => ({
   name: '', content: '', lang: locale.value, enabled: true, kind: 'daily', at_time: '08:00', every_n: 1,
-  weekdays: [], month_days: [], shift_kinds: [], start_date: dayjs().format('YYYY-MM-DD'),
-  assign: 'on_duty', team_id: null, worker_ids: [],
+  weekdays: [], month_days: [], year_dates: [], shift_kinds: [], start_date: dayjs().format('YYYY-MM-DD'),
+  ...(auth.isAdmin ? { assign: 'on_duty', team_id: null } : { assign: 'fixed', team_id: auth.user.team_id }), worker_ids: [],
 })
 function payloadOf(r) {
   const p = {}
   for (const k of Object.keys(blank())) p[k] = r[k]
   p.at_time = hhmm(r.at_time)
+  p.year_dates = [...(r.year_dates || [])]
   return p
 }
 function openEdit(r) {
@@ -65,6 +78,15 @@ function openEdit(r) {
   Object.assign(form, r ? payloadOf(r) : blank())
   preview.value = []
   dlg.value = true
+}
+// 每年：选月、日，加到列表里
+const ym = ref(1)
+const yd = ref(1)
+const daysIn = (m) => new Date(2024, m, 0).getDate() // 2024 是闰年，2 月可选 29 日
+watch(ym, (m) => { if (yd.value > daysIn(m)) yd.value = daysIn(m) })
+function addYearDate() {
+  const v = `${String(ym.value).padStart(2, '0')}-${String(yd.value).padStart(2, '0')}`
+  if (!form.year_dates.includes(v)) form.year_dates = [...form.year_dates, v].sort()
 }
 const teamWorkers = computed(() => workers.value.filter((w) => w.team_id === form.team_id))
 watch(() => form.team_id, (v, old) => { if (old !== undefined && v !== old) form.worker_ids = [] })
@@ -124,12 +146,13 @@ const runType = { created: 'success', manual: 'primary', skipped: 'info', failed
   <div class="page">
     <div class="toolbar">
       <h1 class="page-title" style="margin: 0; flex: 1">{{ t('insp.title') }}</h1>
-      <el-button type="primary" @click="openEdit(null)">{{ t('insp.add') }}</el-button>
+      <el-button v-if="auth.isAdmin || auth.user?.team_id" type="primary" @click="openEdit(null)">{{ t('insp.add') }}</el-button>
     </div>
+    <div v-if="!auth.isAdmin" class="muted small hint">{{ t('insp.leaderHint') }}</div>
 
     <el-table :data="rows" size="small" border>
       <el-table-column :label="t('insp.enabled')" width="70" align="center">
-        <template #default="{ row }"><el-switch :model-value="row.enabled" size="small" @change="(v) => toggle(row, v)" /></template>
+        <template #default="{ row }"><el-switch :model-value="row.enabled" size="small" :disabled="!row.can_edit" @change="(v) => toggle(row, v)" /></template>
       </el-table-column>
       <el-table-column prop="name" :label="t('insp.name')" min-width="140" />
       <el-table-column :label="t('insp.kind')" min-width="200"><template #default="{ row }">{{ summary(row) }}</template></el-table-column>
@@ -139,10 +162,12 @@ const runType = { created: 'success', manual: 'primary', skipped: 'info', failed
       <el-table-column prop="runs" :label="t('insp.runs')" width="80" align="center" />
       <el-table-column :label="t('common.actions')" width="230" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openEdit(row)">{{ t('common.edit') }}</el-button>
-          <el-button link type="success" @click="runNow(row)">{{ t('insp.runNow') }}</el-button>
+          <template v-if="row.can_edit">
+            <el-button link type="primary" @click="openEdit(row)">{{ t('common.edit') }}</el-button>
+            <el-button link type="success" @click="runNow(row)">{{ t('insp.runNow') }}</el-button>
+          </template>
           <el-button link @click="openHistory(row)">{{ t('insp.history') }}</el-button>
-          <el-button link type="danger" @click="remove(row)">{{ t('common.delete') }}</el-button>
+          <el-button v-if="row.can_edit" link type="danger" @click="remove(row)">{{ t('common.delete') }}</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -156,7 +181,7 @@ const runType = { created: 'success', manual: 'primary', skipped: 'info', failed
           </el-form-item>
           <el-form-item :label="t('insp.kind')">
             <el-radio-group v-model="form.kind">
-              <el-radio-button v-for="k in ['daily', 'weekly', 'monthly', 'shift']" :key="k" :value="k">{{ t(`insp.kinds.${k}`) }}</el-radio-button>
+              <el-radio-button v-for="k in ['daily', 'weekly', 'monthly', 'yearly', 'shift']" :key="k" :value="k">{{ t(`insp.kinds.${k}`) }}</el-radio-button>
             </el-radio-group>
           </el-form-item>
 
@@ -175,6 +200,25 @@ const runType = { created: 'success', manual: 'primary', skipped: 'info', failed
               <div class="muted small">{{ t('insp.monthHint') }}</div>
             </el-form-item>
           </template>
+          <template v-if="form.kind === 'yearly'">
+            <el-form-item :label="t('insp.yearDates')">
+              <div class="ypick">
+                <el-select v-model="ym" style="width: 90px">
+                  <el-option v-for="m in 12" :key="m" :label="locale === 'en' ? dayjs(new Date(2024, m - 1, 1)).format('MMM') : m" :value="m" />
+                </el-select>
+                <el-select v-model="yd" style="width: 80px">
+                  <el-option v-for="d in daysIn(ym)" :key="d" :label="d" :value="d" />
+                </el-select>
+                <el-button @click="addYearDate">+</el-button>
+              </div>
+              <div class="ytags">
+                <el-tag v-for="v in form.year_dates" :key="v" closable @close="form.year_dates = form.year_dates.filter((x) => x !== v)">{{ ymd(v) }}</el-tag>
+                <span v-if="!form.year_dates.length" class="muted small">{{ t('insp.yearPick') }}</span>
+              </div>
+              <div class="muted small">{{ t('insp.yearHint') }}</div>
+            </el-form-item>
+            <el-form-item :label="t('insp.everyYears')"><el-input-number v-model="form.every_n" :min="1" :max="10" /></el-form-item>
+          </template>
           <template v-if="form.kind === 'shift'">
             <el-form-item :label="t('insp.shiftKinds')">
               <el-checkbox-group v-model="form.shift_kinds">
@@ -187,19 +231,19 @@ const runType = { created: 'success', manual: 'primary', skipped: 'info', failed
           <el-form-item v-if="form.kind !== 'shift'" :label="t('insp.atTime')">
             <el-time-select v-model="form.at_time" start="00:00" step="00:15" end="23:45" :clearable="false" style="width: 130px" />
           </el-form-item>
-          <el-form-item v-if="form.kind === 'daily' || form.kind === 'shift'" :label="t('insp.startDate')">
+          <el-form-item v-if="['daily', 'shift', 'yearly'].includes(form.kind)" :label="t('insp.startDate')">
             <el-date-picker v-model="form.start_date" value-format="YYYY-MM-DD" :clearable="false" style="width: 160px" />
           </el-form-item>
 
           <el-form-item :label="t('insp.assign')">
-            <el-radio-group v-model="form.assign">
+            <el-radio-group v-model="form.assign" :disabled="!auth.isAdmin">
               <el-radio value="on_duty">{{ t('insp.onDuty') }}</el-radio>
               <el-radio value="fixed">{{ t('insp.fixed') }}</el-radio>
             </el-radio-group>
           </el-form-item>
           <template v-if="form.assign === 'fixed'">
             <el-form-item :label="t('insp.team')">
-              <el-select v-model="form.team_id" style="width: 160px">
+              <el-select v-model="form.team_id" :disabled="!auth.isAdmin" style="width: 160px">
                 <el-option v-for="tm2 in auth.teams" :key="tm2.id" :label="localName(tm2)" :value="tm2.id" />
               </el-select>
               <div class="muted small">{{ t('insp.fixedHint') }}</div>
@@ -217,7 +261,7 @@ const runType = { created: 'success', manual: 'primary', skipped: 'info', failed
           <h4>{{ t('insp.preview') }}</h4>
           <div v-if="previewErr" class="muted small">{{ previewErr }}</div>
           <div v-for="(o, i) in preview" :key="i" class="pvrow">
-            <div><b>{{ o.at.slice(5, 16).replace('T', ' ') }}</b> <span class="muted small">{{ tm('insp.wd')[(dayjs(o.at).day() + 6) % 7] }}</span></div>
+            <div><b>{{ o.at.slice(form.kind === 'yearly' ? 0 : 5, 16).replace('T', ' ') }}</b> <span class="muted small">{{ tm('insp.wd')[(dayjs(o.at).day() + 6) % 7] }}</span></div>
             <div class="small">{{ teamName(o.team_id) || '—' }} · <ShiftTag :kind="o.shift_kind" /> <span class="muted">{{ o.shift_date.slice(5) }}</span></div>
           </div>
         </aside>
@@ -250,6 +294,9 @@ const runType = { created: 'success', manual: 'primary', skipped: 'info', failed
 .pvrow { padding: 6px 0; border-bottom: 1px solid #ebeef5; }
 .muted { color: #909399; }
 .small { font-size: 12px; }
+.hint { margin: -4px 0 10px; }
+.ypick { display: flex; gap: 6px; }
+.ytags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; width: 100%; }
 .run { padding: 8px 0; border-bottom: 1px solid #f2f3f5; }
 .f :deep(.el-checkbox-button__inner) { padding: 6px 10px; }
 </style>

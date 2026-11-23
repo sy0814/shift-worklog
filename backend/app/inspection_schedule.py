@@ -6,6 +6,7 @@
   daily    每隔 every_n 天（从 start_date 起算），在 at_time 触发
   weekly   每周 weekdays（0=周一 … 6=周日）的 at_time
   monthly  每月 month_days（1~31；超过当月天数按当月最后一天）的 at_time
+  yearly   每年 year_dates（"MM-DD"；02-29 在平年按 02-28）的 at_time，每隔 every_n 年（从 start_date 的年份起算）
   shift    在班次开始时触发：shift_kinds 里的班次，每隔 every_n 个（从 start_date 起数）
            —— 派给固定班组时，只数这个班组自己上的班；派给在班班组时，数全厂的这些班次
 
@@ -21,6 +22,7 @@ from datetime import date, datetime, time, timedelta
 from .shifts import ORDER, Schedule, TeamInfo
 
 MAX_SEARCH_DAYS = 800
+MAX_SEARCH_DAYS_YEARLY = 366 * 10 + 3  # 每隔 N 年（最多 10 年）也能找到
 
 
 @dataclass
@@ -30,6 +32,7 @@ class Rule:
     every_n: int = 1
     weekdays: list[int] = field(default_factory=list)
     month_days: list[int] = field(default_factory=list)
+    year_dates: list[str] = field(default_factory=list)  # "MM-DD"
     shift_kinds: list[str] = field(default_factory=list)
     start_date: date = date(2026, 1, 1)
     assign: str = "on_duty"  # on_duty / fixed
@@ -70,7 +73,7 @@ def next_occurrence(rule: Rule, after: datetime, sched: Schedule) -> datetime | 
         return None
 
     d = max(after.date(), rule.start_date)
-    for _ in range(MAX_SEARCH_DAYS):
+    for _ in range(MAX_SEARCH_DAYS_YEARLY if rule.kind == "yearly" else MAX_SEARCH_DAYS):
         cand = datetime.combine(d, rule.at_time)
         if cand > after and _matches_day(rule, d):
             return cand
@@ -88,7 +91,20 @@ def _matches_day(rule: Rule, d: date) -> bool:
     if rule.kind == "monthly":
         last = calendar.monthrange(d.year, d.month)[1]
         return any(min(md, last) == d.day for md in rule.month_days)
+    if rule.kind == "yearly":
+        if rule.every_n < 1 or (d.year - rule.start_date.year) % rule.every_n:
+            return False
+        return any(_year_date(md, d.year) == d for md in rule.year_dates)
     return False
+
+
+def _year_date(mmdd: str, year: int) -> date | None:
+    """"MM-DD" 在某一年对应的日期；02-29 在平年按 02-28。"""
+    try:
+        m, dd = (int(x) for x in mmdd.split("-"))
+        return date(year, m, min(dd, calendar.monthrange(year, m)[1]))
+    except (ValueError, TypeError):
+        return None
 
 
 def upcoming(rule: Rule, after: datetime, sched: Schedule, count: int = 5) -> list[datetime]:

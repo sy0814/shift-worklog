@@ -149,3 +149,17 @@ def test_avatar(client, admin_h, teams):
     assert client.delete(f"/api/workers/{w['id']}/avatar", headers=admin_h).json()["avatar_url"] is None
     assert client.post(f"/api/workers/{w['id']}/avatar", headers=admin_h,
                        files={"file": ("x.jpg", b"nope", "image/jpeg")}).status_code == 400
+
+
+def test_board_done_this_shift(client, admin_h):
+    """本班完成：在班的班组 = 本班次开始以来完成的；不在班 = 它上一个班完成的。"""
+    b = client.get("/api/board", headers=admin_h).json()  # 管理员默认看在班班组
+    assert b["on_duty"] and (b["done_shift_date"], b["done_shift_kind"]) == (b["shift_date"], b["shift_kind"])
+    t = new_task(client, admin_h, content="Done now", status="done", team_id=b["team_id"])
+    b = client.get("/api/board", headers=admin_h).json()
+    assert t["id"] in [x["id"] for x in b["done_recent"]]
+    for tid in {x["id"] for x in client.get("/api/teams", headers=admin_h).json()}:
+        bo = client.get("/api/board", headers=admin_h, params={"team_id": tid}).json()
+        if not bo["on_duty"]:  # 不在班：显示的是更早的班次，不含刚完成的任务
+            assert bo["done_shift_date"] <= b["shift_date"]
+            assert t["id"] not in [x["id"] for x in bo["done_recent"]]

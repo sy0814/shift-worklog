@@ -6,13 +6,12 @@ source_task_id 指回原任务；内容、译文、图片带过去，参与人�
 """
 
 import uuid
-from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from .. import app_settings, audit, translation_service
+from .. import app_settings, audit, inspection_service, translation_service
 from ..db import get_db
 from ..models import Attachment, AppSetting, Task, TaskHandover, Team, User, utcnow
 from ..schedule_service import load_schedule, local_now
@@ -164,7 +163,7 @@ def board_teams(sched, team, today) -> list:
 
 @router.get("/board", response_model=BoardOut)
 def board(team_id: int | None = None, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    """首页交接班：上一班移交过来的、本班待办、最近 12 小时完成。
+    """首页交接班：上一班移交过来的、本班待办、本班完成（不在班时显示它上一个班完成的）。
 
     不指定班组时：管理员看当前在班的倒班班组，班长看本班组。
     常白班上班的日子，常白班和当天白班的倒班班组合并显示（两边班长都能操作）。
@@ -191,9 +190,18 @@ def board(team_id: int | None = None, db: Session = Depends(get_db), user: User 
     opts = [selectinload(Task.workers), selectinload(Task.attachments), selectinload(Task.lead)]
     open_tasks = db.scalars(select(Task).options(*opts).where(Task.team_id.in_(ids), Task.status.in_(OPEN))
                             .order_by(Task.chain_started_at)).all()
-    since = utcnow() - timedelta(hours=12)
+    # 本班完成：在班 → 这个班次开始以来；不在班 → 它最近一个已经上过的班次
+    dd, dk = d, k
+    if not on_duty:
+        dd, dk = sched.prev_shift(d, k)
+        for _ in range(30 * 3):
+            if any(sched.is_on(t, dd, dk) for t in group):
+                break
+            dd, dk = sched.prev_shift(dd, dk)
+    w0, w1 = sched.shift_window(dd, dk)
     done = db.scalars(select(Task).options(*opts).where(
-        Task.team_id.in_(ids), Task.status == "done", Task.confirmed_at >= since)
+        Task.team_id.in_(ids), Task.status == "done",
+        Task.confirmed_at >= inspection_service.to_utc(w0), Task.confirmed_at < inspection_service.to_utc(w1))
         .order_by(Task.confirmed_at.desc())).all()
 
     all_out = tasks_out(db, [*open_tasks, *done], user)
@@ -205,7 +213,7 @@ def board(team_id: int | None = None, db: Session = Depends(get_db), user: User 
         prev_team_ids=prev_ids, next_team_id=nxt.id if nxt else None,
         received=sorted([t for t in open_out if t.handover_in and t.handover_in.team_id not in ids], key=key),
         todo=sorted([t for t in open_out if not (t.handover_in and t.handover_in.team_id not in ids)], key=key),
-        done_recent=[by_id[t.id] for t in done],
+        done_recent=[by_id[t.id] for t in done], done_shift_date=dd, done_shift_kind=dk,
     )
 
 

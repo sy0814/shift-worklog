@@ -210,10 +210,11 @@ function histText(h) {
       <div class="trbar small">
         <span v-if="task.translation_status === 'pending'" class="muted"><el-icon class="is-loading"><Loading /></el-icon> {{ t('tr.translating') }}</span>
         <span v-if="task.translation_status === 'failed'" class="err">{{ t('tr.failed') }}<template v-if="task.translation_error">: {{ task.translation_error }}</template></span>
-        <el-button v-if="task.can_edit || auth.isAdmin || task.team_id === auth.user?.team_id" link type="primary" size="small" @click="trOpen = true">{{ t('tr.correct') }}</el-button>
-        <el-button v-if="task.translation_status !== 'done' && (auth.isAdmin || task.team_id === auth.user?.team_id)" link type="primary" size="small" :loading="retranslating" @click="retranslate">{{ t('tr.retry') }}</el-button>
+        <el-button v-if="task.can_correct" link type="primary" size="small" @click="trOpen = true">{{ t('tr.correct') }}</el-button>
+        <el-button v-if="task.translation_status !== 'done' && task.can_correct" link type="primary" size="small" :loading="retranslating" @click="retranslate">{{ t('tr.retry') }}</el-button>
       </div>
 
+      <div v-if="task.status === 'done' && !task.can_edit && !auth.isAdmin" class="muted small mt">🔒 {{ t('task.doneLocked') }}</div>
       <div v-if="task.can_edit" class="actions">
         <el-button v-if="task.status === 'not_started'" type="warning" :loading="busy" @click="setStatus('in_progress')">{{ t('task.start_action') }}</el-button>
         <el-button v-if="['not_started', 'in_progress'].includes(task.status)" type="success" :loading="busy" @click="setStatus('done')">{{ t('task.done_action') }}</el-button>

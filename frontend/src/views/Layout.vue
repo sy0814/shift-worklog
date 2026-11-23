@@ -29,6 +29,7 @@ const main = computed(() => [
   { name: 'tasks', label: t('nav2.tasks'), icon: Document },
   { name: 'attendance', label: t('att.title'), icon: Calendar },
   { name: 'schedule', label: t('nav.schedule'), icon: Clock },
+  ...(auth.isAdmin ? [] : [{ name: 'inspections', label: t('insp.title') }]), // 管理员的在「管理」里
 ])
 const admin = computed(() => auth.isAdmin ? [
   { name: 'workers', label: t('nav2.workers') }, { name: 'glossary', label: t('nav2.glossary') },
