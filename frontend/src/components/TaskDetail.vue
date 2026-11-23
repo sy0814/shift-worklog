@@ -149,7 +149,7 @@ function parse(v) {
 function fieldLabel(f) {
   const m = /^(content|leftover|discard_reason)_(zh|sr|en)$/.exec(f)
   if (m) return `${t('tr.fields.' + m[1])} (${m[2]})`
-  return { start_at: t('task.start'), end_at: t('task.end'), workers: t('task.workers') }[f] || f
+  return { start_at: t('task.start'), end_at: t('task.end'), workers: t('lead.members'), lead_worker: t('lead.title') }[f] || f
 }
 function fmtVal(f, v) {
   v = parse(v)
@@ -227,7 +227,11 @@ function histText(h) {
       </div>
 
       <el-descriptions :column="1" border size="small" class="meta">
-        <el-descriptions-item :label="t('task.workers')">
+        <el-descriptions-item :label="t('lead.title')">
+          <el-tag v-if="task.lead" size="small" type="warning" class="wtag">★ {{ task.lead.name }}</el-tag>
+          <span v-else class="muted">{{ t('lead.none') }}</span>
+        </el-descriptions-item>
+        <el-descriptions-item :label="t('lead.members')">
           <el-tag v-for="w in task.workers" :key="w.id" size="small" class="wtag">{{ w.name }}</el-tag>
           <span v-if="!task.workers.length" class="muted">{{ t('task.noWorkers') }}</span>
         </el-descriptions-item>

@@ -1,7 +1,7 @@
 from datetime import date, datetime, time, timezone
 from typing import Annotated, Literal
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
 
 
 def _utc(d: datetime) -> datetime:
@@ -138,6 +138,18 @@ class WorkerOut(ORM):
     employee_no: str | None
     team_id: int | None
     is_active: bool
+    avatar_url: str | None = None  # 没有头像时为空，前端显示名字
+
+    @model_validator(mode="before")
+    @classmethod
+    def _from_orm_with_avatar(cls, v):
+        if hasattr(v, "avatar_path"):  # 数据库对象：头像路径 → 带签名的地址
+            from .security import avatar_url
+
+            return {"id": v.id, "name": v.name, "employee_no": v.employee_no, "team_id": v.team_id,
+                    "is_active": v.is_active,
+                    "avatar_url": avatar_url(v.id, v.avatar_path) if v.avatar_path else None}
+        return v
 
 
 class WorkerCreate(BaseModel):
@@ -175,6 +187,7 @@ class TaskCreate(BaseModel):
     lang: Lang
     team_id: int | None = None  # 班长忽略此字段，固定为本班组；管理员必填
     worker_ids: list[int] = Field(default_factory=list, max_length=200)
+    lead_worker_id: int | None = None  # 带队人员（可不填）
     status: Literal["not_started", "in_progress", "done"] = "not_started"
     start_at: datetime | None = None
     end_at: datetime | None = None
@@ -188,6 +201,7 @@ class TaskUpdate(BaseModel):
     lang: Lang | None = None  # 修改后的内容文字是哪种语言（默认用户界面语言）
     leftover_lang: Lang | None = None  # 遗留问题文字的语言（默认同 lang）
     worker_ids: list[int] | None = Field(default=None, max_length=200)
+    lead_worker_id: int | None = None  # 传了就改（null = 去掉带队人），不传不改
     start_at: datetime | None = None
     end_at: datetime | None = None
     # 原文改了以后：True 重新翻译（覆盖人工校对的译文）；False 保留现有译文
@@ -276,7 +290,8 @@ class TaskOut(BaseModel):
     recorded_at: UTCDateTime
     created_at: UTCDateTime
     updated_at: UTCDateTime
-    workers: list[WorkerOut]
+    lead: WorkerOut | None = None  # 带队人员
+    workers: list[WorkerOut]  # 参与人员（不含带队人）
     attachments: list[AttachmentOut]
     can_edit: bool
     # 移交 / 废弃 / 警示
@@ -302,7 +317,8 @@ class HistoryOut(AuditOut):
 
 
 class BoardOut(BaseModel):
-    team_id: int
+    team_id: int  # 主班组（合并时是倒班班组）
+    team_ids: list[int]  # 本块包含的班组（常白班合并时有两个）
     shift_date: date  # 本班组当前（或下一个）班次
     shift_kind: str
     on_duty: bool
@@ -311,7 +327,6 @@ class BoardOut(BaseModel):
     received: list[TaskOut]  # 别的班组移交过来、尚未完成
     todo: list[TaskOut]  # 本班组自己的未完成任务
     done_recent: list[TaskOut]  # 最近 12 小时完成的
-    handed_out_recent: list[TaskOut]  # 最近 12 小时移交出去的
 
 
 # ---------------- 翻译 / 术语表 ----------------

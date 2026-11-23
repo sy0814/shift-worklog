@@ -146,3 +146,9 @@ def test_legacy_database_refused_when_different(engine):
     with pytest.raises(migrate.SchemaMismatch) as e:
         migrate.upgrade(engine)
     assert "holidays" in str(e.value)
+
+
+def test_alembic_ini_is_ascii():
+    """中文 Windows 上 Alembic 按 GBK 读 alembic.ini，里面不能有非 ASCII 字符（2026-11-23 实际踩到）。"""
+    data = (migrate.BACKEND / "alembic.ini").read_bytes()
+    assert all(b < 128 for b in data)

@@ -145,3 +145,21 @@ def process_upload(
         taken_at=taken,
         taken_at_source=source,
     )
+
+
+AVATAR_EDGE = 256
+
+
+def process_avatar(data: bytes, upload_root: Path) -> str:
+    """头像：按 EXIF 转正 → 居中裁成正方形 → 256×256 JPEG。返回上传目录下的相对路径。"""
+    try:
+        img = Image.open(io.BytesIO(data))
+        img.load()
+    except (UnidentifiedImageError, OSError, Image.DecompressionBombError) as e:
+        raise InvalidImage(str(e)) from e
+    img = ImageOps.exif_transpose(img)
+    img = ImageOps.fit(img.convert("RGB"), (AVATAR_EDGE, AVATAR_EDGE), Image.Resampling.LANCZOS)
+    rel = Path("avatars") / f"{uuid.uuid4().hex}.jpg"
+    (upload_root / rel.parent).mkdir(parents=True, exist_ok=True)
+    img.save(upload_root / rel, "JPEG", quality=85, optimize=True)
+    return rel.as_posix()

@@ -8,7 +8,7 @@ const routes = [
     component: () => import('./views/Layout.vue'),
     children: [
       { path: '', name: 'home', component: () => import('./views/Home.vue') },
-      { path: 'board', name: 'board', component: () => import('./views/Board.vue') },
+      { path: 'board', redirect: '/' }, // 交接班已合并到首页
       { path: 'tasks', name: 'tasks', component: () => import('./views/Tasks.vue') },
       { path: 'attendance', name: 'attendance', component: () => import('./views/Attendance.vue') },
       { path: 'schedule', name: 'schedule', component: () => import('./views/Schedule.vue') },

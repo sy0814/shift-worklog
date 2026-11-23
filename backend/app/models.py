@@ -106,6 +106,7 @@ class Worker(Base):
     team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    avatar_path: Mapped[str | None] = mapped_column(String(255), nullable=True)  # 头像（上传目录下的相对路径）
 
 
 TASK_STATUSES = ("not_started", "in_progress", "done", "handed_over", "discarded")
@@ -139,6 +140,8 @@ class Task(Base):
     origin_team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"))  # 创建班组
     source_task_id: Mapped[int | None] = mapped_column(ForeignKey("tasks.id"), nullable=True)
     inspection_id: Mapped[int | None] = mapped_column(ForeignKey("inspection_templates.id"), nullable=True, index=True)
+    # 带队人员（一个，可不填）。带队人同时也在 workers（task_workers）里，所以按「参与」统计时自动算上他
+    lead_worker_id: Mapped[int | None] = mapped_column(ForeignKey("workers.id"), nullable=True, index=True)
 
     status: Mapped[str] = mapped_column(String(15), default="not_started", index=True)
     # 录入所在的班次（按 recorded_at 推算；夜班归属开始那天）
@@ -167,7 +170,9 @@ class Task(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
+    # 全部参与人（含带队人）；带队人另见 lead
     workers: Mapped[list[Worker]] = relationship(secondary="task_workers", order_by="Worker.id")
+    lead: Mapped[Worker | None] = relationship(foreign_keys=[lead_worker_id], viewonly=True)
     attachments: Mapped[list["Attachment"]] = relationship(
         primaryjoin="and_(Attachment.task_id == Task.id, Attachment.deleted_at.is_(None))",
         order_by="Attachment.taken_at", viewonly=True)

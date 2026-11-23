@@ -102,7 +102,7 @@ def test_fixed_team_with_workers_and_run_now(client, admin_h, teams):
                               "shift_kinds", "start_date", "assign", "team_id", "worker_ids")}
     off = client.put(f"/api/inspections/{t['id']}", headers=admin_h, json=body | {"enabled": False}).json()
     assert off["enabled"] is False and off["next_run_at"] is None
-    logs = client.get("/api/audit", headers=admin_h, params={"entity": "inspection", "entity_id": str(t["id"])}).json()
+    logs = client.get("/api/audit", headers=admin_h, params={"entity": "inspection", "entity_id": str(t["id"])}).json()["items"]
     assert any(l["field"] == "enabled" for l in logs)
 
 

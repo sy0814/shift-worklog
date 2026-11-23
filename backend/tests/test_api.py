@@ -37,7 +37,7 @@ def test_admin_creates_leader_and_audit(client, admin_h):
     r = client.patch(f"/api/users/{uid}", headers=admin_h, json={"full_name": "Marko P."})
     assert r.json()["full_name"] == "Marko P."
     logs = client.get("/api/audit", headers=admin_h,
-                      params={"entity": "user", "entity_id": str(uid)}).json()
+                      params={"entity": "user", "entity_id": str(uid)}).json()["items"]
     assert {(l["action"], l["field"]) for l in logs} >= {("create", None), ("update", "full_name")}
     upd = next(l for l in logs if l["field"] == "full_name")
     assert (upd["old_value"], upd["new_value"]) == ("Marko", "Marko P.")
@@ -95,3 +95,22 @@ def test_audit_log_is_append_only(client, admin_h):
         conn.rollback()
         with pytest.raises(DBAPIError):
             conn.execute(text("DELETE FROM audit_log"))
+
+
+def test_audit_labels_and_filters(client, admin_h):
+    """操作记录：带操作人姓名和对象名称；可按账号筛选；登录记录默认不显示。"""
+    leader = login(client, "t3_leader1", "t3_leader1")
+    t = client.post("/api/tasks", headers=leader, json={"client_id": "aaaaaaaa-1111-2222-3333-444444444444",
+                                                         "content": "检查 5# 浮选机", "lang": "zh"}).json()
+    users = client.get("/api/audit/users", headers=admin_h).json()
+    me = next(u for u in users if u["username"] == "t3_leader1")
+    assert me["count"] >= 1 and users[0]["user_id"] is None  # 第一项是「系统自动」
+    page = client.get("/api/audit", headers=admin_h, params={"user_id": me["user_id"], "lang": "zh"}).json()
+    assert page["total"] >= 1 and all(i["user_id"] == me["user_id"] for i in page["items"])
+    created = next(i for i in page["items"] if i["entity"] == "task" and i["entity_id"] == str(t["id"]))
+    assert created["user_name"] == "t3_leader1" and created["label"] == "检查 5# 浮选机"
+    assert all(i["action"] != "login" for i in page["items"])
+    assert any(i["action"] == "login" for i in
+               client.get("/api/audit", headers=admin_h, params={"user_id": me["user_id"], "entity": "user"}).json()["items"])
+    sysp = client.get("/api/audit", headers=admin_h, params={"user_id": -1}).json()
+    assert all(i["user_id"] is None for i in sysp["items"])

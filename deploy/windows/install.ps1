@@ -156,10 +156,7 @@ Invoke-Migrate
 # ---------------- 6. 下载 Caddy 和服务程序 ----------------
 Write-Step '6/9 下载 Caddy（HTTPS）和 WinSW（Windows 服务）'
 $caddyExe = Join-Path $ToolsDir 'caddy.exe'
-if (-not (Test-Path $caddyExe)) {
-    Write-Ok "下载 $CaddyUrl"
-    Invoke-WebRequest -UseBasicParsing -Uri $CaddyUrl -OutFile $caddyExe
-}
+if (-not (Test-Path $caddyExe)) { Install-Caddy $caddyExe }
 foreach ($n in @($SvcApp, $SvcCaddy)) {
     $w = Join-Path $ToolsDir "$n.exe"
     if (-not (Test-Path $w)) {
@@ -187,6 +184,7 @@ $appXml = @"
   <resetfailure>1 hour</resetfailure>
   <stoptimeout>15 sec</stoptimeout>
   <env name="PYTHONIOENCODING" value="utf-8"/>
+  <env name="PYTHONUTF8" value="1"/>
   <logpath>$LogDir</logpath>
   <log mode="roll-by-size"><sizeThreshold>10240</sizeThreshold><keepFiles>8</keepFiles></log>
 </service>

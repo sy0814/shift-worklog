@@ -1,6 +1,9 @@
 """员工名册：所有人可查看，管理员维护。"""
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -8,7 +11,9 @@ from .. import audit
 from ..db import get_db
 from ..models import Team, User, Worker
 from ..schemas import WorkerBulkCreate, WorkerCreate, WorkerOut, WorkerUpdate
-from ..security import get_current_user, require_admin
+from ..config import get_settings
+from ..images import InvalidImage, process_avatar
+from ..security import get_current_user, require_admin, verify_avatar_token
 
 router = APIRouter(prefix="/api/workers", tags=["workers"])
 
@@ -77,3 +82,59 @@ def update_worker(worker_id: int, body: WorkerUpdate, db: Session = Depends(get_
     audit.log_changes(db, w, changes, user_id=admin.id, entity="worker", entity_id=w.id)
     db.commit()
     return w
+
+
+# ---------------- 头像 ----------------
+def _can_edit_avatar(user: User, w: Worker) -> bool:
+    return user.role == "admin" or (w.team_id is not None and w.team_id == user.team_id)
+
+
+@router.post("/{worker_id}/avatar", response_model=WorkerOut)
+async def upload_avatar(worker_id: int, file: UploadFile = File(...), db: Session = Depends(get_db),
+                        user: User = Depends(get_current_user)):
+    """上传头像（管理员任何人；班长本班组的人）。"""
+    w = db.get(Worker, worker_id)
+    if w is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND)
+    if not _can_edit_avatar(user, w):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "not your team's worker")
+    data = await file.read(20 * 1024 * 1024 + 1)
+    if len(data) > 20 * 1024 * 1024:
+        raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "file too large")
+    root = Path(get_settings().upload_dir)
+    try:
+        rel = process_avatar(data, root)
+    except InvalidImage:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "not a supported image")
+    old = w.avatar_path
+    w.avatar_path = rel
+    audit.log(db, user_id=user.id, action="update", entity="worker", entity_id=w.id, field="avatar",
+              old=old, new=rel)
+    db.commit()
+    return w
+
+
+@router.delete("/{worker_id}/avatar", response_model=WorkerOut)
+def delete_avatar(worker_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    w = db.get(Worker, worker_id)
+    if w is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND)
+    if not _can_edit_avatar(user, w):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "not your team's worker")
+    if w.avatar_path:
+        audit.log(db, user_id=user.id, action="update", entity="worker", entity_id=w.id, field="avatar",
+                  old=w.avatar_path, new=None)
+        w.avatar_path = None
+        db.commit()
+    return w
+
+
+@router.get("/{worker_id}/avatar", include_in_schema=False)
+def get_avatar(worker_id: int, t: str, db: Session = Depends(get_db)):
+    w = db.get(Worker, worker_id)
+    if w is None or not w.avatar_path or not verify_avatar_token(t, worker_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND)
+    path = Path(get_settings().upload_dir) / w.avatar_path
+    if not path.is_file():
+        raise HTTPException(status.HTTP_404_NOT_FOUND)
+    return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=43200"})

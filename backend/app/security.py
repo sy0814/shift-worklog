@@ -67,3 +67,22 @@ def verify_file_token(token: str, att_id: int) -> bool:
     except jwt.PyJWTError:
         return False
     return payload.get("att") == att_id
+
+
+def avatar_token(worker_id: int) -> str:
+    exp = datetime.now(timezone.utc) + timedelta(hours=FILE_TOKEN_HOURS)
+    return jwt.encode({"w": worker_id, "exp": exp}, get_settings().secret_key + ":avatar", algorithm=ALGORITHM)
+
+
+def verify_avatar_token(token: str, worker_id: int) -> bool:
+    try:
+        payload = jwt.decode(token, get_settings().secret_key + ":avatar", algorithms=[ALGORITHM])
+    except jwt.PyJWTError:
+        return False
+    return payload.get("w") == worker_id
+
+
+def avatar_url(worker_id: int, avatar_path: str) -> str:
+    # v= 用文件名做版本号：换了头像地址就变，浏览器和离线缓存不会显示旧头像
+    version = avatar_path.rsplit("/", 1)[-1].split(".")[0][:12]
+    return f"/api/workers/{worker_id}/avatar?v={version}&t={avatar_token(worker_id)}"

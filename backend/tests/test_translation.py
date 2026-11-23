@@ -251,7 +251,7 @@ def test_glossary_crud_and_permissions(client, admin_h, leader_h):
     r = client.put(f"/api/glossary/{tid}", headers=admin_h, json=body | {"en": "compensator"})
     assert r.json()["en"] == "compensator"
     assert client.delete(f"/api/glossary/{tid}", headers=admin_h).status_code == 204
-    logs = client.get("/api/audit", headers=admin_h, params={"entity": "glossary", "entity_id": str(tid)}).json()
+    logs = client.get("/api/audit", headers=admin_h, params={"entity": "glossary", "entity_id": str(tid)}).json()["items"]
     assert [l["action"] for l in logs] == ["delete", "update", "create"]
 
 

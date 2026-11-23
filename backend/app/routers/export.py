@@ -29,7 +29,7 @@ router = APIRouter(prefix="/api", tags=["export"])
 L = {
     "zh": {
         "sheet_tasks": "任务明细", "sheet_load": "人员工作量", "sheet_att": "出勤",
-        "tasks": ["编号", "班次日期", "班次", "班组", "状态", "工作内容", "原文", "遗留问题", "参与人员", "开始时间",
+        "tasks": ["编号", "班次日期", "班次", "班组", "状态", "工作内容", "原文", "遗留问题", "带队人员", "参与人员", "开始时间",
                   "完成时间", "工时(小时)", "发布人", "最后修改人", "完成确认人", "移交", "废弃原因", "图片数", "已移交次数"],
         "load": ["姓名", "工号", "班组", "排班班次", "实际出勤", "请假", "病假", "缺勤", "参与任务", "已完成", "未完成",
                  "任务工时合计(小时)"],
@@ -43,7 +43,7 @@ L = {
     "sr": {
         "sheet_tasks": "Zadaci", "sheet_load": "Opterećenje", "sheet_att": "Prisustvo",
         "tasks": ["Br.", "Datum smene", "Smena", "Ekipa", "Status", "Opis posla", "Original", "Preostali problemi",
-                  "Učesnici", "Početak", "Završetak", "Sati", "Uneo", "Poslednja izmena", "Potvrdio", "Predaja",
+                  "Vođa ekipe", "Učesnici", "Početak", "Završetak", "Sati", "Uneo", "Poslednja izmena", "Potvrdio", "Predaja",
                   "Razlog odbacivanja", "Slike", "Broj predaja"],
         "load": ["Ime", "Matični br.", "Ekipa", "Smene po rasporedu", "Prisutan", "Odsustvo", "Bolovanje", "Izostanak",
                  "Zadaci", "Završeno", "Nezavršeno", "Ukupno sati"],
@@ -56,7 +56,7 @@ L = {
     },
     "en": {
         "sheet_tasks": "Tasks", "sheet_load": "Workload", "sheet_att": "Attendance",
-        "tasks": ["No.", "Shift date", "Shift", "Team", "Status", "Work", "Original", "Open issues", "Workers", "Start",
+        "tasks": ["No.", "Shift date", "Shift", "Team", "Status", "Work", "Original", "Open issues", "Lead", "Workers", "Start",
                   "Finish", "Hours", "Posted by", "Last edited by", "Confirmed by", "Handover", "Discard reason", "Photos",
                   "Handovers"],
         "load": ["Name", "Employee no.", "Team", "Scheduled shifts", "Present", "Leave", "Sick", "Absent", "Tasks",
@@ -140,17 +140,19 @@ def build_workbook(db: Session, start: date, end: date, team_id: int | None, wor
         ws.append([
             t.id, t.shift_date, T["shift"].get(t.shift_kind, t.shift_kind), tname(t.team_id),
             T["status"].get(t.status, t.status), content, orig if orig != content else "", leftover,
-            ", ".join(w.name for w in t.workers), _local(t.start_at), _local(t.end_at), _hours(t),
+            next((w.name for w in t.workers if w.id == t.lead_worker_id), ""),
+            ", ".join(w.name for w in t.workers if w.id != t.lead_worker_id),
+            _local(t.start_at), _local(t.end_at), _hours(t),
             names.get(t.created_by, ""), names.get(t.updated_by, ""), names.get(t.confirmed_by, "") if t.confirmed_by else "",
             "; ".join(ho), reason, len(t.attachments), t.handover_count,
         ])
-    widths = [7, 12, 8, 10, 10, 50, 40, 35, 25, 16, 16, 9, 12, 12, 12, 22, 30, 7, 8]
+    widths = [7, 12, 8, 10, 10, 50, 40, 35, 14, 25, 16, 16, 9, 12, 12, 12, 22, 30, 7, 8]
     for i, wdt in enumerate(widths, start=1):
         ws.column_dimensions[get_column_letter(i)].width = wdt
     for row in ws.iter_rows(min_row=2):
         row[1].number_format = "yyyy-mm-dd"
-        row[9].number_format = row[10].number_format = "yyyy-mm-dd hh:mm"
-        for c in (row[5], row[6], row[7], row[16]):
+        row[10].number_format = row[11].number_format = "yyyy-mm-dd hh:mm"
+        for c in (row[5], row[6], row[7], row[17]):
             c.alignment = Alignment(wrap_text=True, vertical="top")
     ws.freeze_panes = "B2"
     ws.auto_filter.ref = ws.dimensions

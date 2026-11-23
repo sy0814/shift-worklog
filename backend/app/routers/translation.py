@@ -21,14 +21,15 @@ from ..schemas import (
     TranslationStatus,
 )
 from ..security import get_current_user, require_admin
-from .tasks import _get_task, one_out
+from .tasks import _get_task, editable_team_ids, one_out
 
 router = APIRouter(prefix="/api", tags=["translation"])
 
 
-def _can_correct(task: Task, user: User) -> bool:
-    # 已移交 / 已废弃的任务也允许校对译文（只改译文，不改原文）
-    return user.role == "admin" or task.team_id == user.team_id
+def _can_correct(db: Session, task: Task, user: User) -> bool:
+    # 已移交 / 已废弃的任务也允许校对译文（只改译文，不改原文）；搭班的班组也可以
+    editable = editable_team_ids(db, user)
+    return editable is None or task.team_id in editable
 
 
 @router.put("/tasks/{task_id}/translation", response_model=TaskOut)
@@ -36,7 +37,7 @@ def correct_translation(task_id: int, body: ManualTranslation, db: Session = Dep
                         user: User = Depends(get_current_user)):
     """人工修正某段文字的某种语言译文，标记为人工校对，之后机器翻译不会覆盖它。"""
     task = _get_task(db, task_id)
-    if not _can_correct(task, user):
+    if not _can_correct(db, task, user):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "not your team's task")
     src_lang, src_text = translation_service.source_text(task, body.field)
     if not src_text:
@@ -63,7 +64,7 @@ def retranslate(task_id: int, keep_manual: bool = True, db: Session = Depends(ge
                 user: User = Depends(get_current_user)):
     """立即重新翻译这条任务（同步执行，最多十几秒）。keep_manual=False 时连人工校对的也重翻。"""
     task = _get_task(db, task_id)
-    if not _can_correct(task, user):
+    if not _can_correct(db, task, user):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "not your team's task")
     if not translator.is_configured():
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "translation not configured")

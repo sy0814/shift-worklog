@@ -52,7 +52,7 @@ def test_manual_override_and_reset(client, admin_h, leader_h, teams, ws):
     assert r.json()["shift_kind"] == "night" and r.json()["team_id"] == teams["T4"]
     # 恢复默认
     assert put(leader_h, status="default").json()["source"] == "default"
-    logs = client.get("/api/audit", headers=admin_h, params={"entity": "attendance", "entity_id": f"{ws['a']}:2026-11-21"}).json()
+    logs = client.get("/api/audit", headers=admin_h, params={"entity": "attendance", "entity_id": f"{ws['a']}:2026-11-21"}).json()["items"]
     assert [l["action"] for l in logs] == ["delete", "create"]
     assert put(leader_h, status="vacation").status_code == 400
 
@@ -143,5 +143,5 @@ def test_export(client, admin_h, leader_h, teams, ws):
     assert client.get("/api/export/tasks", headers=leader_h,
                       params={"start": day, "end": day, "team_id": teams["T2"]}).status_code == 403
     assert client.get("/api/export/tasks", headers=leader_h, params={"start": day, "end": day}).status_code == 200
-    logs = client.get("/api/audit", headers=admin_h, params={"entity": "export"}).json()
+    logs = client.get("/api/audit", headers=admin_h, params={"entity": "export"}).json()["items"]
     assert len(logs) >= 3

@@ -4,7 +4,7 @@ import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
-import { ArrowDown, Calendar, Document, House, Menu, Switch } from '@element-plus/icons-vue'
+import { ArrowDown, Calendar, Clock, Document, House, Menu } from '@element-plus/icons-vue'
 import dayjs from 'dayjs'
 import api from '../api'
 import { LANGS, localName } from '../i18n'
@@ -26,10 +26,9 @@ onUnmounted(() => window.removeEventListener('resize', onResize))
 
 const main = computed(() => [
   { name: 'home', label: t('nav.home'), icon: House },
-  { name: 'board', label: t('nav2.board'), icon: Switch },
   { name: 'tasks', label: t('nav2.tasks'), icon: Document },
   { name: 'attendance', label: t('att.title'), icon: Calendar },
-  { name: 'schedule', label: t('nav.schedule') },
+  { name: 'schedule', label: t('nav.schedule'), icon: Clock },
 ])
 const admin = computed(() => auth.isAdmin ? [
   { name: 'workers', label: t('nav2.workers') }, { name: 'glossary', label: t('nav2.glossary') },

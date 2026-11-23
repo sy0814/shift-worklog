@@ -225,6 +225,16 @@
   - 自动生成的任务：留痕动作 `auto_create`（user_id 为空），发布人记为最后修改该巡查项的管理员；内容只翻译一次，之后派发直接复制上一次的译文
   - 编辑时「接下来 5 次」实时预览（`POST /api/inspections/preview`）；已派发过的巡查项不能删除，只能停用
   - 已用真实服务器验证：定时 02:19 的巡查项在 02:19:13 自动派发给当时在班的 3 班（夜班），并完成翻译
+- [x] 用户反馈第一轮修改（2026-11-23）
+  - **带队人员**：任务有一个带队人（`tasks.lead_worker_id`，可不填，迁移 0004）；带队人**同时也在 task_workers 里**，所以工时、某人某天、导出、AI 分析按「参与」统计时自动算上他；接口里 `lead` 单列，`workers` 只列其他参与人；导出加「带队人员」列，AI 统计加 `lead_tasks`
+  - **头像**：`workers.avatar_path`，上传后居中裁成 256×256（`images.process_avatar`），签名地址 `/api/workers/{id}/avatar?v=&t=`；管理员任何人、班长本班组的人可以改；员工名册页上传
+  - **三语同时显示**：任务卡片 / 详情里主文是当前语言，下面小字列出另外两种（`components/TransText.vue`），标出「原文」「人工校对」
+  - **交接班并入首页**（`components/HandoverBoard.vue`），去掉「最近 12 小时移交出去」；`/board` 不传班组时管理员看当前在班班组、班长看本班组
+  - **常白班搭班**（`Schedule.paired_teams`）：常白班上班的日子（按日历日），常白班 ↔ 当天白班的倒班班组。交接班里两组任务合并显示；**权限上两边班长都能操作对方的任务**（`editable_team_ids`，所有接口一致）；其他页面（任务列表等）不合并显示
+  - **首页在岗人员**（`GET /api/duty?which=current|next`）：按出勤算（含调班、顶班、请假）；忙碌 = 有进行中的任务；卡片标题只显示倒班班组（常白班合并），点开分班组列出人（头像 + 名字 + 状态 + 手上的任务）；管理员和这个班次的班长可勾选人员快捷添加任务（`TaskForm` 的 `preset`）
+  - **任务归属班次**改为按录入班组算（`Schedule.recording_slot`）：在班 → 当前班；下班 2 小时内补录 → 刚结束的班；否则（提前安排）→ 它的下一个班
+  - **操作记录**改成句子（「谁 做了什么 对象『名称』：字段 旧 → 新」，同一次操作的多个字段合成一条）；左边下拉选账号（带条数）、类型、日期；登录记录只在筛「账号」时显示，自动翻译只在筛「系统自动」时显示；`GET /api/audit` 返回 `{items,total}`，每条带 `user_name` 和对象名称 `label`
+  - **部署修正**：`alembic.ini` 必须纯 ASCII（中文 Windows 按 GBK 读，测试会检查）；安装脚本和服务都设 `PYTHONUTF8=1`；Caddy 改从 GitHub Releases 下载（caddyserver.com 接口返回 401），失败时提示手动放 `C:\WorkRecord\tools\caddy.exe`
 - 工厂时区由 `APP_TIMEZONE` 配置，默认 `Europe/Belgrade`
 - 排班推算是纯函数，在 `backend/app/shifts.py`，测试在 `backend/tests/test_shifts.py`
 - 留痕：业务代码统一调用 `app/audit.py` 的 `log()` / `log_changes()`；数据库触发器禁止对 `audit_log` 做 UPDATE / DELETE（SQLite、PostgreSQL 都已验证）

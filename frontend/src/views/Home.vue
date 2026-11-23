@@ -1,5 +1,6 @@
 <script setup>
-import { onMounted, onUnmounted, ref } from 'vue'
+// 首页：未闭环警示 → 当前在班 / 下一个接班（含在岗人数，点开看人员状态）→ 交接班（合并在首页）→ 今日排班
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import dayjs from 'dayjs'
 import api from '../api'
@@ -8,24 +9,30 @@ import { useAuth } from '../stores/auth'
 import ShiftTag from '../components/ShiftTag.vue'
 import TaskCard from '../components/TaskCard.vue'
 import TaskDetail from '../components/TaskDetail.vue'
+import TaskForm from '../components/TaskForm.vue'
+import HandoverBoard from '../components/HandoverBoard.vue'
+import DutyDrawer from '../components/DutyDrawer.vue'
 
 const { t } = useI18n()
 const auth = useAuth()
 const now = ref(null)
+const duty = ref({ current: null, next: null })
 const overdue = ref([])
-const detailOpen = ref(false)
-const detailId = ref(null)
-function open(task) {
-  detailId.value = task.id
-  detailOpen.value = true
-}
 const today = ref(null)
+const boardRef = ref()
 
 async function load() {
-  overdue.value = (await api.get('/overdue')).data
-  now.value = (await api.get('/shifts/now')).data
+  const [od, nw] = await Promise.all([api.get('/overdue'), api.get('/shifts/now')])
+  overdue.value = od.data
+  now.value = nw.data
   const d = now.value.current.shift_date
-  today.value = (await api.get('/shifts/calendar', { params: { start: d, end: d } })).data[0]
+  const [cal, cur, nxt] = await Promise.all([
+    api.get('/shifts/calendar', { params: { start: d, end: d } }),
+    api.get('/duty', { params: { which: 'current' } }),
+    api.get('/duty', { params: { which: 'next' } }),
+  ])
+  today.value = cal.data[0]
+  duty.value = { current: cur.data, next: nxt.data }
 }
 
 let timer
@@ -36,7 +43,40 @@ onMounted(() => {
 onUnmounted(() => clearInterval(timer))
 
 const fmt = (s) => dayjs(s.slice(0, 16)).format('MM-DD HH:mm')
-const teamNames = (ids) => ids.map((id) => localName(auth.teamById(id))).join(' + ')
+// 卡片上只显示倒班班组（常白班合并进去，点开人员状态时才分开显示）
+const mainTeam = (s) => {
+  const rot = s.team_ids.filter((id) => auth.teamById(id)?.kind === 'rotating')
+  return (rot.length ? rot : s.team_ids).map((id) => localName(auth.teamById(id))).join(' + ')
+}
+const cards = computed(() => now.value && [
+  { key: 'current', s: now.value.current, d: duty.value.current },
+  { key: 'next', s: now.value.next, d: duty.value.next },
+])
+
+// ---- 人员状态 / 快捷添加任务 ----
+const dutyOpen = ref(false)
+const dutyWhich = ref('current')
+function openDuty(which) {
+  dutyWhich.value = which
+  dutyOpen.value = true
+}
+const formOpen = ref(false)
+const preset = ref(null)
+function quickAdd(p) {
+  preset.value = p
+  formOpen.value = true
+}
+function afterAdd() {
+  load()
+  boardRef.value?.load()
+}
+
+const detailOpen = ref(false)
+const detailId = ref(null)
+function open(id) {
+  detailId.value = id
+  detailOpen.value = true
+}
 </script>
 
 <template>
@@ -48,18 +88,27 @@ const teamNames = (ids) => ids.map((id) => localName(auth.teamById(id))).join(' 
         <span class="od-title">⚠ {{ t('overdue.title') }} ({{ overdue.length }})</span>
       </template>
       <div class="od-list">
-        <TaskCard v-for="task in overdue" :key="task.id" :task="task" @click="open(task)" />
+        <TaskCard v-for="task in overdue" :key="task.id" :task="task" @click="open(task.id)" />
       </div>
     </el-card>
 
-    <div v-if="now" class="cards">
-      <el-card v-for="(s, key) in { current: now.current, next: now.next }" :key="key" shadow="never"
-               :class="['shift-card', key, { mine: s.team_ids.includes(auth.user?.team_id) }]">
-        <div class="label">{{ t(`shift.${key}`) }}</div>
-        <div class="teams">{{ teamNames(s.team_ids) }}</div>
-        <div class="meta"><ShiftTag :kind="s.kind" /> {{ fmt(s.start) }} – {{ fmt(s.end) }}</div>
+    <div v-if="cards" class="cards">
+      <el-card v-for="c in cards" :key="c.key" shadow="hover"
+               :class="['shift-card', c.key, { mine: c.s.team_ids.includes(auth.user?.team_id) }]" @click="openDuty(c.key)">
+        <div class="label">{{ t(`shift.${c.key}`) }}</div>
+        <div class="teams">{{ mainTeam(c.s) }}</div>
+        <div class="meta"><ShiftTag :kind="c.s.kind" /> {{ fmt(c.s.start) }} – {{ fmt(c.s.end) }}</div>
+        <div v-if="c.d" class="counts">
+          <span class="cnt">👷 {{ t('duty.onDuty', { n: c.d.counts.on_duty }) }}</span>
+          <span v-if="c.key === 'current'" class="cnt busy">{{ t('duty.busy', { n: c.d.counts.busy }) }}</span>
+          <span v-if="c.key === 'current'" class="cnt idle">{{ t('duty.idle', { n: c.d.counts.idle }) }}</span>
+          <span v-if="c.d.counts.absent" class="cnt absent">{{ t('duty.absent', { n: c.d.counts.absent }) }}</span>
+          <span class="hint">{{ t('duty.clickHint') }} ›</span>
+        </div>
       </el-card>
     </div>
+
+    <HandoverBoard ref="boardRef" />
 
     <el-card v-if="today" shadow="never" class="today">
       <template #header>{{ t('home.today') }} · {{ today.day }}</template>
@@ -71,10 +120,8 @@ const teamNames = (ids) => ids.map((id) => localName(auth.teamById(id))).join(' 
       </div>
     </el-card>
 
-    <div class="links">
-      <router-link :to="{ name: 'board' }"><el-button type="primary" size="large">{{ t('nav2.board') }} →</el-button></router-link>
-      <router-link :to="{ name: 'tasks' }"><el-button size="large">{{ t('nav2.tasks') }} →</el-button></router-link>
-    </div>
+    <DutyDrawer v-model="dutyOpen" :which="dutyWhich" @add="quickAdd" @open-task="open" />
+    <TaskForm v-model="formOpen" :preset="preset" @saved="afterAdd" />
     <TaskDetail v-model="detailOpen" :task-id="detailId" @changed="load" />
   </div>
 </template>
@@ -84,15 +131,21 @@ const teamNames = (ids) => ids.map((id) => localName(auth.teamById(id))).join(' 
 .overdue :deep(.el-card__header) { background: #fef0f0; padding: 10px 16px; }
 .od-title { color: #f56c6c; font-weight: 600; }
 .od-list { display: flex; flex-direction: column; gap: 8px; max-height: 50vh; overflow: auto; }
-.links { display: flex; gap: 8px; flex-wrap: wrap; }
-.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin-bottom: 12px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin-bottom: 4px; }
+.shift-card { cursor: pointer; }
 .shift-card .label { color: #888; font-size: 13px; }
 .shift-card .teams { font-size: 26px; font-weight: 600; margin: 6px 0; }
 .shift-card .meta { color: #555; display: flex; gap: 8px; align-items: center; }
 .shift-card.current { border-left: 4px solid #67c23a; }
 .shift-card.next { border-left: 4px solid #409eff; }
 .mine .teams, .today-item.mine span { color: #409eff; }
-.today { margin-bottom: 12px; }
+.counts { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 10px; font-size: 13px; }
+.cnt { color: #303133; }
+.cnt.busy { color: #b88230; }
+.cnt.idle { color: #529b2e; }
+.cnt.absent { color: #909399; }
+.hint { margin-left: auto; color: #409eff; font-size: 12px; }
+.today { margin-top: 16px; }
 .today-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
 .today-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; background: #f7f8fa; border-radius: 6px; }
 .today-item.mine { outline: 1px solid #409eff; font-weight: 600; }

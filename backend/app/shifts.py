@@ -128,3 +128,35 @@ class Schedule:
         if self.is_on(team, d, k):
             return d, k
         return self.next_shift_of_team(team, d, k)
+
+    # ---- 常白班搭班 ----
+    def paired_teams(self, team: TeamInfo, d: date) -> list[TeamInfo]:
+        """当天和本班组搭班的班组：常白班上班的日子，常白班 ↔ 当天上白班的倒班班组。"""
+        day_team = next((t for t in self.teams if t.kind == "day"), None)
+        if day_team is None or not self.is_workday(d):
+            return []
+        rot = self.rotating_team_on(d, DAY)
+        if rot is None:
+            return []
+        if team.id == day_team.id:
+            return [rot]
+        if team.id == rot.id:
+            return [day_team]
+        return []
+
+    def recording_slot(self, team: TeamInfo, now: datetime, grace_hours: float = 2) -> tuple[date, str]:
+        """班组录入任务时，任务归属哪个班次：
+        正在上班 → 当前班次；刚下班不久（grace_hours 内，例如下班后补录）→ 刚结束的那个班次；
+        否则（提前安排下个班的工作）→ 它的下一个班次。
+        """
+        d, k = self.shift_at(now)
+        if self.is_on(team, d, k):
+            return d, k
+        pd, pk = d, k
+        for _ in range(30 * len(ORDER)):  # 往回找这个班组最近的一个班
+            pd, pk = self.prev_shift(pd, pk)
+            if self.is_on(team, pd, pk):
+                if now - self.shift_window(pd, pk)[1] <= timedelta(hours=grace_hours):
+                    return pd, pk
+                break
+        return self.next_shift_of_team(team, d, k)

@@ -132,7 +132,7 @@ def test_overdue_and_settings(client, admin_h, leader_h, teams):
     moved = client.post("/api/handover", headers=leader_h, json={"task_ids": [t["id"]], "to_team_id": teams["T2"]}).json()[0]
     assert moved["overdue"] is True
     client.put("/api/settings", headers=admin_h, json={"overdue_hours": 24, "overdue_handovers": 3})
-    logs = client.get("/api/audit", headers=admin_h, params={"entity": "setting"}).json()
+    logs = client.get("/api/audit", headers=admin_h, params={"entity": "setting"}).json()["items"]
     assert {l["field"] for l in logs} == {"overdue_hours", "overdue_handovers"}
 
 
@@ -142,7 +142,7 @@ def test_board(client, leader_h, t2_h, teams):
     got = client.post("/api/handover", headers=leader_h, json={"task_ids": [passed["id"]], "to_team_id": teams["T2"]}).json()[0]
     b1 = client.get("/api/board", headers=leader_h, params={"team_id": teams["T1"]}).json()
     assert mine["id"] in [t["id"] for t in b1["todo"]]
-    assert passed["id"] in [t["id"] for t in b1["handed_out_recent"]]
+    assert "handed_out_recent" not in b1  # 已去掉「最近 12 小时移交出去」
     assert b1["next_team_id"] and b1["shift_kind"] in ("day", "middle", "night")
     b2 = client.get("/api/board", headers=t2_h, params={"team_id": teams["T2"]}).json()
     assert got["id"] in [t["id"] for t in b2["received"]]

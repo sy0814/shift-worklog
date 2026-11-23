@@ -4,6 +4,8 @@
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+# 让本窗口里运行的所有 Python 程序都按 UTF-8 读写文件（中文 Windows 默认是 GBK，会读坏配置文件）
+$env:PYTHONUTF8 = '1'
 
 # ---------------- 路径 ----------------
 $Root      = 'C:\WorkRecord'
@@ -21,7 +23,9 @@ $SvcApp    = 'WorkRecordApp'
 $SvcCaddy  = 'WorkRecordCaddy'
 $TaskBackup = 'WorkRecordBackup'
 
-$CaddyUrl = 'https://caddyserver.com/api/download?os=windows&arch=amd64'
+# Caddy：从官方 GitHub Releases 下载（caddyserver.com 的下载接口现在要登录，会返回 401）
+$CaddyLatestApi = 'https://api.github.com/repos/caddyserver/caddy/releases/latest'
+$CaddyFallbackVersion = '2.10.2'
 $WinSWUrl = 'https://github.com/winsw/winsw/releases/download/v2.12.0/WinSW-x64.exe'
 
 # ---------------- 输出 ----------------
@@ -112,6 +116,35 @@ function Get-PgServiceName {
     $s = Get-Service -Name 'postgresql*' -ErrorAction SilentlyContinue | Sort-Object Name -Descending | Select-Object -First 1
     if ($s) { return $s.Name }
     return $null
+}
+
+# 下载 caddy.exe 到 tools 目录：先问 GitHub 最新版本，失败就用固定版本
+function Install-Caddy([string]$Target) {
+    $ver = $CaddyFallbackVersion
+    try {
+        $rel = Invoke-RestMethod -UseBasicParsing -Uri $CaddyLatestApi -Headers @{ 'User-Agent' = 'workrecord-installer' } -TimeoutSec 20
+        if ($rel.tag_name) { $ver = $rel.tag_name.TrimStart('v') }
+    } catch { Write-Note "查询 Caddy 最新版本失败，使用 $ver" }
+    $url = "https://github.com/caddyserver/caddy/releases/download/v$ver/caddy_${ver}_windows_amd64.zip"
+    $zip = Join-Path $env:TEMP "caddy_$ver.zip"
+    $dir = Join-Path $env:TEMP "caddy_$ver"
+    try {
+        Write-Ok "下载 $url"
+        Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $zip
+        if (Test-Path $dir) { Remove-Item $dir -Recurse -Force }
+        Expand-Archive -Path $zip -DestinationPath $dir -Force
+        Copy-Item (Join-Path $dir 'caddy.exe') $Target -Force
+    } catch {
+        throw @"
+下载 Caddy 失败：$($_.Exception.Message)
+请手动下载后放到指定位置，再重新运行本脚本（脚本发现文件已存在就会跳过下载）：
+  1. 浏览器打开 https://github.com/caddyserver/caddy/releases/latest
+  2. 在 Assets 里下载 caddy_<版本号>_windows_amd64.zip（不要选 arm64）
+  3. 解压，把里面的 caddy.exe 复制到 $Target
+"@
+    } finally {
+        Remove-Item $zip, $dir -Recurse -Force -ErrorAction SilentlyContinue
+    }
 }
 
 # ---------------- 程序文件 ----------------

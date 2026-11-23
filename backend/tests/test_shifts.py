@@ -97,3 +97,15 @@ def test_extra_workday_for_day_team():
     assert s.shift_of(TEAM["DAY"], date(2026, 11, 22)) == OFF
     # 倒班不受影响
     assert s.shift_of(TEAM["T4"], date(2026, 11, 21)) == OFF
+
+
+def test_recording_slot():
+    # 11-21：1 班白班（07–15）
+    assert S.recording_slot(TEAM["T1"], datetime(2026, 11, 21, 10)) == (date(2026, 11, 21), DAY)  # 上班中
+    assert S.recording_slot(TEAM["T1"], datetime(2026, 11, 21, 16)) == (date(2026, 11, 21), DAY)  # 下班 1 小时内补录
+    assert S.recording_slot(TEAM["T1"], datetime(2026, 11, 21, 20)) == (date(2026, 11, 22), DAY)  # 晚上提前安排明天
+    # 4 班 11-21 休息、11-23 白班；凌晨提前安排 → 11-23 白班
+    assert S.recording_slot(TEAM["T4"], datetime(2026, 11, 22, 3)) == (date(2026, 11, 23), DAY)
+    # 常白班周一凌晨 → 当天白班；周五 16:00 刚下班 → 周五白班
+    assert S.recording_slot(TEAM["DAY"], datetime(2026, 11, 23, 3)) == (date(2026, 11, 23), DAY)
+    assert S.recording_slot(TEAM["DAY"], datetime(2026, 11, 20, 16)) == (date(2026, 11, 20), DAY)

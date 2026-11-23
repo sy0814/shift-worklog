@@ -1,18 +1,19 @@
 <script setup>
-// 交接班 / 早班会视图：上一班移交过来的 + 本班待办，可多选一起移交
+// 首页的交接班：上一班移交过来的 + 本班待办 + 最近 12 小时完成，可多选一起移交
+// 常白班上班的日子，常白班和当天白班的倒班班组合并成一块（两边班长都能操作）
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import api from '../api'
 import { localName } from '../i18n'
 import { useAuth } from '../stores/auth'
-import ShiftTag from '../components/ShiftTag.vue'
-import TaskCard from '../components/TaskCard.vue'
-import TaskDetail from '../components/TaskDetail.vue'
-import HandoverDialog from '../components/HandoverDialog.vue'
+import ShiftTag from './ShiftTag.vue'
+import TaskCard from './TaskCard.vue'
+import TaskDetail from './TaskDetail.vue'
+import HandoverDialog from './HandoverDialog.vue'
 
 const { t } = useI18n()
 const auth = useAuth()
-const teamId = ref(auth.user?.team_id ?? auth.teams[0]?.id)
+const teamId = ref(0) // 0 = 默认（管理员：当前在班班组；班长：本班组）
 const board = ref(null)
 const loading = ref(false)
 const selected = ref([])
@@ -20,18 +21,19 @@ const selected = ref([])
 async function load() {
   loading.value = true
   try {
-    board.value = (await api.get('/board', { params: { team_id: teamId.value } })).data
-    const openIds = new Set([...board.value.received, ...board.value.todo].map((x) => x.id))
+    board.value = (await api.get('/board', { params: { team_id: teamId.value || undefined } })).data
+    const openIds = new Set(openTasks.value.filter((x) => x.can_edit).map((x) => x.id))
     selected.value = selected.value.filter((id) => openIds.has(id))
-    watchTranslations([...board.value.received, ...board.value.todo, ...board.value.done_recent, ...board.value.handed_out_recent])
+    watchTranslations([...board.value.received, ...board.value.todo, ...board.value.done_recent])
   } finally {
     loading.value = false
   }
 }
 watch(teamId, () => { selected.value = []; load() })
 onMounted(load)
+defineExpose({ load })
 
-// 有任务还在后台翻译时，每 4 秒刷新一次（最多 1 分钟），翻译好后列表自动显示译文
+// 有任务还在后台翻译时，每 4 秒刷新一次（最多 1 分钟）
 let trTimer = null
 let trTries = 0
 function watchTranslations(list) {
@@ -42,11 +44,11 @@ function watchTranslations(list) {
 }
 onUnmounted(() => clearTimeout(trTimer))
 
-const canEdit = computed(() => auth.isAdmin || auth.user?.team_id === teamId.value)
 const openTasks = computed(() => (board.value ? [...board.value.received, ...board.value.todo] : []))
-const allSelected = computed(() => openTasks.value.length > 0 && selected.value.length === openTasks.value.length)
+const selectable = computed(() => openTasks.value.filter((x) => x.can_edit))
+const allSelected = computed(() => selectable.value.length > 0 && selected.value.length === selectable.value.length)
 function toggleAll(v) {
-  selected.value = v ? openTasks.value.map((x) => x.id) : []
+  selected.value = v ? selectable.value.map((x) => x.id) : []
 }
 function toggle(id, v) {
   selected.value = v ? [...selected.value, id] : selected.value.filter((x) => x !== id)
@@ -60,25 +62,28 @@ function open(task) {
 }
 const hoOpen = ref(false)
 const teamName = (id) => localName(auth.teamById(id))
+// 班组切换：只列倒班班组 + 常白班（合并在服务器端处理）
+const switchTeams = computed(() => auth.teams)
 const sections = computed(() => board.value && [
   { key: 'received', title: t('board.received'), list: board.value.received, selectable: true },
   { key: 'todo', title: t('board.todo'), list: board.value.todo, selectable: true },
   { key: 'done', title: t('board.doneRecent'), list: board.value.done_recent },
-  { key: 'out', title: t('board.outRecent'), list: board.value.handed_out_recent },
 ])
 </script>
 
 <template>
-  <div class="page">
+  <section class="hb">
     <div class="toolbar">
-      <el-radio-group v-model="teamId">
-        <el-radio-button v-for="tm in auth.teams" :key="tm.id" :value="tm.id">{{ localName(tm) }}</el-radio-button>
+      <h2 class="title">{{ t('nav2.board') }}</h2>
+      <el-radio-group v-model="teamId" size="small">
+        <el-radio-button :value="0">{{ auth.isAdmin ? t('shift.current') : t('home.myTeam') }}</el-radio-button>
+        <el-radio-button v-for="tm in switchTeams" :key="tm.id" :value="tm.id">{{ localName(tm) }}</el-radio-button>
       </el-radio-group>
     </div>
 
     <el-card v-if="board" shadow="never" class="head">
       <div class="head-row">
-        <b class="big">{{ teamName(board.team_id) }}</b>
+        <b class="big">{{ board.team_ids.map(teamName).join(' + ') }}</b>
         <ShiftTag :kind="board.shift_kind" />
         <span>{{ board.on_duty ? t('board.onDuty', { shift: board.shift_date.slice(5) }) : t('board.next', { date: board.shift_date.slice(5), shift: '' }) }}</span>
       </div>
@@ -88,10 +93,10 @@ const sections = computed(() => board.value && [
       </div>
     </el-card>
 
-    <div v-if="canEdit && openTasks.length" class="batch">
+    <div v-if="selectable.length" class="batch">
       <el-checkbox :model-value="allSelected" :indeterminate="selected.length > 0 && !allSelected" @change="toggleAll">{{ t('ho.selectAll') }}</el-checkbox>
       <span class="muted">{{ t('ho.selected', { n: selected.length }) }}</span>
-      <el-button type="primary" :disabled="!selected.length" @click="hoOpen = true">{{ t('ho.batch') }}</el-button>
+      <el-button type="primary" size="small" :disabled="!selected.length" @click="hoOpen = true">{{ t('ho.batch') }}</el-button>
     </div>
 
     <div v-loading="loading">
@@ -99,7 +104,7 @@ const sections = computed(() => board.value && [
         <h3 class="sec">{{ sec.title }} <el-tag size="small" round>{{ sec.list.length }}</el-tag></h3>
         <div class="list">
           <div v-for="task in sec.list" :key="task.id" class="row">
-            <el-checkbox v-if="sec.selectable && canEdit" :model-value="selected.includes(task.id)" class="pick"
+            <el-checkbox v-if="sec.selectable && task.can_edit" :model-value="selected.includes(task.id)" class="pick"
                          @change="(v) => toggle(task.id, v)" />
             <TaskCard :task="task" class="grow" @click="open(task)" />
           </div>
@@ -109,18 +114,22 @@ const sections = computed(() => board.value && [
     </div>
 
     <TaskDetail v-model="detailOpen" :task-id="detailId" @changed="load" />
-    <HandoverDialog v-model="hoOpen" :task-ids="selected" :team-id="teamId" @done="() => { selected = []; load() }" />
-  </div>
+    <HandoverDialog v-if="board" v-model="hoOpen" :task-ids="selected" :team-id="board.team_id" @done="() => { selected = []; load() }" />
+  </section>
 </template>
 
 <style scoped>
-.head { margin-bottom: 12px; }
+.hb { margin-top: 16px; }
+.title { font-size: 17px; margin: 0; flex: 1; }
+.toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+.toolbar :deep(.el-radio-group) { flex-wrap: wrap; }
+.head { margin-bottom: 8px; }
 .head-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .head-row + .head-row { margin-top: 6px; }
-.big { font-size: 20px; }
+.big { font-size: 18px; }
 .muted { color: #909399; font-size: 13px; }
-.batch { position: sticky; top: 0; z-index: 5; display: flex; gap: 12px; align-items: center; background: #f4f5f7; padding: 8px 0; }
-.sec { margin: 16px 0 8px; font-size: 15px; display: flex; align-items: center; gap: 6px; }
+.batch { position: sticky; top: 52px; z-index: 5; display: flex; gap: 12px; align-items: center; background: #f4f5f7; padding: 8px 0; }
+.sec { margin: 14px 0 8px; font-size: 15px; display: flex; align-items: center; gap: 6px; }
 .list { display: flex; flex-direction: column; gap: 8px; }
 .row { display: flex; gap: 8px; align-items: flex-start; }
 .pick { margin-top: 10px; }

@@ -1,6 +1,7 @@
 <script setup>
-// 显示一段三语文字：当前语言有译文就显示译文（标注机器翻译 / 人工校对，可展开看原文），否则显示原文
-import { computed, ref } from 'vue'
+// 三语同时显示：上面是当前语言（没有译文时显示原文），下面小字列出另外两种语言
+// 人工校对过的标「人工校对」，原文标「原文」；翻译还没出来时只显示原文
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const props = defineProps({
@@ -8,34 +9,36 @@ const props = defineProps({
   srcLang: { type: String, default: null },
   field: { type: String, required: true },
   manualFields: { type: Array, default: () => [] },
+  compact: { type: Boolean, default: false }, // 列表卡片里用：译文各占一行、超长省略
 })
 const { t, locale } = useI18n()
-const showOrig = ref(false)
+const LABEL = { zh: '中', sr: 'SR', en: 'EN' }
 
-const src = computed(() => (props.srcLang && props.tri[props.srcLang]) || props.tri.zh || props.tri.sr || props.tri.en || '')
-const translated = computed(() => props.srcLang && locale.value !== props.srcLang && !!props.tri[locale.value])
-const text = computed(() => (translated.value ? props.tri[locale.value] : src.value))
-const manual = computed(() => props.manualFields.includes(`${props.field}_${locale.value}`))
+const src = computed(() => props.srcLang || ['zh', 'sr', 'en'].find((l) => props.tri[l]))
+const mainLang = computed(() => (props.tri[locale.value] ? locale.value : src.value))
+const others = computed(() => ['zh', 'sr', 'en']
+  .filter((l) => l !== mainLang.value && props.tri[l])
+  .map((l) => ({ lang: l, text: props.tri[l], source: l === src.value, manual: props.manualFields.includes(`${props.field}_${l}`) })))
 </script>
 
 <template>
-  <div class="tt">
-    <div class="text">{{ text }}</div>
-    <div v-if="srcLang && locale !== srcLang" class="meta">
-      <template v-if="translated">
-        <span :class="manual ? 'manual' : 'machine'">{{ manual ? t('tr.manual') : t('tr.machine') }}</span>
-        · <a href="#" @click.prevent="showOrig = !showOrig">{{ showOrig ? t('tr.hideOriginal') : t('tr.showOriginal') }} ({{ srcLang }})</a>
-      </template>
-      <span v-else class="machine">{{ t('tr.source') }} ({{ srcLang }})</span>
+  <div :class="['tt', { compact }]">
+    <div class="text">{{ tri[mainLang] }}</div>
+    <div v-for="o in others" :key="o.lang" class="sub">
+      <span class="lg">{{ LABEL[o.lang] }}</span>
+      <span class="st">{{ o.text }}</span>
+      <span v-if="o.source" class="tag">{{ t('tr.source') }}</span>
+      <span v-else-if="o.manual" class="tag ok">{{ t('tr.manual') }}</span>
     </div>
-    <div v-if="showOrig && translated" class="orig">{{ src }}</div>
   </div>
 </template>
 
 <style scoped>
 .text { white-space: pre-wrap; word-break: break-word; }
-.meta { font-size: 12px; color: #909399; margin-top: 2px; }
-.meta a { color: #409eff; text-decoration: none; }
-.manual { color: #67c23a; }
-.orig { margin-top: 4px; padding: 6px 8px; background: #f4f4f5; border-radius: 4px; color: #606266; white-space: pre-wrap; font-size: 13px; }
+.sub { display: flex; gap: 6px; align-items: baseline; font-size: 12.5px; color: #73767a; margin-top: 2px; line-height: 1.45; }
+.lg { flex: none; font-size: 10px; font-weight: 600; color: #909399; border: 1px solid #dcdfe6; border-radius: 3px; padding: 0 3px; line-height: 15px; }
+.st { white-space: pre-wrap; word-break: break-word; }
+.compact .st { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.tag { flex: none; font-size: 10px; color: #909399; }
+.tag.ok { color: #67c23a; }
 </style>

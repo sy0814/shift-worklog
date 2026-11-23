@@ -18,7 +18,7 @@ from ..config import get_settings
 from ..db import get_db
 from ..images import InvalidImage, parse_exif_datetime, process_upload
 from ..models import Attachment, AuditLog, InspectionTemplate, Task, TaskHandover, Team, User, Worker, utcnow
-from ..schedule_service import load_schedule
+from ..schedule_service import load_schedule, local_now
 from ..schemas import (
     AttachmentOut,
     AuditOut,
@@ -76,10 +76,27 @@ def _att_out(a: Attachment, names: dict[int, str]) -> AttachmentOut:
     )
 
 
-def _can_edit(task: Task, user: User) -> bool:
+def editable_team_ids(db: Session, user: User) -> set[int] | None:
+    """用户能操作哪些班组的任务。None = 全部（管理员）。
+
+    班长：本班组 + 今天和本班组搭班的班组（常白班上班的日子，常白班 ↔ 当天白班的倒班班组）。
+    """
+    if user.role == "admin":
+        return None
+    if user.team_id is None:
+        return set()
+    sched = load_schedule(db)
+    team = next((t for t in sched.teams if t.id == user.team_id), None)
+    if team is None:
+        return {user.team_id}
+    today = local_now().date()  # 按日历日判断搭班
+    return {user.team_id} | {t.id for t in sched.paired_teams(team, today)}
+
+
+def _can_edit(task: Task, editable: set[int] | None) -> bool:
     if task.status in TERMINAL:
         return False
-    return user.role == "admin" or task.team_id == user.team_id
+    return editable is None or task.team_id in editable
 
 
 def _aware(d: datetime) -> datetime:
@@ -97,9 +114,10 @@ class OutCtx:
     overdue_handovers: int
     now: datetime
     inspections: dict[int, str]  # 巡查项 id → 名称
+    editable: set[int] | None  # 当前用户能操作的班组（None = 全部）
 
 
-def make_ctx(db: Session, tasks: list[Task]) -> OutCtx:
+def make_ctx(db: Session, tasks: list[Task], user: User | None = None) -> OutCtx:
     ids = [t.id for t in tasks]
     hos = db.scalars(select(TaskHandover).where(
         or_(TaskHandover.from_task_id.in_(ids), TaskHandover.to_task_id.in_(ids)))).all() if ids else []
@@ -109,6 +127,7 @@ def make_ctx(db: Session, tasks: list[Task]) -> OutCtx:
                                   .where(InspectionTemplate.id.in_(insp_ids))).all()) if insp_ids else {}
     return OutCtx(
         inspections=inspections,
+        editable=editable_team_ids(db, user) if user is not None else set(),
         names=_names(db),
         ho_from={h.from_task_id: h for h in hos},
         ho_to={h.to_task_id: h for h in hos},
@@ -161,9 +180,10 @@ def task_out(task: Task, user: User, ctx: OutCtx) -> TaskOut:
         created_by=task.created_by, created_by_name=names.get(task.created_by, ""),
         updated_by=task.updated_by, updated_by_name=names.get(task.updated_by, ""),
         recorded_at=task.recorded_at, created_at=task.created_at, updated_at=task.updated_at,
-        workers=[WorkerOut.model_validate(w) for w in task.workers],
+        lead=WorkerOut.model_validate(task.lead) if task.lead_worker_id and task.lead else None,
+        workers=[WorkerOut.model_validate(w) for w in task.workers if w.id != task.lead_worker_id],
         attachments=[_att_out(a, names) for a in task.attachments],
-        can_edit=_can_edit(task, user),
+        can_edit=_can_edit(task, ctx.editable),
         chain_started_at=task.chain_started_at, handover_count=task.handover_count,
         age_hours=round(age, 1), overdue=overdue,
         handover_in=_ho_info(ctx.ho_to.get(task.id), True, names),
@@ -176,7 +196,7 @@ def task_out(task: Task, user: User, ctx: OutCtx) -> TaskOut:
 
 
 def tasks_out(db: Session, tasks: list[Task], user: User) -> list[TaskOut]:
-    ctx = make_ctx(db, tasks)
+    ctx = make_ctx(db, tasks, user)
     return [task_out(t, user, ctx) for t in tasks]
 
 
@@ -191,10 +211,10 @@ def _get_task(db: Session, task_id: int) -> Task:
     return task
 
 
-def _require_edit(task: Task, user: User) -> None:
+def _require_edit(db: Session, task: Task, user: User) -> None:
     if task.status in TERMINAL:
         raise HTTPException(status.HTTP_409_CONFLICT, f"task is {task.status}")
-    if not _can_edit(task, user):
+    if not _can_edit(task, editable_team_ids(db, user)):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "not your team's task")
 
 
@@ -306,7 +326,10 @@ def create_task(body: TaskCreate, db: Session = Depends(get_db),
     if not (now - timedelta(days=30) <= recorded <= now + timedelta(minutes=5)):
         recorded = now
     local = recorded.astimezone(get_settings().tz).replace(tzinfo=None)
-    shift_date, shift_kind = load_schedule(db).shift_at(local)
+    # 归属班次按「录入的班组」算：在班 → 当前班；刚下班 2 小时内 → 刚结束的班；否则 → 它的下一个班
+    sched = load_schedule(db)
+    team_info = next((x for x in sched.teams if x.id == team_id), None)
+    shift_date, shift_kind = sched.recording_slot(team_info, local) if team_info else sched.shift_at(local)
 
     _check_times(body.start_at, body.end_at)
     start_at, end_at = to_utc(body.start_at), to_utc(body.end_at)
@@ -328,12 +351,15 @@ def create_task(body: TaskCreate, db: Session = Depends(get_db),
     if body.leftover and body.leftover.strip():
         setattr(task, f"leftover_{body.lang}", body.leftover.strip())
         task.leftover_source_lang = body.lang
-    task.workers = _load_workers(db, body.worker_ids)
+    lead_id = body.lead_worker_id
+    member_ids = [i for i in body.worker_ids if i != lead_id]
+    task.workers = _load_workers(db, member_ids + ([lead_id] if lead_id else []))
+    task.lead_worker_id = lead_id
     db.add(task)
     db.flush()
     audit.log(db, user_id=user.id, action="create", entity="task", entity_id=task.id, new={
         "content": body.content.strip(), "lang": body.lang, "team_id": team_id,
-        "status": body.status, "worker_ids": [w.id for w in task.workers],
+        "status": body.status, "worker_ids": member_ids, "lead_worker_id": lead_id,
         "start_at": start_at, "end_at": end_at, "leftover": task.leftover_source_lang and body.leftover.strip(),
         "recorded_at": recorded, "shift": f"{shift_date} {shift_kind}",
     })
@@ -347,7 +373,7 @@ def create_task(body: TaskCreate, db: Session = Depends(get_db),
 def update_task(task_id: int, body: TaskUpdate, db: Session = Depends(get_db),
                 user: User = Depends(get_current_user)):
     task = _get_task(db, task_id)
-    _require_edit(task, user)
+    _require_edit(db, task, user)
     data = body.model_dump(exclude_unset=True)
     lang = body.lang or user.lang
     changes: dict = {}
@@ -373,17 +399,28 @@ def update_task(task_id: int, body: TaskUpdate, db: Session = Depends(get_db),
     for field, rt in text_changed.items():
         translation_service.mark_text_changed(task, field, retranslate=rt)
 
-    if "worker_ids" in data and data["worker_ids"] is not None:
-        new_workers = _load_workers(db, data["worker_ids"])
-        old_ids = [w.id for w in task.workers]
-        new_ids = [w.id for w in new_workers]
-        if sorted(old_ids) != sorted(new_ids):
-            names = dict(db.execute(select(Worker.id, Worker.name)).all())
+    # 带队人员 / 参与人员（带队人也放进 workers，按「参与」统计时自动算上）
+    if ("worker_ids" in data and data["worker_ids"] is not None) or "lead_worker_id" in data:
+        old_lead = task.lead_worker_id
+        old_members = [w.id for w in task.workers if w.id != old_lead]
+        new_lead = data["lead_worker_id"] if "lead_worker_id" in data else old_lead
+        new_members = data["worker_ids"] if data.get("worker_ids") is not None else old_members
+        new_members = [i for i in dict.fromkeys(new_members) if i != new_lead]
+        new_workers = _load_workers(db, new_members + ([new_lead] if new_lead else []))
+        names = dict(db.execute(select(Worker.id, Worker.name)).all())
+        if new_lead != old_lead:
             audit.log(db, user_id=user.id, action="update", entity="task", entity_id=task.id,
-                      field="workers", old=[names[i] for i in old_ids], new=[names[i] for i in new_ids],
-                      extra={"old_ids": old_ids, "new_ids": new_ids})
-            task.workers = new_workers
+                      field="lead_worker", old=names.get(old_lead), new=names.get(new_lead),
+                      extra={"old_id": old_lead, "new_id": new_lead})
+            task.lead_worker_id = new_lead
             changed = True
+        if sorted(old_members) != sorted(new_members):
+            audit.log(db, user_id=user.id, action="update", entity="task", entity_id=task.id,
+                      field="workers", old=[names[i] for i in old_members], new=[names[i] for i in new_members],
+                      extra={"old_ids": old_members, "new_ids": new_members})
+            changed = True
+        if sorted(w.id for w in task.workers) != sorted(w.id for w in new_workers):
+            task.workers = new_workers
 
     if changed:
         task.updated_by = user.id
@@ -398,7 +435,7 @@ def update_task(task_id: int, body: TaskUpdate, db: Session = Depends(get_db),
 def change_status(task_id: int, body: TaskStatusChange, db: Session = Depends(get_db),
                   user: User = Depends(get_current_user)):
     task = _get_task(db, task_id)
-    _require_edit(task, user)
+    _require_edit(db, task, user)
     new = body.status
     if new == task.status:
         return one_out(db, task, user)
@@ -458,7 +495,7 @@ async def upload_attachment(
         return _att_out(existing, names)
 
     task = _get_task(db, task_id)
-    _require_edit(task, user)
+    _require_edit(db, task, user)
     if len(task.attachments) >= s.max_photos_per_task:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "too many photos")
     data = await file.read(s.max_upload_mb * 1024 * 1024 + 1)
@@ -498,7 +535,7 @@ def delete_attachment(att_id: int, db: Session = Depends(get_db), user: User = D
     if a is None or a.deleted_at is not None:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
     task = _get_task(db, a.task_id)
-    _require_edit(task, user)
+    _require_edit(db, task, user)
     a.deleted_at = utcnow()
     a.deleted_by = user.id
     audit.log(db, user_id=user.id, action="detach", entity="task", entity_id=task.id,

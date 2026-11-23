@@ -14,7 +14,8 @@ import { useOutbox } from '../stores/outbox'
 import LocalPhotos from './LocalPhotos.vue'
 import PhotoPicker from './PhotoPicker.vue'
 
-const props = defineProps({ task: { type: Object, default: null } })
+// preset：新建时预先填好的人员 / 班组（首页「人员状态」里快捷添加任务用）{ worker_ids, lead_worker_id, team_id }
+const props = defineProps({ task: { type: Object, default: null }, preset: { type: Object, default: null } })
 const visible = defineModel({ type: Boolean })
 const emit = defineEmits(['saved'])
 const { t, locale } = useI18n()
@@ -45,13 +46,15 @@ async function init() {
     const l = pick(tk.leftover, tk.leftover_source_lang)
     original = {
       content: c.text, contentLang: c.lang, leftover: l.text, leftoverLang: l.lang,
-      worker_ids: tk.workers.map((w) => w.id), start_at: toLocal(tk.start_at), end_at: toLocal(tk.end_at),
+      worker_ids: tk.workers.map((w) => w.id), lead_worker_id: tk.lead?.id ?? null,
+      start_at: toLocal(tk.start_at), end_at: toLocal(tk.end_at),
     }
     Object.assign(form, { ...original, worker_ids: [...original.worker_ids] })
   } else {
     Object.assign(form, {
-      client_id: uuid(), content: '', leftover: '', worker_ids: [], status: 'not_started',
-      start_at: null, end_at: null, team_id: auth.user.team_id ?? auth.teams[0]?.id,
+      client_id: uuid(), content: '', leftover: '', status: 'not_started',
+      worker_ids: [...(props.preset?.worker_ids || [])], lead_worker_id: props.preset?.lead_worker_id ?? null,
+      start_at: null, end_at: null, team_id: props.preset?.team_id ?? auth.user.team_id ?? auth.teams[0]?.id,
     })
   }
   workers.value = await loadWorkers()
@@ -77,7 +80,7 @@ const workerGroups = computed(() => {
     groups.get(w.team_id).push(w)
   }
   // 编辑时保留已停用但仍在任务里的人
-  for (const w of props.task?.workers || []) {
+  for (const w of [...(props.task?.workers || []), ...(props.task?.lead ? [props.task.lead] : [])]) {
     if (!workers.value.some((x) => x.id === w.id)) {
       if (!groups.has(w.team_id)) groups.set(w.team_id, [])
       groups.get(w.team_id).push(w)
@@ -86,6 +89,11 @@ const workerGroups = computed(() => {
   return [...groups.entries()]
     .sort(([a], [b]) => (a === myTeam ? -1 : b === myTeam ? 1 : (a ?? 999) - (b ?? 999)))
     .map(([tid, list]) => ({ label: tid ? localName(auth.teamById(tid)) : t('workers.noTeam'), list }))
+})
+
+// 选了带队人，就把他从参与人员里去掉（带队人本身就算参与）
+watch(() => form.lead_worker_id, (id) => {
+  if (id && form.worker_ids?.includes(id)) form.worker_ids = form.worker_ids.filter((x) => x !== id)
 })
 
 const fullscreen = isNarrow()
@@ -114,7 +122,7 @@ async function save() {
 async function saveNew() {
   const body = {
     client_id: form.client_id, content: form.content.trim(), lang: locale.value,
-    worker_ids: form.worker_ids, status: form.status, start_at: form.start_at || null,
+    worker_ids: form.worker_ids, lead_worker_id: form.lead_worker_id || null, status: form.status, start_at: form.start_at || null,
     end_at: form.end_at || null, leftover: form.leftover?.trim() || null,
     recorded_at: new Date().toISOString(),
     ...(auth.isAdmin ? { team_id: form.team_id } : {}),
@@ -138,6 +146,7 @@ async function saveEdit() {
     patch.leftover_lang = o.leftover ? o.leftoverLang : locale.value
   }
   if ([...form.worker_ids].sort().join() !== [...o.worker_ids].sort().join()) patch.worker_ids = form.worker_ids
+  if ((form.lead_worker_id || null) !== (o.lead_worker_id || null)) patch.lead_worker_id = form.lead_worker_id || null
   if (form.start_at !== o.start_at) patch.start_at = form.start_at || null
   if (form.end_at !== o.end_at) patch.end_at = form.end_at || null
   // 改了原文、且这段有人工校对过的译文：问是重新翻译还是保留
@@ -177,10 +186,17 @@ async function saveEdit() {
         <el-input v-model="form.content" type="textarea" :autosize="{ minRows: 3, maxRows: 10 }"
                   :placeholder="t('task.contentPh')" maxlength="5000" />
       </el-form-item>
-      <el-form-item :label="t('task.workers')">
-        <el-select v-model="form.worker_ids" multiple filterable :placeholder="t('task.noWorkers')" style="width: 100%">
+      <el-form-item :label="t('lead.title')">
+        <el-select v-model="form.lead_worker_id" filterable clearable :placeholder="t('lead.pick')" style="width: 100%">
           <el-option-group v-for="g in workerGroups" :key="g.label" :label="g.label">
             <el-option v-for="w in g.list" :key="w.id" :label="w.name" :value="w.id" />
+          </el-option-group>
+        </el-select>
+      </el-form-item>
+      <el-form-item :label="t('lead.members')">
+        <el-select v-model="form.worker_ids" multiple filterable :placeholder="t('task.noWorkers')" style="width: 100%">
+          <el-option-group v-for="g in workerGroups" :key="g.label" :label="g.label">
+            <el-option v-for="w in g.list" :key="w.id" :label="w.name" :value="w.id" :disabled="w.id === form.lead_worker_id" />
           </el-option-group>
         </el-select>
       </el-form-item>

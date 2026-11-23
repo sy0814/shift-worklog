@@ -5,6 +5,7 @@ import { ElMessage } from 'element-plus'
 import api from '../api'
 import { localName } from '../i18n'
 import { useAuth } from '../stores/auth'
+import WorkerAvatar from '../components/WorkerAvatar.vue'
 
 const { t } = useI18n()
 const auth = useAuth()
@@ -39,6 +40,29 @@ async function save() {
   load()
 }
 
+// ---- 头像 ----
+const avatarInput = ref()
+const avatarFor = ref(null)
+function pickAvatar(w) {
+  avatarFor.value = w
+  avatarInput.value.click()
+}
+async function uploadAvatar(e) {
+  const f = e.target.files[0]
+  e.target.value = ''
+  if (!f || !avatarFor.value) return
+  const fd = new FormData()
+  fd.append('file', f)
+  await api.post(`/workers/${avatarFor.value.id}/avatar`, fd, { timeout: 60000 })
+  ElMessage.success(t('common.saved'))
+  load()
+}
+async function removeAvatar(w) {
+  await api.delete(`/workers/${w.id}/avatar`)
+  ElMessage.success(t('avatar.removed'))
+  load()
+}
+
 const bulkOpen = ref(false)
 const bulk = reactive({ text: '', team_id: null })
 async function saveBulk() {
@@ -64,6 +88,9 @@ async function saveBulk() {
       <el-button type="primary" @click="openCreate">{{ t('common.add') }}</el-button>
     </div>
     <el-table :data="shown" size="small" border>
+      <el-table-column width="64" align="center">
+        <template #default="{ row }"><WorkerAvatar :worker="row" :size="36" /></template>
+      </el-table-column>
       <el-table-column prop="name" :label="t('workers.name')" min-width="140" />
       <el-table-column prop="employee_no" :label="t('workers.no')" width="120" />
       <el-table-column :label="t('workers.team')" width="120">
@@ -72,9 +99,16 @@ async function saveBulk() {
       <el-table-column :label="t('users.active')" width="80" align="center">
         <template #default="{ row }"><el-tag :type="row.is_active ? 'success' : 'info'" size="small">{{ row.is_active ? t('common.yes') : t('common.no') }}</el-tag></template>
       </el-table-column>
-      <el-table-column width="80"><template #default="{ row }"><el-button link type="primary" @click="openEdit(row)">{{ t('common.edit') }}</el-button></template></el-table-column>
+      <el-table-column :label="t('common.actions')" width="220">
+        <template #default="{ row }">
+          <el-button link type="primary" @click="openEdit(row)">{{ t('common.edit') }}</el-button>
+          <el-button link type="primary" @click="pickAvatar(row)">{{ row.avatar_url ? t('avatar.change') : t('avatar.upload') }}</el-button>
+          <el-button v-if="row.avatar_url" link type="danger" @click="removeAvatar(row)">{{ t('avatar.remove') }}</el-button>
+        </template>
+      </el-table-column>
     </el-table>
 
+    <input ref="avatarInput" type="file" accept="image/*,.heic,.heif" hidden @change="uploadAvatar" />
     <el-dialog v-model="dialog" :title="editing ? t('common.edit') : t('common.add')" width="min(420px, 94vw)">
       <el-form label-width="auto">
         <el-form-item :label="t('workers.name')"><el-input v-model="form.name" /></el-form-item>

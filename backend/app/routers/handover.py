@@ -58,7 +58,7 @@ def handover(body: HandoverRequest, db: Session = Depends(get_db),
 
     tasks = [_get_task(db, tid) for tid in dict.fromkeys(body.task_ids)]
     for t in tasks:
-        _require_edit(t, user)
+        _require_edit(db, t, user)
         if t.status not in OPEN:
             raise HTTPException(status.HTTP_409_CONFLICT, f"task {t.id} is {t.status}")
 
@@ -134,7 +134,7 @@ def handover(body: HandoverRequest, db: Session = Depends(get_db),
 def discard(task_id: int, body: DiscardRequest, db: Session = Depends(get_db),
             user: User = Depends(get_current_user)):
     task = _get_task(db, task_id)
-    _require_edit(task, user)
+    _require_edit(db, task, user)
     if task.status not in OPEN:
         raise HTTPException(status.HTTP_409_CONFLICT, f"task is {task.status}")
     reason = body.reason.strip()
@@ -153,40 +153,59 @@ def discard(task_id: int, body: DiscardRequest, db: Session = Depends(get_db),
     return tasks_out(db, [_get_task(db, task.id)], user)[0]
 
 
+def board_teams(sched, team, today) -> list:
+    """交接班合并：常白班上班的日子，常白班和当天白班的倒班班组合并成一块（倒班班组在前）。"""
+    pair = sched.paired_teams(team, today)
+    if not pair:
+        return [team]
+    group = [team, *pair]
+    return sorted(group, key=lambda t: t.kind != "rotating")
+
+
 @router.get("/board", response_model=BoardOut)
-def board(team_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    """早班会 / 交接班视图。"""
+def board(team_id: int | None = None, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """首页交接班：上一班移交过来的、本班待办、最近 12 小时完成。
+
+    不指定班组时：管理员看当前在班的倒班班组，班长看本班组。
+    常白班上班的日子，常白班和当天白班的倒班班组合并显示（两边班长都能操作）。
+    """
     sched = load_schedule(db)
-    team = _team_info(sched, team_id)
     now_local = local_now()
     d, k = sched.shift_at(now_local)
-    on_duty = sched.is_on(team, d, k)
-    sd, sk = (d, k) if on_duty else sched.next_shift_of_team(team, d, k)
+    if team_id is None:
+        if user.role != "admin" and user.team_id:
+            team_id = user.team_id
+        else:
+            rot = sched.rotating_team_on(d, k)
+            team_id = rot.id if rot else sched.teams[0].id
+    team = _team_info(sched, team_id)
+    group = board_teams(sched, team, now_local.date())
+    main = group[0]
+    ids = [t.id for t in group]
+    on_duty = any(sched.is_on(t, d, k) for t in group)
+    sd, sk = (d, k) if sched.is_on(main, d, k) else sched.next_shift_of_team(main, d, k)
     pd, pk = sched.prev_shift(sd, sk)
-    prev_ids = [t.id for t in sched.teams_on(pd, pk) if t.id != team_id]
-    nxt = sched.default_handover_target(team, now_local)
+    prev_ids = [t.id for t in sched.teams_on(pd, pk) if t.id not in ids]
+    nxt = sched.default_handover_target(main, now_local)
 
-    opts = [selectinload(Task.workers), selectinload(Task.attachments)]
-    open_tasks = db.scalars(select(Task).options(*opts).where(Task.team_id == team_id, Task.status.in_(OPEN))
+    opts = [selectinload(Task.workers), selectinload(Task.attachments), selectinload(Task.lead)]
+    open_tasks = db.scalars(select(Task).options(*opts).where(Task.team_id.in_(ids), Task.status.in_(OPEN))
                             .order_by(Task.chain_started_at)).all()
     since = utcnow() - timedelta(hours=12)
     done = db.scalars(select(Task).options(*opts).where(
-        Task.team_id == team_id, Task.status == "done", Task.confirmed_at >= since)
+        Task.team_id.in_(ids), Task.status == "done", Task.confirmed_at >= since)
         .order_by(Task.confirmed_at.desc())).all()
-    out = db.scalars(select(Task).options(*opts).join(TaskHandover, TaskHandover.from_task_id == Task.id).where(
-        Task.team_id == team_id, TaskHandover.at >= since).order_by(TaskHandover.at.desc())).all()
 
-    all_out = tasks_out(db, [*open_tasks, *done, *out], user)
+    all_out = tasks_out(db, [*open_tasks, *done], user)
     by_id = {t.id: t for t in all_out}
     open_out = [by_id[t.id] for t in open_tasks]
     key = lambda t: (not t.overdue, t.chain_started_at)  # 超时的排最前
     return BoardOut(
-        team_id=team_id, shift_date=sd, shift_kind=sk, on_duty=on_duty,
+        team_id=main.id, team_ids=ids, shift_date=sd, shift_kind=sk, on_duty=on_duty,
         prev_team_ids=prev_ids, next_team_id=nxt.id if nxt else None,
-        received=sorted([t for t in open_out if t.handover_in], key=key),
-        todo=sorted([t for t in open_out if not t.handover_in], key=key),
+        received=sorted([t for t in open_out if t.handover_in and t.handover_in.team_id not in ids], key=key),
+        todo=sorted([t for t in open_out if not (t.handover_in and t.handover_in.team_id not in ids)], key=key),
         done_recent=[by_id[t.id] for t in done],
-        handed_out_recent=[by_id[t.id] for t in out],
     )
 
 

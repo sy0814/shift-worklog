@@ -91,6 +91,7 @@ def build_stats(db: Session, start: date, end: date, team_id: int | None, lang: 
             "cover_shifts_for_other_teams": sum(1 for a in row.values()
                                                 if a.status == "present" and a.team_id and a.team_id != w.team_id),
             "tasks": len(mine),
+            "lead_tasks": sum(1 for t in mine if t.lead_worker_id == w.id),  # 其中当带队人的
             "done": sum(1 for t in mine if t.status == "done"),
             "open": sum(1 for t in mine if t.status in OPEN),
             "handed_over": sum(1 for t in mine if t.status == "handed_over"),
@@ -155,6 +156,7 @@ Rules:
 - The numbers are already computed; do not recalculate them differently. Respect the counting rules given in "rules".
 - Judge the arrangement of work (balance between people and teams, handovers, overdue items, unassigned tasks, attendance), not people's character. Be constructive and specific.
 - When the data is too thin to conclude (few tasks, many tasks without times, short period), say so explicitly instead of guessing.
+- "lead_tasks" counts tasks where the person was the designated team lead (they are also counted in "tasks").
 - Task hours are counted in full for every participant, so a high number can mean many joint tasks rather than overload; take that into account.
 - Never say a threshold or condition was reached (e.g. the overdue rules) unless the statistics show it; "max_handover_count" gives the highest handover count per team.
 - Write the whole report in {lang_name}, including all headings and table headers. Use Markdown with exactly these sections:
