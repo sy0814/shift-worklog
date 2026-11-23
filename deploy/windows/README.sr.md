@@ -303,9 +303,15 @@ cd D:\shift-worklog-new\deploy\windows
 3. Skripta za ažuriranje **prvo pravi rezervnu kopiju**, zatim zaustavlja sistem, ažurira program, nadograđuje bazu i sve ponovo pokreće. Kada se pojavi „更新完成” (ažuriranje završeno), gotovo je. Sistem nije dostupan nekoliko minuta, **zato ažurirajte van vremena primopredaje smena**.
 4. Podaci, slike, lozinke i sertifikati ostaju, i telefonima ne treba novi sertifikat.
 
-### 9.4 Ako se IP adresa servera promenila
+### 9.4 Promena IP adrese servera
 
-U PowerShell-u kao administrator idite u fasciklu **instaliranog** programa i pokrenite instalaciju sa novom IP adresom:
+Promena adrese ima dva dela: prvo računar mora **zaista da dobije novu IP adresu**, zatim sistemu kažete koja je nova adresa.
+
+**① Dodelite računaru novu IP adresu:** zamolite mrežnog administratora da promeni rezervaciju u ruteru, ili podesite statičku adresu kao u 3.2. Zatim u `cmd` pokrenite `ipconfig` i proverite da „IPv4 Address” pokazuje novu adresu.
+
+**② Recite sistemu novu adresu** (izaberite jedno):
+
+**Način A: skripta za adresu (preporučeno).** U PowerShell-u kao administrator ukucajte jednu po jednu, sa vašom novom IP adresom u poslednjem redu:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass -Force
@@ -316,10 +322,32 @@ cd C:\WorkRecord\app\deploy\windows
 ```
 
 ```powershell
-.\install.ps1 -SiteHosts 192.168.1.60
+.\set-address.ps1 192.168.1.60
 ```
 
-Podaci se ne gube i telefoni zadržavaju sertifikat; samo koriste novu adresu.
+> Ako u `C:\WorkRecord\app\deploy\windows` nema fajla `set-address.ps1` (instalacije pre 23.11.2026. ga nemaju), prvo preuzmite i raspakujte najnoviju verziju, pa iste komande pokrenite u fascikli `deploy\windows` **novog preuzimanja**.
+
+Da biste pristupali i preko imena računara, odvojite zarezom i stavite navodnike: `.\set-address.ps1 '192.168.1.60, worklog-server'`
+
+Kada se pojavi zeleno „地址已修改。” (adresa je promenjena), gotovo je.
+
+**Način B: ručno u Notepad-u (ne treba ništa preuzimati).**
+
+1. Otvorite Notepad kao administrator: u Start meniju potražite „Notepad” → desni klik → „Run as administrator”.
+2. U Notepad-u: „File” → „Open”, za tip fajla izaberite „All files” i otvorite `C:\WorkRecord\tools\WorkRecordCaddy.xml`.
+3. Pronađite ovaj red, zamenite staru IP adresu unutar `value="..."` novom i sačuvajte:
+
+```
+<env name="SITE_HOSTS" value="192.168.1.50"/>
+```
+
+4. Pritisnite Win + R, ukucajte `services.msc`, Enter, pronađite „WorkRecord HTTPS (Caddy)”, desni klik → „Restart”.
+
+**③ Posle promene**
+
+- Podaci i lozinke ostaju. **Telefoni koji već imaju sertifikat ne treba ponovo da ga instaliraju**; samo otvorite `https://NOVA-IP`.
+- Stare ikone na početnom ekranu vode na staru adresu i više se ne otvaraju: otvorite novu adresu, ponovo „Dodaj na početni ekran” i obrišite staru ikonu.
+- Novi telefoni kao i obično instaliraju sertifikat sa `http://NOVA-IP/install`.
 
 ---
 

@@ -204,7 +204,10 @@
   - PostgreSQL 手动安装（EDB 安装包）；脚本创建专用账号 `workrecord`（随机密码写进 `.env`），`.env` 权限只给 Administrators / SYSTEM
   - 每天 03:40 计划任务备份（pg_dump 保留 30 天、图片增量、证书、配置）；关闭睡眠 / 休眠；防火墙放行 80/443
   - **.ps1 必须 UTF-8 带 BOM + CRLF**（Windows PowerShell 5.1 否则中文乱码），`.gitattributes` 已设 `*.ps1 eol=crlf`；只用 PS 5.1 语法
-  - **尚未在真实 Windows 上运行过**（开发环境没有 Windows，也不允许运行 PowerShell）；首次部署时留意输出
+  - **PowerShell 5.1 的两个坑（2026-11-23 用户实测踩到）**：① 传给外部程序的参数里的双引号会被吞掉（`python -c "..."` 会坏）→ 参数里不要带双引号；② `$ErrorActionPreference='Stop'` 时，外部程序的错误输出配合 `2>$null` / `2>&1` 会变成致命错误 → 调外部程序的函数里局部设 `$ErrorActionPreference='Continue'`，只看 `$LASTEXITCODE`（`Invoke-Native` 已这样做）
+  - icacls 用 SID（`*S-1-5-32-544`、`*S-1-5-18`），不用组名（组名随 Windows 语言变）
+  - 改访问地址：`set-address.ps1 <IP>`（只改 `tools\WorkRecordCaddy.xml` 里的 SITE_HOSTS 并重启 Caddy，根证书不变，手机不用重装）；手动方式是记事本改这个 XML 后重启服务
+  - 2026-11-23 用户已在真实 Windows 上跑完安装（第 1 步遇到 PS 5.1 引号问题，已修）
   - `.env` 按 UTF-8 读取（`env_file_encoding`，中文 Windows 默认 GBK）；依赖加了 `tzdata`（Windows 没有 IANA 时区库）
 - [x] 第 7 步：AI 工作量分析（2026-11-22）
   - 「管理 → AI 工作量分析」（仅管理员）：选时间段（≤93 天）、班组（可全部）、报告语言 → 后台生成，历史报告可查，可下载 .md、打印

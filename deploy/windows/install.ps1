@@ -106,6 +106,7 @@ if ($envCfg.ContainsKey('DATABASE_URL')) {
     $env:PGPASSWORD = [Runtime.InteropServices.Marshal]::PtrToStringBSTR([Runtime.InteropServices.Marshal]::SecureStringToBSTR($sec))
     $psql = Join-Path $pgBin 'psql.exe'
     function Invoke-Pg([string]$Sql) {
+        $ErrorActionPreference = 'Continue'
         $out = & $psql -h 127.0.0.1 -U postgres -d postgres -v ON_ERROR_STOP=1 -tAc $Sql
         if ($LASTEXITCODE -ne 0) { throw "数据库操作失败：$Sql（postgres 密码对吗？）" }
         return "$out".Trim()
@@ -141,7 +142,8 @@ UPLOAD_DIR=$($DataDir.Replace('\', '/'))/uploads
 "@
     Write-Utf8NoBom $EnvFile $envText
     # 配置文件里有密码：只给管理员和 SYSTEM 读
-    & icacls $EnvFile /inheritance:r /grant:r 'Administrators:F' 'SYSTEM:F' | Out-Null
+    # 用 SID（*S-1-5-32-544 = Administrators 组，*S-1-5-18 = SYSTEM），不受 Windows 语言影响
+    & icacls $EnvFile /inheritance:r /grant:r '*S-1-5-32-544:F' '*S-1-5-18:F' | Out-Null
     Write-Ok "配置文件：$EnvFile"
 }
 New-Item -ItemType Directory -Force -Path (Join-Path $DataDir 'uploads') | Out-Null

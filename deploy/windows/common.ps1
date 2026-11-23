@@ -37,8 +37,12 @@ function Assert-Admin {
 }
 
 # 运行外部程序，失败就停下并说明是哪一步
+# 注意 Windows PowerShell 5.1 的两个坑：
+#  - 外部程序写到错误输出的内容，在 $ErrorActionPreference='Stop' 下可能被当成致命错误 → 这里局部改成 Continue，只看退出码
+#  - 传给外部程序的参数里如果有双引号，会被悄悄去掉 → 参数里不要带双引号
 function Invoke-Native {
     param([Parameter(Mandatory)][string]$File, [string[]]$Arguments = @(), [Parameter(Mandatory)][string]$What)
+    $ErrorActionPreference = 'Continue'
     & $File @Arguments
     if ($LASTEXITCODE -ne 0) { throw "$What 失败（退出码 $LASTEXITCODE）。请看上面的输出。" }
 }
@@ -78,11 +82,12 @@ function Find-Python {
     $cands += Get-ChildItem "$env:LOCALAPPDATA\Programs\Python\Python31*\python.exe" -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | ForEach-Object { $_.FullName }
     $cmd = Get-Command python.exe -ErrorAction SilentlyContinue
     if ($cmd -and $cmd.Source -notmatch 'WindowsApps') { $cands += $cmd.Source }
+    $ErrorActionPreference = 'Continue'  # 只在本函数内生效
     foreach ($c in $cands) {
-        $v = & $c -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>$null
-        if ($LASTEXITCODE -eq 0 -and $v) {
-            $parts = $v.Trim().Split('.')
-            if ([int]$parts[0] -eq 3 -and [int]$parts[1] -ge 11) { return $c }
+        # 用 --version 判断版本（不能用 -c "代码"：PowerShell 5.1 会吞掉参数里的双引号）
+        $v = (& $c --version 2>&1 | Out-String)
+        if ($v -match 'Python (\d+)\.(\d+)') {
+            if ([int]$Matches[1] -eq 3 -and [int]$Matches[2] -ge 11) { return $c }
         }
     }
     return $null
@@ -144,13 +149,13 @@ function Invoke-Migrate {
     Push-Location $Backend
     try {
         Invoke-Native $VenvPy @('-m', 'alembic', 'upgrade', 'head') '数据库升级'
-        $cur = & $VenvPy -m alembic current 2>$null
-        Write-Ok "数据库版本：$("$cur".Trim())"
+        Write-Ok '数据库已是最新版本'
     } finally { Pop-Location }
 }
 
 # ---------------- 服务 ----------------
 function Invoke-WinSW([string]$Name, [string]$Command) {
+    $ErrorActionPreference = 'Continue'
     $exe = Join-Path $ToolsDir "$Name.exe"
     if (-not (Test-Path $exe)) { return }
     & $exe $Command | Out-Host

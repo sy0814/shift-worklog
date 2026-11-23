@@ -301,9 +301,15 @@ cd D:\shift-worklog-new\deploy\windows
 3. The update script **makes a backup first**, then stops the system, updates the program, upgrades the database and starts everything again. When you see「更新完成」("Update complete"), you are done. The system is unavailable for a few minutes, **so update outside shift-change times**.
 4. Data, photos, passwords and certificates are kept, and phones do not need a new certificate.
 
-### 9.4 If the server's IP address changed
+### 9.4 Change the server's IP address
 
-In an administrator PowerShell, go to the **installed** program folder and run the installer with the new IP:
+Changing the address has two parts: first the PC must **really get the new IP**, then you tell the system the new address.
+
+**① Give the PC the new IP:** ask your network administrator to change the reservation in the router, or set a static IP as in 3.2. Then run `ipconfig` in `cmd` and check that "IPv4 Address" shows the new IP.
+
+**② Tell the system the new address** (choose one):
+
+**Way A: the address script (recommended).** In an administrator PowerShell, type one line at a time, with your new IP on the last line:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass -Force
@@ -314,10 +320,32 @@ cd C:\WorkRecord\app\deploy\windows
 ```
 
 ```powershell
-.\install.ps1 -SiteHosts 192.168.1.60
+.\set-address.ps1 192.168.1.60
 ```
 
-No data is lost and phones keep their certificate; they just use the new address.
+> If `C:\WorkRecord\app\deploy\windows` has no `set-address.ps1` (installations before 2026-11-23 do not), download and extract the latest version first, and run the same commands in the `deploy\windows` folder of the **new download**.
+
+To also allow access by PC name, separate with a comma and use quotes: `.\set-address.ps1 '192.168.1.60, worklog-server'`
+
+When you see green「地址已修改。」("Address changed."), you are done.
+
+**Way B: edit by hand in Notepad (no download needed).**
+
+1. Open Notepad as administrator: search "Notepad" in the Start menu → right-click → Run as administrator.
+2. In Notepad, File → Open, set the file type to "All files", and open `C:\WorkRecord\tools\WorkRecordCaddy.xml`.
+3. Find this line, replace the old IP inside `value="..."` with the new one, and save:
+
+```
+<env name="SITE_HOSTS" value="192.168.1.50"/>
+```
+
+4. Press Win + R, type `services.msc`, press Enter, find "WorkRecord HTTPS (Caddy)", right-click → "Restart".
+
+**③ Afterwards**
+
+- Data and passwords are not affected. **Phones that already have the certificate do not need it again**; just open `https://NEW-IP`.
+- Old home-screen icons point to the old address and no longer open: open the new address, "Add to Home screen" again, and delete the old icon.
+- New phones install the certificate as usual from `http://NEW-IP/install`.
 
 ---
 
