@@ -304,6 +304,8 @@
   - **离线开始 / 完成任务**：任务详情的开始 / 完成 / 撤销开始 / 重新打开都走发件箱（`outbox.submitStatus`，类型 `status`），断网时存手机，联网后按点的先后提交。请求带 `expect`（点的时候看到的状态；服务器上已经被别人改了 → 409 `task status changed meanwhile`，不覆盖）和 `at`（点的时间，开始 / 完成时间按它记，不晚于现在、不早于 3 天前和任务录入时间）；同一操作重发（已经是那个状态）直接成功。没同步的任务卡片显示「⏳ 待同步」，详情里有提示
   - 给已有任务补照片本来就走发件箱（`submitPhotos`）
   - **班组调班可以填自定义时间段**：`team_shift_overrides.hours`（迁移 0014），`shift_kind` 存它算作的班；`Schedule.overrides` 的值是时间段或班次，`shift_of` 经 `entry_kind` 换算，`team_entry` 返回原写法，`planned_entry` = 不算调班时循环里写的。和原排班写法一样 = 删掉覆盖；互换按写法换。「班组调班」弹窗里「⏱ 自定义时间」
+  - **设备台账**（「设备台账」页 `views/Equipment.vue`、`/api/equipment`、`routers/equipment.py`，迁移 0015）：表 `equipment`（编号唯一、三语名称 / 区域 / 备注、型号、在用）；`tasks.equipment_id`（任务表单可选、卡片显示「⚙ 编号 名称」、任务列表 `?equipment_id=` 筛选、移交时带上、导出加「设备」列）。所有人能看，权限 `equipment.manage`（none / all，迁移给班长、副班长 all）。**自动翻译**：只填了部分语言的字段由翻译队列补齐（`translation_service.translate_equipment`，队列项 `("equipment", id)`，定时重试也包括）；改原文（录入语言那一列且只改了它）→ 其他语言清空重新翻译；只改某个译文 = 人工校对，保留。用过的设备不能删、只能停用。Excel 导入按编号合并（先检查再确认，一行错全不导入；表头三语都认，可写「名称 sr」指定语言）、导出三语列
+  - 顺手修了：「角色权限」页「项目」权限没有名称（显示成 key）
   - **离线能打开任务详情**：联网时首页（警示 + 交接班）和任务列表会顺便把未完成任务的详情读一遍（`offline.warmTasks`，每条 10 分钟一次、最多 40 条），Service Worker 缓存下来
 - 工厂时区由 `APP_TIMEZONE` 配置，默认 `Europe/Belgrade`
 - 排班推算是纯函数，在 `backend/app/shifts.py`，测试在 `backend/tests/test_shifts.py`

@@ -217,6 +217,7 @@ class TaskCreate(BaseModel):
     team_id: int | None = None  # 班长忽略此字段，固定为本班组；管理员必填
     worker_ids: list[int] = Field(default_factory=list, max_length=200)
     lead_worker_id: int | None = None  # 带队人员（可不填）
+    equipment_id: int | None = None  # 关联的设备（可不填）
     status: Literal["not_started", "in_progress", "done"] = "not_started"
     start_at: datetime | None = None
     end_at: datetime | None = None
@@ -231,6 +232,7 @@ class TaskUpdate(BaseModel):
     leftover_lang: Lang | None = None  # 遗留问题文字的语言（默认同 lang）
     worker_ids: list[int] | None = Field(default=None, max_length=200)
     lead_worker_id: int | None = None  # 传了就改（null = 去掉带队人），不传不改
+    equipment_id: int | None = None  # 传了就改（null = 不关联设备），不传不改
     start_at: datetime | None = None
     end_at: datetime | None = None
     # 原文改了以后：True 重新翻译（覆盖人工校对的译文）；False 保留现有译文
@@ -303,6 +305,13 @@ class ProjectBrief(BaseModel):
     total: int
 
 
+class EquipmentBrief(BaseModel):
+    id: int
+    code: str
+    name: Trilingual
+    source_lang: str
+
+
 class TaskOut(BaseModel):
     id: int
     client_id: str
@@ -341,6 +350,7 @@ class TaskOut(BaseModel):
     # 当前用户对这条任务能做什么：edit / status（开始、完成）/ handover / discard / photo（传照片）/ correct（校对译文）
     perms: dict[str, bool] = {}
     project: "ProjectBrief | None" = None  # 属于哪个项目（子项目）
+    equipment: EquipmentBrief | None = None  # 关联的设备
     # 移交 / 废弃 / 警示
     chain_started_at: UTCDateTime
     handover_count: int

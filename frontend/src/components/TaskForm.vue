@@ -5,7 +5,7 @@ import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import dayjs from 'dayjs'
 import api from '../api'
-import { localName } from '../i18n'
+import { localName, localText } from '../i18n'
 import { isNarrow } from '../format'
 import { uuid } from '../offline'
 import { preparePhotos } from '../photo'
@@ -46,7 +46,7 @@ async function init() {
     const l = pick(tk.leftover, tk.leftover_source_lang)
     original = {
       content: c.text, contentLang: c.lang, leftover: l.text, leftoverLang: l.lang,
-      worker_ids: tk.workers.map((w) => w.id), lead_worker_id: tk.lead?.id ?? null,
+      worker_ids: tk.workers.map((w) => w.id), lead_worker_id: tk.lead?.id ?? null, equipment_id: tk.equipment?.id ?? null,
       start_at: toLocal(tk.start_at), end_at: toLocal(tk.end_at),
     }
     Object.assign(form, { ...original, worker_ids: [...original.worker_ids] })
@@ -54,12 +54,24 @@ async function init() {
     Object.assign(form, {
       client_id: uuid(), content: '', leftover: '', status: 'not_started',
       worker_ids: [...(props.preset?.worker_ids || [])], lead_worker_id: props.preset?.lead_worker_id ?? null,
-      start_at: null, end_at: null, team_id: props.preset?.team_id ?? auth.user.team_id ?? auth.teams[0]?.id,
+      equipment_id: props.preset?.equipment_id ?? null, start_at: null, end_at: null, team_id: props.preset?.team_id ?? auth.user.team_id ?? auth.teams[0]?.id,
     })
   }
   workers.value = await loadWorkers()
   loadAssignable()
+  loadEquipment()
 }
+
+// 设备台账（可不选）；断网时用 Service Worker 缓存的
+const equipment = ref([])
+async function loadEquipment() {
+  try {
+    equipment.value = (await api.get('/equipment', { silent: true })).data
+  } catch { /* 没有也能录入 */ }
+  const cur = props.task?.equipment
+  if (cur && !equipment.value.some((e) => e.id === cur.id)) equipment.value.push(cur) // 已停用的设备也显示
+}
+const eqLabel = (e) => `${e.code} ${localText(e.name, e.source_lang).text}`
 
 // 能分配的人：同一班次在岗的人（班长只能选这些；管理员不限，但「本班在岗」排在最前）
 const assignable = ref(null) // { shift_date, shift_kind, restricted, worker_ids }
@@ -150,6 +162,7 @@ async function saveNew() {
   const body = {
     client_id: form.client_id, content: form.content.trim(), lang: locale.value,
     worker_ids: form.worker_ids, lead_worker_id: form.lead_worker_id || null, status: form.status, start_at: form.start_at || null,
+    equipment_id: form.equipment_id || null,
     end_at: form.end_at || null, leftover: form.leftover?.trim() || null,
     recorded_at: new Date().toISOString(),
     ...(auth.isAdmin ? { team_id: form.team_id } : {}),
@@ -174,6 +187,7 @@ async function saveEdit() {
   }
   if ([...form.worker_ids].sort().join() !== [...o.worker_ids].sort().join()) patch.worker_ids = form.worker_ids
   if ((form.lead_worker_id || null) !== (o.lead_worker_id || null)) patch.lead_worker_id = form.lead_worker_id || null
+  if ((form.equipment_id || null) !== (o.equipment_id || null)) patch.equipment_id = form.equipment_id || null
   if (form.start_at !== o.start_at) patch.start_at = form.start_at || null
   if (form.end_at !== o.end_at) patch.end_at = form.end_at || null
   // 改了原文、且这段有人工校对过的译文：问是重新翻译还是保留
@@ -212,6 +226,11 @@ async function saveEdit() {
       <el-form-item :label="t('task.content')" required>
         <el-input v-model="form.content" type="textarea" :autosize="{ minRows: 3, maxRows: 10 }"
                   :placeholder="t('task.contentPh')" maxlength="5000" />
+      </el-form-item>
+      <el-form-item :label="t('eq.one')">
+        <el-select v-model="form.equipment_id" filterable clearable :placeholder="t('eq.pick')" style="width: 100%">
+          <el-option v-for="e in equipment" :key="e.id" :label="eqLabel(e)" :value="e.id" />
+        </el-select>
       </el-form-item>
       <div v-if="assignable?.restricted" class="muted small hint">
         {{ t('assign.hint', { d: assignable.shift_date.slice(5), s: t('shift.' + assignable.shift_kind) }) }}

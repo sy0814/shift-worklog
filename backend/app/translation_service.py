@@ -239,6 +239,76 @@ def translate_project(project_id: int) -> str:
         return "done"
 
 
+# ---------------- 设备台账（名称、区域、备注）----------------
+EQUIPMENT_FIELDS = ("name", "area", "note")
+EQUIPMENT_MAX = {"name": 200, "area": 200, "note": 5000}
+
+
+def equipment_missing(e) -> list[str]:
+    """哪些字段只填了一部分语言（需要翻译补齐）。"""
+    out = []
+    for f in EQUIPMENT_FIELDS:
+        vals = [getattr(e, f"{f}_{l}") for l in LANGS]
+        if any(vals) and not all(vals):
+            out.append(f)
+    return out
+
+
+def translate_equipment(equipment_id: int) -> str:
+    """把设备名称 / 区域 / 备注空着的语言翻译补上（填了的不动，人工改过的也不会被覆盖）。"""
+    from .models import Equipment
+
+    with SessionLocal() as db:
+        e = db.get(Equipment, equipment_id)
+        if e is None:
+            return "missing"
+        todo = {}
+        for f in equipment_missing(e):
+            vals = {l: getattr(e, f"{f}_{l}") for l in LANGS}
+            src_lang = e.source_lang if vals.get(e.source_lang) else next(l for l in LANGS if vals[l])
+            todo[f] = (src_lang, vals[src_lang])
+        if not todo:
+            if e.translation_status != "done":
+                e.translation_status = "done"
+                db.commit()
+            return "done"
+        if not translator.is_configured():
+            return e.translation_status
+        glossary = load_glossary(db)
+    results = {}
+    try:
+        with client_factory() as client:
+            for f, (_l, text) in todo.items():
+                results[f] = translator.translate(text, glossary, client=client)
+    except translator.TranslationError as err:
+        log.warning("translate equipment %s failed: %s", equipment_id, err)
+        return "pending"
+    with SessionLocal() as db:
+        e = db.get(Equipment, equipment_id)
+        if e is None:
+            return "missing"
+        new = {}
+        for f, (src_lang, text) in todo.items():
+            if getattr(e, f"{f}_{src_lang}") != text:
+                return "stale"  # 翻译期间被改过，等下一轮
+            for l in LANGS:
+                if not getattr(e, f"{f}_{l}"):
+                    v = fit(results[f].get(l) or text, EQUIPMENT_MAX[f])
+                    setattr(e, f"{f}_{l}", v)
+                    new[f"{f}_{l}"] = v
+        e.translation_status = "done"
+        audit.log(db, user_id=None, action="translate", entity="equipment", entity_id=e.id, new=new)
+        db.commit()
+        return "done"
+
+
+def enqueue_equipment(equipment_id: int) -> None:
+    if not _threads:
+        translate_equipment(equipment_id)
+        return
+    _queue.put(("equipment", equipment_id))
+
+
 def enqueue_project(project_id: int) -> None:
     if not _threads:
         translate_project(project_id)
@@ -262,11 +332,11 @@ def _work() -> None:
         tid = _queue.get()
         if tid is None:
             return
-        if isinstance(tid, tuple):  # ("project", id)
+        if isinstance(tid, tuple):  # ("project", id) / ("equipment", id)
             try:
-                translate_project(tid[1])
+                (translate_equipment if tid[0] == "equipment" else translate_project)(tid[1])
             except Exception:  # noqa: BLE001
-                log.exception("translate project %s crashed", tid[1])
+                log.exception("translate %s %s crashed", *tid)
             continue
         with _lock:
             _queued.discard(tid)
@@ -304,6 +374,12 @@ def retry_pending() -> int:
         pids = db.scalars(select(Project.id).where(Project.translation_status == "pending").limit(50)).all()
     for pid in pids:
         enqueue_project(pid)
+    from .models import Equipment
+
+    with SessionLocal() as db:
+        eids = db.scalars(select(Equipment.id).where(Equipment.translation_status == "pending").limit(50)).all()
+    for eid in eids:
+        enqueue_equipment(eid)
     return len(ids)
 
 

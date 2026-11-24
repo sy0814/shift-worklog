@@ -200,6 +200,33 @@ class Project(Base):
     inspection_id: Mapped[int | None] = mapped_column(ForeignKey("inspection_templates.id"), nullable=True, index=True)
 
 
+class Equipment(Base):
+    """设备台账：设备编号、名称、区域、型号、备注。名称 / 区域 / 备注三语，只填一种时后台自动翻译补齐。
+    任务可以关联到设备（tasks.equipment_id），设备页能看到它的所有任务。"""
+
+    __tablename__ = "equipment"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    code: Mapped[str] = mapped_column(String(60), unique=True)  # 设备编号（唯一）
+    name_zh: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    name_sr: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    name_en: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    area_zh: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    area_sr: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    area_en: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    note_zh: Mapped[str | None] = mapped_column(Text, nullable=True)
+    note_sr: Mapped[str | None] = mapped_column(Text, nullable=True)
+    note_en: Mapped[str | None] = mapped_column(Text, nullable=True)
+    model: Mapped[str] = mapped_column(String(200), default="", server_default="")  # 型号规格（不翻译）
+    source_lang: Mapped[str] = mapped_column(String(5))  # 录入时的语言（翻译从这个语言出发）
+    translation_status: Mapped[str] = mapped_column(String(10), default="pending")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())
+    created_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    updated_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class WorkerSchedule(Base):
     """员工的班组 / 排班变更记录：从 effective_from 这天起，属于哪个班组、跟班组排班还是按个人循环。
     出勤、工时按当天有效的那条算，所以换班组后以前的出勤不变。"""
@@ -262,6 +289,7 @@ class Task(Base):
     source_task_id: Mapped[int | None] = mapped_column(ForeignKey("tasks.id"), nullable=True)
     inspection_id: Mapped[int | None] = mapped_column(ForeignKey("inspection_templates.id"), nullable=True, index=True)
     project_id: Mapped[int | None] = mapped_column(ForeignKey("projects.id"), nullable=True, index=True)  # 属于哪个项目（子项目）
+    equipment_id: Mapped[int | None] = mapped_column(ForeignKey("equipment.id"), nullable=True, index=True)  # 关联的设备
     # 带队人员（一个，可不填）。带队人同时也在 workers（task_workers）里，所以按「参与」统计时自动算上他
     lead_worker_id: Mapped[int | None] = mapped_column(ForeignKey("workers.id"), nullable=True, index=True)
 

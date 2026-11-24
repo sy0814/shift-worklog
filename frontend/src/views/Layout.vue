@@ -5,7 +5,7 @@ import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
-import { ArrowDown, Calendar, Clock, Document, Folder, House, Menu } from '@element-plus/icons-vue'
+import { ArrowDown, Calendar, Clock, Document, Folder, House, Menu, Setting } from '@element-plus/icons-vue'
 import dayjs from 'dayjs'
 import api from '../api'
 import { LANGS, localName } from '../i18n'
@@ -31,6 +31,7 @@ const main = computed(() => [
   { name: 'attendance', label: t('att.title'), icon: Calendar },
   { name: 'schedule', label: t('nav.schedule'), icon: Clock },
   { name: 'projects', label: t('proj.title'), icon: Folder },
+  { name: 'equipment', label: t('eq.title'), icon: Setting },
   ...(!auth.isAdmin && auth.can('worker.pin') ? [{ name: 'workers', label: t('nav2.workers') }] : []), // 班长：给成员重设个人密码
 ])
 const admin = computed(() => auth.isAdmin ? [

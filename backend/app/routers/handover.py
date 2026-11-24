@@ -92,7 +92,7 @@ def perform_handover(db: Session, tasks: list[Task], to_team_id: int | None, not
             content_zh=src.content_zh, content_sr=src.content_sr, content_en=src.content_en,
             source_lang=src.source_lang, translation_status=src.translation_status,
             team_id=target, origin_team_id=src.origin_team_id, source_task_id=src.id,
-            inspection_id=src.inspection_id, project_id=src.project_id,
+            inspection_id=src.inspection_id, project_id=src.project_id, equipment_id=src.equipment_id,
             status=src.status, shift_date=rd, shift_kind=rk, start_at=src.start_at,
             created_by=actor_id, updated_by=actor_id, recorded_at=now, created_at=now, updated_at=now,
             chain_started_at=src.chain_started_at, handover_count=src.handover_count + 1,

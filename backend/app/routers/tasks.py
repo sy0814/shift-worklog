@@ -25,6 +25,7 @@ from ..schemas import (
     AuditOut,
     HandoverInfo,
     HistoryOut,
+    EquipmentBrief,
     ProjectBrief,
     TaskCreate,
     TaskOut,
@@ -135,6 +136,7 @@ class OutCtx:
     inspections: dict[int, str]  # 巡查项 id → 名称
     who: "permissions.Who | None"  # 当前用户的权限
     projects: dict  # 项目 id → ProjectBrief
+    equipment: dict  # 设备 id → EquipmentBrief
 
 
 def _project_briefs(db: Session, ids: set[int]) -> dict:
@@ -150,6 +152,23 @@ def _project_briefs(db: Session, ids: set[int]) -> dict:
             for p in db.scalars(select(Project).where(Project.id.in_(ids)))}
 
 
+def _equipment_briefs(db: Session, ids: set[int]) -> dict:
+    from ..models import Equipment
+
+    if not ids:
+        return {}
+    return {e.id: EquipmentBrief(id=e.id, code=e.code, name=Trilingual(zh=e.name_zh, sr=e.name_sr, en=e.name_en),
+                                 source_lang=e.source_lang)
+            for e in db.scalars(select(Equipment).where(Equipment.id.in_(ids)))}
+
+
+def _check_equipment(db: Session, eid: int | None) -> None:
+    from ..models import Equipment
+
+    if eid is not None and db.get(Equipment, eid) is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "unknown equipment")
+
+
 def make_ctx(db: Session, tasks: list[Task], user: User | None = None) -> OutCtx:
     ids = [t.id for t in tasks]
     hos = db.scalars(select(TaskHandover).where(
@@ -162,6 +181,7 @@ def make_ctx(db: Session, tasks: list[Task], user: User | None = None) -> OutCtx
         inspections=inspections,
         who=permissions.who(db, user) if user is not None else None,
         projects=_project_briefs(db, {t.project_id for t in tasks if t.project_id}),
+        equipment=_equipment_briefs(db, {t.equipment_id for t in tasks if t.equipment_id}),
         names=_names(db),
         ho_from={h.from_task_id: h for h in hos},
         ho_to={h.to_task_id: h for h in hos},
@@ -222,6 +242,7 @@ def task_out(task: Task, user: User, ctx: OutCtx) -> TaskOut:
         can_correct=perms["correct"],
         perms=perms,
         project=ctx.projects.get(task.project_id),
+        equipment=ctx.equipment.get(task.equipment_id),
         chain_started_at=task.chain_started_at, handover_count=task.handover_count,
         age_hours=round(age, 1), overdue=overdue,
         handover_in=_ho_info(ctx.ho_to.get(task.id), True, names),
@@ -365,6 +386,7 @@ def list_tasks(
     date_from: str | None = None,
     date_to: str | None = None,
     worker_id: int | None = None,
+    equipment_id: int | None = None,
     q: str | None = Query(default=None, max_length=100),
     overdue: bool = False,
     limit: int = Query(default=50, le=200),
@@ -388,6 +410,8 @@ def list_tasks(
         query = query.where(Task.shift_date <= date_to)
     if worker_id:
         query = query.where(Task.workers.any(Worker.id == worker_id))
+    if equipment_id:
+        query = query.where(Task.equipment_id == equipment_id)
     if overdue:
         query = query.where(overdue_clause(db, utcnow()))
     if q:
@@ -470,11 +494,13 @@ def create_task(body: TaskCreate, db: Session = Depends(get_db),
     _check_assignable(db, w, team_id, shift_date, shift_kind, set(member_ids) | ({lead_id} if lead_id else set()))
     task.workers = _load_workers(db, member_ids + ([lead_id] if lead_id else []))
     task.lead_worker_id = lead_id
+    _check_equipment(db, body.equipment_id)
+    task.equipment_id = body.equipment_id
     db.add(task)
     db.flush()
     audit.log(db, user_id=user.id, action="create", entity="task", entity_id=task.id, new={
         "content": body.content.strip(), "lang": body.lang, "team_id": team_id,
-        "status": body.status, "worker_ids": member_ids, "lead_worker_id": lead_id,
+        "status": body.status, "worker_ids": member_ids, "lead_worker_id": lead_id, "equipment_id": body.equipment_id,
         "start_at": start_at, "end_at": end_at, "leftover": task.leftover_source_lang and body.leftover.strip(),
         "recorded_at": recorded, "shift": f"{shift_date} {shift_kind}",
     })
@@ -508,6 +534,9 @@ def update_task(task_id: int, body: TaskUpdate, db: Session = Depends(get_db),
     for f in ("start_at", "end_at"):
         if f in data:
             changes[f] = to_utc(data[f])
+    if "equipment_id" in data:
+        _check_equipment(db, data["equipment_id"])
+        changes["equipment_id"] = data["equipment_id"]
     _check_times(changes.get("start_at", task.start_at), changes.get("end_at", task.end_at))
 
     changed = audit.log_changes(db, task, changes, user_id=user.id, entity="task", entity_id=task.id)

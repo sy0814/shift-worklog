@@ -30,7 +30,7 @@ L = {
     "zh": {
         "sheet_tasks": "任务明细", "sheet_load": "人员工作量", "sheet_att": "出勤",
         "tasks": ["编号", "班次日期", "班次", "班组", "状态", "工作内容", "原文", "遗留问题", "带队人员", "参与人员", "开始时间",
-                  "完成时间", "工时(小时)", "发布人", "最后修改人", "完成确认人", "移交", "废弃原因", "图片数", "已移交次数"],
+                  "完成时间", "工时(小时)", "发布人", "最后修改人", "完成确认人", "移交", "废弃原因", "图片数", "已移交次数", "设备"],
         "load": ["姓名", "工号", "班组", "排班班次", "实际出勤", "请假", "病假", "缺勤", "参与任务", "已完成", "未完成",
                  "任务工时合计(小时)", "加班(小时)"],
         "att": ["姓名", "工号", "班组"],
@@ -44,7 +44,7 @@ L = {
         "sheet_tasks": "Zadaci", "sheet_load": "Opterećenje", "sheet_att": "Prisustvo",
         "tasks": ["Br.", "Datum smene", "Smena", "Ekipa", "Status", "Opis posla", "Original", "Preostali problemi",
                   "Vođa ekipe", "Učesnici", "Početak", "Završetak", "Sati", "Uneo", "Poslednja izmena", "Potvrdio", "Predaja",
-                  "Razlog odbacivanja", "Slike", "Broj predaja"],
+                  "Razlog odbacivanja", "Slike", "Broj predaja", "Oprema"],
         "load": ["Ime", "Matični br.", "Ekipa", "Smene po rasporedu", "Prisutan", "Odsustvo", "Bolovanje", "Izostanak",
                  "Zadaci", "Završeno", "Nezavršeno", "Ukupno sati", "Prekovremeno (h)"],
         "att": ["Ime", "Matični br.", "Ekipa"],
@@ -58,7 +58,7 @@ L = {
         "sheet_tasks": "Tasks", "sheet_load": "Workload", "sheet_att": "Attendance",
         "tasks": ["No.", "Shift date", "Shift", "Team", "Status", "Work", "Original", "Open issues", "Lead", "Workers", "Start",
                   "Finish", "Hours", "Posted by", "Last edited by", "Confirmed by", "Handover", "Discard reason", "Photos",
-                  "Handovers"],
+                  "Handovers", "Equipment"],
         "load": ["Name", "Employee no.", "Team", "Scheduled shifts", "Present", "Leave", "Sick", "Absent", "Tasks",
                  "Done", "Open", "Task hours", "Overtime (h)"],
         "att": ["Name", "Employee no.", "Team"],
@@ -123,6 +123,11 @@ def build_workbook(db: Session, start: date, end: date, team_id: int | None, wor
     ho_out = {h.from_task_id: h for h in hos}
     ho_in = {h.to_task_id: h for h in hos}
 
+    from ..models import Equipment
+
+    eq_ids = {t.equipment_id for t in tasks if t.equipment_id}
+    eq = {e.id: f"{e.code} {getattr(e, f'name_{lang}') or e.name_zh or e.name_sr or e.name_en or ''}".strip()
+          for e in db.scalars(select(Equipment).where(Equipment.id.in_(eq_ids)))} if eq_ids else {}
     wb = Workbook()
     # ---- 任务明细 ----
     ws = wb.active
@@ -144,9 +149,9 @@ def build_workbook(db: Session, start: date, end: date, team_id: int | None, wor
             ", ".join(w.name for w in t.workers if w.id != t.lead_worker_id),
             _local(t.start_at), _local(t.end_at), _hours(t),
             names.get(t.created_by, ""), names.get(t.updated_by, ""), names.get(t.confirmed_by, "") if t.confirmed_by else "",
-            "; ".join(ho), reason, len(t.attachments), t.handover_count,
+            "; ".join(ho), reason, len(t.attachments), t.handover_count, eq.get(t.equipment_id, ""),
         ])
-    widths = [7, 12, 8, 10, 10, 50, 40, 35, 14, 25, 16, 16, 9, 12, 12, 12, 22, 30, 7, 8]
+    widths = [7, 12, 8, 10, 10, 50, 40, 35, 14, 25, 16, 16, 9, 12, 12, 12, 22, 30, 7, 8, 22]
     for i, wdt in enumerate(widths, start=1):
         ws.column_dimensions[get_column_letter(i)].width = wdt
     for row in ws.iter_rows(min_row=2):
