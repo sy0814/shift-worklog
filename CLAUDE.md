@@ -306,6 +306,13 @@
   - **班组调班可以填自定义时间段**：`team_shift_overrides.hours`（迁移 0014），`shift_kind` 存它算作的班；`Schedule.overrides` 的值是时间段或班次，`shift_of` 经 `entry_kind` 换算，`team_entry` 返回原写法，`planned_entry` = 不算调班时循环里写的。和原排班写法一样 = 删掉覆盖；互换按写法换。「班组调班」弹窗里「⏱ 自定义时间」
   - **设备台账**（「设备台账」页 `views/Equipment.vue`、`/api/equipment`、`routers/equipment.py`，迁移 0015）：表 `equipment`（编号唯一、三语名称 / 区域 / 备注、型号、在用）；`tasks.equipment_id`（任务表单可选、卡片显示「⚙ 编号 名称」、任务列表 `?equipment_id=` 筛选、移交时带上、导出加「设备」列）。所有人能看，权限 `equipment.manage`（none / all，迁移给班长、副班长 all）。**自动翻译**：只填了部分语言的字段由翻译队列补齐（`translation_service.translate_equipment`，队列项 `("equipment", id)`，定时重试也包括）；改原文（录入语言那一列且只改了它）→ 其他语言清空重新翻译；只改某个译文 = 人工校对，保留。用过的设备不能删、只能停用。Excel 导入按编号合并（先检查再确认，一行错全不导入；表头三语都认，可写「名称 sr」指定语言）、导出三语列
   - 顺手修了：「角色权限」页「项目」权限没有名称（显示成 key）
+  - **存储与备份**（「系统设置 → 存储与备份」`components/StorageCard.vue`、`/api/storage`、`app/storage_service.py`，仅管理员）：
+    - 备份位置 / 第二份备份目录写进 `data/backup-target.txt` / `backup-copy.txt`（UTF-8 无 BOM），`backup.ps1` 读（`-Encoding UTF8`）；第二份 = 备份完 robocopy 整个备份目录过去（另一块盘 / 网络共享 / 云盘客户端同步文件夹），失败只记下不算整体失败；两个目录不能互相包含
+    - `backup.ps1` 每次把结果写进 `data/backup-status.json`（ok、时间、库大小、剩余空间、第二份结果），页面显示；「立即备份」= `schtasks /Run /TN WorkRecordBackup`（只在 Windows 上）
+    - 「检查」：绝对路径、能建能写、不在图片目录里，返回剩余空间
+    - **原图归档**（`attachments.archived_at`，迁移 0016）：开启后每天 02:50（调度器 cron）把上传超过 N 个月的原图搬到归档目录（同一路径，先复制核对大小再删原文件；移交复制出来的多条记录共用一个文件，按文件搬一次）。浏览图、缩略图不动。看原图：归档目录 → 图片目录（备份恢复回来的）→ 都没有就给浏览图（响应头 `X-Original-Archived: 1`）
+  - 改动后在 PostgreSQL 16 上跑过全部测试：172 个通过（PG 测试库要先清空：`DROP/CREATE DATABASE wrtest、wrmig`）
+  - **备份脚本没法在容器里用 PowerShell 检查语法**（下载 pwsh 被拦），是人工检查的；用户第一次在服务器上跑 backup.ps1 时留意输出
   - **离线能打开任务详情**：联网时首页（警示 + 交接班）和任务列表会顺便把未完成任务的详情读一遍（`offline.warmTasks`，每条 10 分钟一次、最多 40 条），Service Worker 缓存下来
 - 工厂时区由 `APP_TIMEZONE` 配置，默认 `Europe/Belgrade`
 - 排班推算是纯函数，在 `backend/app/shifts.py`，测试在 `backend/tests/test_shifts.py`

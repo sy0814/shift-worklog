@@ -710,11 +710,18 @@ def get_file(att_id: int, variant: str, t: str, db: Session = Depends(get_db)):
     a = db.get(Attachment, att_id)
     if a is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
-    rel = {"thumb": a.path_thumb, "view": a.path_view, "original": a.path_original}[variant]
-    path = _upload_root() / rel
+    headers = {"Cache-Control": "private, max-age=43200"}
+    if variant == "original":
+        from .. import storage_service
+
+        path = storage_service.original_file(a)
+        if path is None or not path.is_file():  # 原图已归档、归档盘没接上 → 先给浏览图
+            path = _upload_root() / a.path_view
+            if not path.is_file():
+                raise HTTPException(status.HTTP_404_NOT_FOUND)
+            return FileResponse(path, media_type="image/jpeg", headers=headers | {"X-Original-Archived": "1"})
+        return FileResponse(path, media_type=a.content_type, filename=a.filename, headers=headers)
+    path = _upload_root() / (a.path_thumb if variant == "thumb" else a.path_view)
     if not path.is_file():
         raise HTTPException(status.HTTP_404_NOT_FOUND)
-    media = "image/jpeg" if variant != "original" else a.content_type
-    filename = a.filename if variant == "original" else None
-    return FileResponse(path, media_type=media, filename=filename,
-                        headers={"Cache-Control": "private, max-age=43200"})
+    return FileResponse(path, media_type="image/jpeg", headers=headers)

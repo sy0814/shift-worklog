@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api'
 import TriNames from '../components/TriNames.vue'
+import StorageCard from '../components/StorageCard.vue'
 import { LANGS, i18n } from '../i18n'
 import { branding, loadBranding } from '../branding'
 
@@ -133,6 +134,9 @@ onMounted(async () => {
         <el-form-item><el-button type="primary" :disabled="dp.trim().length < 6" @click="saveDp">{{ t('common.save') }}</el-button></el-form-item>
       </el-form>
     </el-card>
+
+    <!-- 存储与备份 -->
+    <StorageCard />
 
     <el-card v-if="cur" shadow="never" class="mb">
       <template #header>

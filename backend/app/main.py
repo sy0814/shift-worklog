@@ -9,7 +9,7 @@ from . import audit  # noqa: F401  注册 audit_log 的 after_create 触发器
 from .db import SessionLocal, engine
 from . import migrate, translation_service
 from .config import get_settings
-from .routers import analysis as analysis_router, attendance, branding, duty, equipment, overtime, inspections, audit_log, auth, export, handover, llm_settings, projects, roles, schedule, tasks, translation, users, workers
+from .routers import analysis as analysis_router, attendance, branding, duty, equipment, overtime, inspections, audit_log, auth, export, handover, llm_settings, projects, roles, schedule, storage, tasks, translation, users, workers
 from .seed import seed, seed_glossary
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"  # 前端构建产物
@@ -38,6 +38,7 @@ app.include_router(users.router)
 app.include_router(roles.router)
 app.include_router(projects.router)
 app.include_router(equipment.router)
+app.include_router(storage.router)
 app.include_router(schedule.router)
 app.include_router(audit_log.router)
 app.include_router(workers.router)

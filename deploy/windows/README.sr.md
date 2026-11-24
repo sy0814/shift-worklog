@@ -371,6 +371,13 @@ Svake noći u **03:40** pravi se kopija u fasciklu izabranu tokom instalacije (p
 
 **Napravite kopiju i na drugom mestu** (USB, drugi računar, mrežni disk). Ako je kopija na istom disku kao server, kvar diska uništava oboje.
 
+**Podešavanje na veb-stranici (preporučeno):** administrator → „管理 → 系统设置 → 存储与备份” (Upravljanje → Podešavanja sistema → Skladište i rezervne kopije):
+
+- **Lokacija kopije**: gde se čuva kopija (npr. `D:\WorkRecordBackup`); dugme „Proveri” pokazuje da li se može pisati i koliko je mesta slobodno.
+- **Druga kopija**: posle svake kopije automatski još jedna ovde – USB / spoljni disk, deljeni folder na mreži ili **folder klijenta za oblak** (OneDrive i sl.; klijent ga sam šalje u oblak). Kopija sadrži lozinku baze, zato oblak mora biti privatan.
+- Na stranici se vidi **poslednja kopija** (vreme, uspeh, veličina baze, slobodno mesto), a postoji i dugme „Napravi kopiju sada”.
+- **Arhiviranje originalnih slika**: kad se uključi, originali stariji od N meseci se svaki dan u 02:50 premeštaju u „folder arhive” (drugi disk). Pregledne slike i sličice ostaju, sistem radi isto; „Original” se čita sa arhivskog diska, a ako nije priključen, prikazuje se pregledna slika.
+
 ### 10.2 Ručna rezervna kopija
 
 U PowerShell-u kao administrator:

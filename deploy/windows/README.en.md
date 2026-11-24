@@ -369,6 +369,13 @@ Every night at **03:40** a backup is saved to the folder chosen during installat
 
 **Also copy the backup somewhere else** (USB stick, another PC, network drive). If the backup is on the same disk as the server, a disk failure destroys both.
 
+**Set it up on the web page (recommended):** log in as administrator →「管理 → 系统设置 → 存储与备份」(Admin → System settings → Storage & backup):
+
+- **Backup folder**: where backups go (e.g. `D:\WorkRecordBackup`); "Check" shows whether it is writable and how much space is free.
+- **Second copy**: after each backup, another copy is made here automatically – a USB / external disk, a network share, or **a cloud client's sync folder** (OneDrive etc.; the client uploads it). The backup contains the database password, so keep the cloud folder private.
+- The page shows the **last backup** (time, success, database size, free space) and has a "Back up now" button.
+- **Archive original photos**: when enabled, originals older than N months are moved every day at 02:50 to the "archive folder" (another disk). View-size images and thumbnails stay, so everything works the same; "Original" is read from the archive disk, and if it is not connected the view-size image is shown.
+
 ### 10.2 Make a backup now
 
 In an administrator PowerShell:

@@ -419,6 +419,11 @@ def start_scheduler() -> None:
 
     _scheduler.add_job(project_service.auto_handover_job, "interval", seconds=60, id="project_handover",
                        max_instances=1, coalesce=True, next_run_time=utcnow())
+    from . import storage_service
+
+    # 原图归档：每天 02:50（工厂时区），在 03:40 的备份之前
+    _scheduler.add_job(storage_service.archive_job, "cron", hour=2, minute=50, id="archive_originals",
+                       timezone=get_settings().tz, max_instances=1, coalesce=True)
     # 员工提前登记的换班组（例如「下周一起调到 2 班」）：到那天自动生效
     _scheduler.add_job(_sync_workers, "interval", seconds=60, id="worker_sync",
                        max_instances=1, coalesce=True, next_run_time=utcnow())
