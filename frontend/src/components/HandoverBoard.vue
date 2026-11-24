@@ -6,6 +6,8 @@ import { useI18n } from 'vue-i18n'
 import api from '../api'
 import { localName } from '../i18n'
 import { useAuth } from '../stores/auth'
+import { useOutbox } from '../stores/outbox'
+import { warmTasks } from '../offline'
 import ShiftTag from './ShiftTag.vue'
 import TaskCard from './TaskCard.vue'
 import TaskDetail from './TaskDetail.vue'
@@ -13,6 +15,7 @@ import HandoverDialog from './HandoverDialog.vue'
 
 const { t } = useI18n()
 const auth = useAuth()
+const outbox = useOutbox()
 const teamId = ref(0) // 0 = 默认（管理员：当前在班班组；班长：本班组）
 const board = ref(null)
 const loading = ref(false)
@@ -21,7 +24,12 @@ const selected = ref([])
 async function load() {
   loading.value = true
   try {
-    board.value = (await api.get('/board', { params: { team_id: teamId.value || undefined } })).data
+    const r = await api.get('/board', { params: { team_id: teamId.value || undefined } })
+    board.value = r.data
+    if (!r.headers['x-from-cache']) { // 联网时顺便缓存任务详情，离线也能打开
+      const ids = [...board.value.received, ...board.value.todo].filter((x) => ['not_started', 'in_progress'].includes(x.status)).map((x) => x.id)
+      setTimeout(() => warmTasks(api, ids), 1500)
+    }
     const openIds = new Set(openTasks.value.filter((x) => x.perms?.handover).map((x) => x.id))
     selected.value = selected.value.filter((id) => openIds.has(id))
     watchTranslations([...board.value.received, ...board.value.todo, ...board.value.done_recent])
@@ -30,6 +38,7 @@ async function load() {
   }
 }
 watch(teamId, () => { selected.value = []; load() })
+watch(() => outbox.lastSyncedTaskIds.length, () => load()) // 离线草稿 / 状态同步上去了
 onMounted(load)
 defineExpose({ load })
 const emit = defineEmits(['changed'])

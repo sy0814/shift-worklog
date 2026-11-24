@@ -271,6 +271,10 @@ class SettingsIO(BaseModel):
 
 class TaskStatusChange(BaseModel):
     status: Literal["not_started", "in_progress", "done"]
+    # 离线时点的：expect = 点的时候看到的状态（服务器上已经变了就拒绝，不覆盖别人的操作）；
+    # at = 实际点的时间（开始 / 完成时间按它记，最多往前 3 天）
+    expect: Literal["not_started", "in_progress", "done"] | None = None
+    at: datetime | None = None
 
 
 class AttachmentOut(BaseModel):

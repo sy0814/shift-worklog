@@ -159,6 +159,29 @@ def test_status_flow(client, leader_h, admin_h):
     assert client.patch(f"/api/tasks/{t['id']}", headers=leader_h, json={"content": "y"}).status_code == 200
 
 
+def test_offline_status_with_time_and_expect(client, leader_h):
+    """离线时点的开始 / 完成：按点的时间记；离线期间状态被别人改了就拒绝。"""
+    from datetime import datetime, timedelta, timezone
+    t = new_task(client, leader_h)
+    s = lambda body: client.post(f"/api/tasks/{t['id']}/status", headers=leader_h, json=body)
+    at = (datetime.now(timezone.utc) - timedelta(seconds=2)).isoformat()
+    r = s({"status": "in_progress", "expect": "not_started", "at": at})
+    assert r.status_code == 200
+    # 早于任务录入时间 → 按录入时间
+    assert datetime.fromisoformat(r.json()["start_at"]) >= datetime.fromisoformat(at)
+    # 未来时间不行 → 按现在
+    r = s({"status": "done", "expect": "in_progress", "at": (datetime.now(timezone.utc) + timedelta(hours=5)).isoformat()}).json()
+    assert datetime.fromisoformat(r["end_at"]) <= datetime.now(timezone.utc) + timedelta(seconds=1)
+    # 离线时看到的是「未开始」，但服务器上已经完成了 → 409
+    assert s({"status": "in_progress", "expect": "not_started"}).status_code in (403, 409)  # 已完成，班长不能再改
+    # 同一个操作重复提交（已经是 done）→ 直接成功
+    assert s({"status": "done", "expect": "in_progress"}).status_code == 200
+    t2 = new_task(client, leader_h)
+    client.post(f"/api/tasks/{t2['id']}/status", headers=leader_h, json={"status": "in_progress"})
+    r = client.post(f"/api/tasks/{t2['id']}/status", headers=leader_h, json={"status": "not_started", "expect": "not_started"})
+    assert r.status_code == 409 and "changed meanwhile" in r.json()["detail"]
+
+
 def test_create_done_directly(client, leader_h):
     t = new_task(client, leader_h, status="done")
     assert t["status"] == "done" and t["start_at"] and t["end_at"] and t["confirmed_by_name"]

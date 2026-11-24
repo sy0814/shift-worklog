@@ -300,7 +300,10 @@
   - 名册里新加员工（单个、批量、Excel 导入）自动开账号（`workers.ensure_account`）：班组账号的角色 = 点头像 + 默认密码；个人账号的角色 = 用户名为工号（没有 / 不合格 / 重复就用 `w<编号>`）。角色改成个人账号、用户名还是自动生成的 `w<编号>` 时，自动换成工号。名册里「给没账号的人开账号」= `POST /api/workers/accounts/open-all`
   - `users.must_change_password`（迁移 0013）：默认密码、管理员 / 班长重设的密码都会设上。**后端强制**：这样的账号除了 `/api/auth/me`、`/api/auth/change-password`、`/api/teams` 都返回 403 `password change required`（`security.get_current_user`）；前端路由守卫跳到 `/change-password`（`views/ChangePassword.vue`，原密码预先填好）。新密码不能和原密码、默认密码一样
   - 2026-11-24 在 PostgreSQL 16 上跑过全部测试（含迁移测试）：165 个全部通过。容器里有 PostgreSQL 16：`pg_ctlcluster 16 main start`，库 `wrtest` / `wrmig`（账号 wrtest/wrtest），`TEST_DATABASE_URL=postgresql+psycopg://wrtest:wrtest@127.0.0.1:5432/wrtest TEST_PG_URL=...wrmig`
-  - **还没做**：离线时「开始 / 完成任务」、给已有任务传照片（离线发件箱只管新建任务和它的照片）
+- [x] 用户反馈第九轮修改（2026-11-24）
+  - **离线开始 / 完成任务**：任务详情的开始 / 完成 / 撤销开始 / 重新打开都走发件箱（`outbox.submitStatus`，类型 `status`），断网时存手机，联网后按点的先后提交。请求带 `expect`（点的时候看到的状态；服务器上已经被别人改了 → 409 `task status changed meanwhile`，不覆盖）和 `at`（点的时间，开始 / 完成时间按它记，不晚于现在、不早于 3 天前和任务录入时间）；同一操作重发（已经是那个状态）直接成功。没同步的任务卡片显示「⏳ 待同步」，详情里有提示
+  - 给已有任务补照片本来就走发件箱（`submitPhotos`）
+  - **离线能打开任务详情**：联网时首页（警示 + 交接班）和任务列表会顺便把未完成任务的详情读一遍（`offline.warmTasks`，每条 10 分钟一次、最多 40 条），Service Worker 缓存下来
 - 工厂时区由 `APP_TIMEZONE` 配置，默认 `Europe/Belgrade`
 - 排班推算是纯函数，在 `backend/app/shifts.py`，测试在 `backend/tests/test_shifts.py`
 - 留痕：业务代码统一调用 `app/audit.py` 的 `log()` / `log_changes()`；数据库触发器禁止对 `audit_log` 做 UPDATE / DELETE（SQLite、PostgreSQL 都已验证）

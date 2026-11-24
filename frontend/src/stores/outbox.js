@@ -7,6 +7,11 @@ export const useOutbox = defineStore('outbox', {
   state: () => ({ entries: [], syncing: false, online: navigator.onLine, lastSyncedTaskIds: [] }),
   getters: {
     count: (s) => s.entries.length,
+    /** 某条任务还没同步的状态（最后一次点的），没有返回 null */
+    pendingStatus: (s) => (taskId) => {
+      const e = s.entries.filter((x) => x.type === 'status' && x.task_id === taskId).at(-1)
+      return e ? e.status : null
+    },
   },
   actions: {
     async refresh() {
@@ -38,11 +43,28 @@ export const useOutbox = defineStore('outbox', {
       return this.syncEntry(entry)
     },
 
+    /** 开始 / 完成任务（离线也能点）：expect = 点的时候看到的状态，at = 点的时间。
+     *  联网时直接提交并返回新任务；断网时存本地返回 null；服务器拒绝则抛出 */
+    async submitStatus(task, status) {
+      const auth = useAuth()
+      const expect = this.pendingStatus(task.id) || task.status
+      const entry = {
+        key: uuid(), user_id: auth.user.id, type: 'status', task: null, task_id: task.id,
+        status, expect, at: new Date().toISOString(), label: task.content?.[task.source_lang] || task.content?.zh || '',
+        photos: [], saved_at: Date.now(), error: null,
+      }
+      await putEntry(entry)
+      await this.refresh()
+      return this.syncEntry(entry)
+    },
+
     /** 同步一条。成功返回任务对象；网络失败返回 null（保留在本地）；服务器拒绝则记录错误并抛出 */
     async syncEntry(entry) {
       try {
         let task = null
-        if (entry.task_id == null) {
+        if (entry.type === 'status') {
+          task = (await api.post(`/tasks/${entry.task_id}/status`, { status: entry.status, expect: entry.expect, at: entry.at }, { silent: true })).data
+        } else if (entry.task_id == null) {
           task = (await api.post('/tasks', entry.task, { silent: true })).data
           entry.task_id = task.id
           await putEntry(entry)

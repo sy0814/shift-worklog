@@ -6,6 +6,7 @@ import dayjs from 'dayjs'
 import api from '../api'
 import { localName } from '../i18n'
 import { useAuth } from '../stores/auth'
+import { warmTasks } from '../offline'
 import ShiftTag from '../components/ShiftTag.vue'
 import TaskCard from '../components/TaskCard.vue'
 import TaskDetail from '../components/TaskDetail.vue'
@@ -24,6 +25,7 @@ const boardRef = ref()
 async function load() {
   const [od, nw] = await Promise.all([api.get('/overdue'), api.get('/shifts/now')])
   overdue.value = od.data
+  if (!od.headers['x-from-cache']) setTimeout(() => warmTasks(api, od.data.map((x) => x.id)), 2500) // 离线也能打开
   now.value = nw.data
   const d = now.value.current.shift_date
   const [cal, cur, nxt] = await Promise.all([

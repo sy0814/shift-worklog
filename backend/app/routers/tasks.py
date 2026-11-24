@@ -552,13 +552,25 @@ def update_task(task_id: int, body: TaskUpdate, db: Session = Depends(get_db),
 def change_status(task_id: int, body: TaskStatusChange, db: Session = Depends(get_db),
                   user: User = Depends(get_current_user)):
     task = _get_task(db, task_id)
-    _require(db, task, user, "status")
     new = body.status
+    if new == task.status and body.expect is not None:
+        return one_out(db, task, user)  # 离线发件箱重发（上次其实已经成功，只是没收到回应）
+    _require(db, task, user, "status")
     if new == task.status:
         return one_out(db, task, user)
+    if body.expect is not None and body.expect != task.status:
+        # 离线期间别人已经改了这条任务的状态
+        raise HTTPException(status.HTTP_409_CONFLICT, f"task status changed meanwhile ({task.status})")
     if new not in TRANSITIONS.get(task.status, set()):
         raise HTTPException(status.HTTP_409_CONFLICT, f"cannot go from {task.status} to {new}")
     now = utcnow()
+    if body.at is not None:  # 离线时点的：按点的时间记，但不能晚于现在、不早于 3 天前 / 任务录入时间
+        at = to_utc(body.at)
+        created = task.created_at
+        if created is not None and created.tzinfo is None:  # SQLite 读出来没有时区，存的是 UTC
+            created = created.replace(tzinfo=timezone.utc)
+        lo = max(now - timedelta(days=3), created or now - timedelta(days=3))
+        now = min(max(at, lo), now)
     changes: dict = {"status": new}
     if new == "in_progress" and task.start_at is None:
         changes["start_at"] = now

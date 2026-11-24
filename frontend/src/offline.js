@@ -1,4 +1,4 @@
-// 离线发件箱：新建任务、补充图片先写进 IndexedDB，再尝试上传。
+// 离线发件箱：新建任务、补充图片、开始 / 完成任务先写进 IndexedDB，再尝试上传（按点的先后顺序）。
 // 网络不通时留在本地，联网后自动重试；服务器按 client_id 去重，重复提交不会产生重复数据。
 import { openDB } from 'idb'
 import { toRaw } from 'vue'
@@ -23,7 +23,7 @@ function plain(entry) {
   return {
     ...e,
     task: e.task ? JSON.parse(JSON.stringify(toRaw(e.task))) : null,
-    photos: toRaw(e.photos).map((p) => ({ ...toRaw(p), blob: toRaw(p).blob })),
+    photos: toRaw(e.photos || []).map((p) => ({ ...toRaw(p), blob: toRaw(p).blob })),
   }
 }
 
@@ -40,3 +40,21 @@ export async function deleteEntry(key) {
 
 /** 网络层面的失败（没有响应、网关超时）→ 留着以后重试；其他错误是服务器拒绝，需要人处理 */
 export const isNetworkError = (err) => !err.response || [502, 503, 504].includes(err.response.status)
+
+/** 联网时把首页上未完成任务的详情先读一遍，Service Worker 会缓存下来；
+ *  走到 Wi-Fi 死角时也能打开这些任务点「开始 / 完成」。每条任务 10 分钟内只读一次。 */
+const warmed = new Map()
+export async function warmTasks(api, ids) {
+  if (!navigator.serviceWorker?.controller) return
+  const now = Date.now()
+  for (const id of ids.slice(0, 40)) {
+    if (now - (warmed.get(id) || 0) < 600_000) continue
+    warmed.set(id, now)
+    try {
+      const r = await api.get(`/tasks/${id}`, { silent: true })
+      if (r.headers['x-from-cache']) return // 已经断网了
+    } catch {
+      return
+    }
+  }
+}

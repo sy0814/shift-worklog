@@ -51,7 +51,7 @@ const messages = {
       waiting: '待上传', remove: '删除图片', confirmRemove: '删除这张图片？（会留下记录）',
     },
     outbox: {
-      title: '待同步', none: '没有待同步的内容', syncNow: '立即同步', savedOffline: '网络不通，已存为草稿，联网后自动同步',
+      title: '待同步', none: '没有待同步的内容', syncNow: '立即同步', savedOffline: '网络不通，已存为草稿，联网后自动同步', statusSaved: '网络不通，已记在手机上（按现在的时间），联网后自动提交', pendingStatus: '这个状态还没提交到服务器，联网后自动提交', pendingShort: '待同步', statusTo: '改状态',
       synced: '已同步 {n} 条', photos: '{n} 张图片', newTask: '新任务', addPhotos: '补充图片', failed: '同步失败', discard: '丢弃草稿',
       confirmDiscard: '丢弃后无法恢复，确定？', offline: '离线',
     },
@@ -212,7 +212,7 @@ const messages = {
       waiting: 'Čeka otpremanje', remove: 'Obriši sliku', confirmRemove: 'Obrisati ovu sliku? (ostaje zapis)',
     },
     outbox: {
-      title: 'Čeka sinhronizaciju', none: 'Nema ničega za sinhronizaciju', syncNow: 'Sinhronizuj', savedOffline: 'Nema mreže – sačuvano kao nacrt, sinhronizuje se automatski',
+      title: 'Čeka sinhronizaciju', none: 'Nema ničega za sinhronizaciju', syncNow: 'Sinhronizuj', savedOffline: 'Nema mreže – sačuvano kao nacrt, sinhronizuje se automatski', statusSaved: 'Nema mreže – zapamćeno na telefonu (sa trenutnim vremenom), šalje se automatski', pendingStatus: 'Ovaj status još nije poslat serveru; šalje se kad mreža proradi', pendingShort: 'čeka slanje', statusTo: 'Status',
       synced: 'Sinhronizovano: {n}', photos: '{n} slika', newTask: 'Novi zadatak', addPhotos: 'Dodatne slike', failed: 'Neuspešno', discard: 'Odbaci nacrt',
       confirmDiscard: 'Nacrt se ne može vratiti. Nastaviti?', offline: 'Van mreže',
     },
@@ -373,7 +373,7 @@ const messages = {
       waiting: 'Waiting to upload', remove: 'Delete photo', confirmRemove: 'Delete this photo? (it stays in the log)',
     },
     outbox: {
-      title: 'Pending sync', none: 'Nothing to sync', syncNow: 'Sync now', savedOffline: 'No network – saved as draft, will sync automatically',
+      title: 'Pending sync', none: 'Nothing to sync', syncNow: 'Sync now', savedOffline: 'No network – saved as draft, will sync automatically', statusSaved: 'No network – saved on this phone (with the current time), will be sent automatically', pendingStatus: 'This status has not reached the server yet; it will be sent when online', pendingShort: 'pending', statusTo: 'Status',
       synced: 'Synced {n}', photos: '{n} photos', newTask: 'New task', addPhotos: 'Extra photos', failed: 'Sync failed', discard: 'Discard draft',
       confirmDiscard: 'The draft cannot be recovered. Continue?', offline: 'Offline',
     },

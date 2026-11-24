@@ -3,6 +3,7 @@ import { onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Plus } from '@element-plus/icons-vue'
 import api from '../api'
+import { warmTasks } from '../offline'
 import { localName } from '../i18n'
 import { useAuth } from '../stores/auth'
 import { useOutbox } from '../stores/outbox'
@@ -40,7 +41,11 @@ async function load(append = false) {
     if (filters.q.trim()) params.append('q', filters.q.trim())
     params.append('limit', PAGE)
     params.append('offset', append ? items.value.length : 0)
-    const { data } = await api.get('/tasks', { params })
+    const { data, headers } = await api.get('/tasks', { params })
+    if (!headers['x-from-cache']) { // 联网时缓存未完成任务的详情，离线也能打开
+      const ids = data.items.filter((x) => ['not_started', 'in_progress'].includes(x.status)).map((x) => x.id)
+      setTimeout(() => warmTasks(api, ids), 2000)
+    }
     items.value = append ? [...items.value, ...data.items] : data.items
     total.value = data.total
     watchTranslations(items.value)

@@ -10,6 +10,7 @@ import { fmtFull, isNarrow, STATUS_TYPE } from '../format'
 import { preparePhotos } from '../photo'
 import { useAuth } from '../stores/auth'
 import { useOutbox } from '../stores/outbox'
+import { translateError } from '../apiErrors'
 import PhotoPicker from './PhotoPicker.vue'
 import ShiftTag from './ShiftTag.vue'
 import TaskForm from './TaskForm.vue'
@@ -64,9 +65,14 @@ const showHistory = ref(false)
 const editOpen = ref(false)
 const busy = ref(false)
 
+// 离线时点了开始 / 完成、还没同步的：先按点的状态显示，标「待同步」
+function overlay(tk) {
+  const p = tk && outbox.pendingStatus(tk.id)
+  return p && p !== tk.status ? { ...tk, status: p, pendingSync: true } : tk
+}
 async function load() {
   if (!currentId.value) return
-  task.value = (await api.get(`/tasks/${currentId.value}`)).data
+  task.value = overlay((await api.get(`/tasks/${currentId.value}`)).data)
   if (showHistory.value) await loadHistory()
 }
 async function loadHistory() {
@@ -99,12 +105,24 @@ async function setStatus(status) {
   }
   busy.value = true
   try {
-    await api.post(`/tasks/${task.value.id}/status`, { status })
-    await changed()
+    const res = await outbox.submitStatus(task.value, status)
+    if (res) {
+      await changed()
+    } else { // 断网：存在手机上，联网后自动提交
+      task.value = { ...task.value, status, pendingSync: true }
+      ElMessage.warning({ message: t('outbox.statusSaved'), duration: 5000 })
+      emit('changed')
+    }
+  } catch (err) {
+    const d = err.response?.data?.detail
+    ElMessage.error(typeof d === 'string' ? translateError(d, locale.value, t) : t('common.requestFailed'))
+    await load()
   } finally {
     busy.value = false
   }
 }
+// 发件箱同步完了 → 重新读一次
+watch(() => outbox.lastSyncedTaskIds.length, () => visible.value && task.value && load())
 
 async function addPhotos(files) {
   busy.value = true
@@ -215,6 +233,7 @@ function histText(h) {
         <el-button v-if="task.translation_status !== 'done' && task.can_correct" link type="primary" size="small" :loading="retranslating" @click="retranslate">{{ t('tr.retry') }}</el-button>
       </div>
 
+      <el-alert v-if="task.pendingSync" type="warning" :closable="false" class="mt" show-icon :title="t('outbox.pendingStatus')" />
       <div v-if="task.status === 'done' && !task.perms?.edit && !task.perms?.status" class="muted small mt">🔒 {{ t('task.doneLocked') }}</div>
       <div v-if="task.perms?.status || task.perms?.edit || task.perms?.handover || task.perms?.discard" class="actions">
         <template v-if="task.perms?.status">

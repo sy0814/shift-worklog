@@ -5,19 +5,25 @@ import { Picture } from '@element-plus/icons-vue'
 import { localName, localText } from '../i18n'
 import { fmtTime, STATUS_TYPE } from '../format'
 import { useAuth } from '../stores/auth'
+import { useOutbox } from '../stores/outbox'
 import ShiftTag from './ShiftTag.vue'
 import TransText from './TransText.vue'
 
 const props = defineProps({ task: { type: Object, required: true } })
 const { t } = useI18n()
 const auth = useAuth()
+const outbox = useOutbox()
+// 离线时点了开始 / 完成还没同步的，按点的状态显示
+const pending = computed(() => { const p = outbox.pendingStatus(props.task.id); return p && p !== props.task.status ? p : null })
+const status = computed(() => pending.value || props.task.status)
 const leftover = computed(() => localText(props.task.leftover, props.task.leftover_source_lang))
 </script>
 
 <template>
-  <div :class="['card', `st-${task.status}`, { overdue: task.overdue }]">
+  <div :class="['card', `st-${status}`, { overdue: task.overdue }]">
     <div class="row1">
-      <el-tag :type="STATUS_TYPE[task.status]" size="small" effect="dark">{{ t(`status.${task.status}`) }}</el-tag>
+      <el-tag :type="STATUS_TYPE[status]" size="small" effect="dark">{{ t(`status.${status}`) }}</el-tag>
+      <el-tag v-if="pending" type="warning" size="small" effect="plain">⏳ {{ t('outbox.pendingShort') }}</el-tag>
       <span class="team">{{ localName(auth.teamById(task.team_id)) }}</span>
       <ShiftTag :kind="task.shift_kind" />
       <span class="muted">{{ task.shift_date.slice(5) }}</span>

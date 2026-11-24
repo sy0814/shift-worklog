@@ -6,8 +6,9 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Upload } from '@element-plus/icons-vue'
 import dayjs from 'dayjs'
 import { useOutbox } from '../stores/outbox'
+import { translateError } from '../apiErrors'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const outbox = useOutbox()
 
 async function sync(manual = false) {
@@ -50,12 +51,14 @@ onUnmounted(() => {
       <div v-if="!outbox.count" class="muted">{{ t('outbox.none') }}</div>
       <div v-for="e in outbox.entries" :key="e.key" class="item">
         <div>
-          <b>{{ e.type === 'task' ? t('outbox.newTask') : t('outbox.addPhotos') + ' #' + e.task_id }}</b>
+          <b v-if="e.type === 'status'">{{ t('outbox.statusTo') }} #{{ e.task_id }} → {{ t(`status.${e.status}`) }}</b>
+          <b v-else>{{ e.type === 'task' ? t('outbox.newTask') : t('outbox.addPhotos') + ' #' + e.task_id }}</b>
           <span class="muted"> · {{ dayjs(e.saved_at).format('MM-DD HH:mm') }}</span>
         </div>
         <div v-if="e.task" class="text">{{ e.task.content }}</div>
-        <div class="muted">{{ t('outbox.photos', { n: e.photos.filter((p) => !p.done).length }) }}</div>
-        <div v-if="e.error" class="err">{{ t('outbox.failed') }}: {{ e.error }}
+        <div v-if="e.label" class="text">{{ e.label }}</div>
+        <div v-if="e.photos.length" class="muted">{{ t('outbox.photos', { n: e.photos.filter((p) => !p.done).length }) }}</div>
+        <div v-if="e.error" class="err">{{ t('outbox.failed') }}: {{ translateError(e.error, locale, t) }}
           <el-button link type="danger" size="small" @click="discard(e)">{{ t('outbox.discard') }}</el-button>
         </div>
       </div>
