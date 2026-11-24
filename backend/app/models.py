@@ -34,10 +34,13 @@ class Team(Base):
     name_zh: Mapped[str] = mapped_column(String(50))
     name_sr: Mapped[str] = mapped_column(String(50))
     name_en: Mapped[str] = mapped_column(String(50))
-    kind: Mapped[str] = mapped_column(String(10))  # rotating（倒班）/ day（常白班）
-    # 倒班班组在基准日处于 8 天循环中的位置 0..7；常白班为空
+    kind: Mapped[str] = mapped_column(String(10))  # rotating（倒班）/ day（常白班型）/ manual（不固定，只按调班）
+    # 倒班班组在基准日处于 8 天循环中的位置 0..7；其他类型为空
     cycle_offset: Mapped[int | None] = mapped_column(Integer, nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    # 临时班组的有效期（含首尾）；空 = 长期。范围以外这个班组一律休息
+    active_from: Mapped[date | None] = mapped_column(Date, nullable=True)
+    active_to: Mapped[date | None] = mapped_column(Date, nullable=True)
 
 
 class User(Base):

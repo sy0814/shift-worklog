@@ -27,6 +27,9 @@ class TeamOut(ORM):
     name_en: str
     kind: str
     cycle_offset: int | None
+    sort_order: int = 0
+    active_from: date | None = None
+    active_to: date | None = None
 
 
 class UserOut(ORM):

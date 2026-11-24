@@ -3,11 +3,12 @@
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .. import audit
 from ..db import get_db
+from ..db import Base
 from ..models import Holiday, ShiftConfig, Team, TeamShiftOverride, User, utcnow
 from ..schedule_service import load_schedule, local_now, slot
 from ..schemas import (
@@ -21,7 +22,7 @@ from ..schemas import (
 from pydantic import BaseModel, Field
 
 from ..security import get_current_user, require_admin
-from ..shifts import CYCLE
+from ..shifts import CYCLE, coverage_problems
 
 router = APIRouter(prefix="/api", tags=["schedule"])
 
@@ -72,9 +73,10 @@ def put_config(body: ShiftConfigIn, db: Session = Depends(get_db),
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "offsets must cover every rotating team")
     if any(not 0 <= v < len(CYCLE) for v in body.offsets.values()):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "offset must be 0..7")
-    # 每天必须正好一个白/中/夜/休：同一循环里两个位置属于同一班次（0,1 / 2,3 ...），
-    # 4 个班组的 offset // 2 必须各不相同
-    if len({v // 2 for v in body.offsets.values()}) != len(rotating):
+    # 每天的白/中/夜/休都要有倒班班组：同一循环里两个位置属于同一班次（0,1 / 2,3 ...），
+    # 四个「班次对」都要有人；倒班班组多于 4 个时允许两个班组同一个班（例如加的临时倒班班组）
+    pairs = {v // 2 for v in body.offsets.values()}
+    if len(rotating) >= 4 and pairs != {0, 1, 2, 3} or len(rotating) < 4 and len(pairs) != len(rotating):
         raise HTTPException(status.HTTP_400_BAD_REQUEST,
                             "teams must be in different shift pairs (2 days apart)")
     cfg = db.get(ShiftConfig, 1)
@@ -160,37 +162,80 @@ def list_team_shifts(start: date, end: date, db: Session = Depends(get_db), _: U
 
 
 @router.put("/team-shifts", response_model=list[TeamShiftOut])
-def set_team_shift(body: TeamShiftIn, db: Session = Depends(get_db), admin: User = Depends(require_admin)):
-    """某个班组在某几天整体改上某个班（或休息）。和原排班相同的日子不记录（等于恢复）。"""
+def set_team_shift(body: TeamShiftIn, db: Session = Depends(get_db), admin: User = Depends(get_current_user)):
+    """某个班组在某几天整体改上某个班（或休息）。和原排班相同的日子不记录（等于恢复）。
+    管理员任何班组；班长只能调本班组（临时调班）。"""
     team = db.get(Team, body.team_id)
     if team is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "team not found")
-    sched = load_schedule(db)
-    info = next(t for t in sched.teams if t.id == team.id)
-    for d in _range(body.start, body.end):
-        row = db.scalar(select(TeamShiftOverride).where(TeamShiftOverride.team_id == team.id,
-                                                        TeamShiftOverride.day == d))
-        old = row.shift_kind if row else sched.planned_shift_of(info, d)
-        if body.shift_kind == sched.planned_shift_of(info, d):
-            if row:
-                db.delete(row)
-        elif row:
-            row.shift_kind, row.note = body.shift_kind, body.note.strip()
-        else:
-            db.add(TeamShiftOverride(team_id=team.id, day=d, shift_kind=body.shift_kind, note=body.note.strip(),
-                                     created_by=admin.id, created_at=utcnow()))
-        if old != body.shift_kind:
-            audit.log(db, user_id=admin.id, action="update", entity="team", entity_id=team.id,
-                      field="team_shift", old=f"{d} {old}", new=f"{d} {body.shift_kind}",
-                      extra={"day": str(d), "note": body.note})
+    _require_team(admin, team.id)
+    _apply_team_shift(db, team.id, _range(body.start, body.end), lambda _d: body.shift_kind, body.note, admin.id)
     db.commit()
     return list_team_shifts(body.start, body.end, db, admin)
 
 
+def _require_team(user: User, *team_ids: int) -> None:
+    if user.role != "admin" and user.team_id not in team_ids:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "not your team")
+
+
+def _apply_team_shift(db: Session, team_id: int, days: list[date], kind_of, note: str, user_id: int) -> None:
+    """把班组在这些天改成 kind_of(日期) 的班；和原排班一样的日子删掉覆盖记录。"""
+    sched = load_schedule(db)
+    info = next(t for t in sched.teams if t.id == team_id)
+    for d in days:
+        kind = kind_of(d)
+        row = db.scalar(select(TeamShiftOverride).where(TeamShiftOverride.team_id == team_id,
+                                                        TeamShiftOverride.day == d))
+        old = sched.shift_of(info, d)
+        if kind == sched.planned_shift_of(info, d):
+            if row:
+                db.delete(row)
+        elif row:
+            row.shift_kind, row.note = kind, note.strip()
+        else:
+            db.add(TeamShiftOverride(team_id=team_id, day=d, shift_kind=kind, note=note.strip(),
+                                     created_by=user_id, created_at=utcnow()))
+        if old != kind:
+            audit.log(db, user_id=user_id, action="update", entity="team", entity_id=team_id,
+                      field="team_shift", old=f"{d} {old}", new=f"{d} {kind}",
+                      extra={"day": str(d), "note": note})
+    db.flush()
+
+
+class TeamSwapIn(BaseModel):
+    team_a: int
+    team_b: int
+    start: date
+    end: date
+    note: str = Field(default="", max_length=200)
+
+
+@router.post("/team-shifts/swap", response_model=list[TeamShiftOut])
+def swap_team_shifts(body: TeamSwapIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """两个班组在这几天互换班次（临时调班）。班长只要其中一个是本班组即可。"""
+    if body.team_a == body.team_b:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "need two different teams")
+    if db.get(Team, body.team_a) is None or db.get(Team, body.team_b) is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "team not found")
+    _require_team(user, body.team_a, body.team_b)
+    days = _range(body.start, body.end)
+    sched = load_schedule(db)
+    a = next(t for t in sched.teams if t.id == body.team_a)
+    b = next(t for t in sched.teams if t.id == body.team_b)
+    shift_a = {d: sched.shift_of(a, d) for d in days}  # 先记下互换前的
+    shift_b = {d: sched.shift_of(b, d) for d in days}
+    _apply_team_shift(db, a.id, days, lambda d: shift_b[d], body.note, user.id)
+    _apply_team_shift(db, b.id, days, lambda d: shift_a[d], body.note, user.id)
+    db.commit()
+    return list_team_shifts(body.start, body.end, db, user)
+
+
 @router.delete("/team-shifts", status_code=204)
 def clear_team_shift(team_id: int, start: date, end: date, db: Session = Depends(get_db),
-                     admin: User = Depends(require_admin)):
+                     admin: User = Depends(get_current_user)):
     """恢复按排班。"""
+    _require_team(admin, team_id)
     sched = load_schedule(db)
     info = next((t for t in sched.teams if t.id == team_id), None)
     if info is None:
@@ -203,3 +248,110 @@ def clear_team_shift(team_id: int, start: date, end: date, db: Session = Depends
                   extra={"day": str(row.day), "restore": True})
         db.delete(row)
     db.commit()
+
+
+# ---------------- 班组管理（管理员）：新增长期 / 临时班组 ----------------
+class TeamIn(BaseModel):
+    name_zh: str = Field(default="", max_length=50)
+    name_sr: str = Field(default="", max_length=50)
+    name_en: str = Field(default="", max_length=50)
+    kind: str = Field(pattern="^(rotating|day|manual)$")
+    cycle_offset: int | None = Field(default=None, ge=0, le=7)
+    day1: date | None = None  # 倒班：哪天是它「白班第 1 天」（给了就按它算循环位置）
+    active_from: date | None = None
+    active_to: date | None = None
+
+
+def _team_fields(db: Session, body: TeamIn) -> dict:
+    names = {k: getattr(body, k).strip() for k in ("name_zh", "name_sr", "name_en")}
+    first = next((v for v in names.values() if v), "")
+    if not first:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "team name required")
+    names = {k: v or first for k, v in names.items()}  # 没填的语言先用填了的那个
+    if body.active_from and body.active_to and body.active_to < body.active_from:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "active_to before active_from")
+    offset = None
+    if body.kind == "rotating":
+        if body.day1 is not None:
+            base = db.get(ShiftConfig, 1).base_date
+            offset = (base - body.day1).days % len(CYCLE)
+        elif body.cycle_offset is not None:
+            offset = body.cycle_offset
+        else:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "rotating team needs day1 or cycle_offset")
+    return {**names, "kind": body.kind, "cycle_offset": offset,
+            "active_from": body.active_from, "active_to": body.active_to}
+
+
+@router.post("/teams", response_model=TeamOut, status_code=201)
+def create_team(body: TeamIn, db: Session = Depends(get_db), admin: User = Depends(require_admin)):
+    d = _team_fields(db, body)
+    n = (db.scalar(select(func.max(Team.id))) or 0) + 1
+    code = f"X{n}"
+    while db.scalar(select(Team.id).where(Team.code == code)):
+        n += 1
+        code = f"X{n}"
+    t = Team(code=code, sort_order=(db.scalar(select(func.max(Team.sort_order))) or 0) + 1, **d)
+    db.add(t)
+    db.flush()
+    audit.log(db, user_id=admin.id, action="create", entity="team", entity_id=t.id,
+              new={k: (str(v) if isinstance(v, date) else v) for k, v in d.items()})
+    db.commit()
+    return t
+
+
+@router.put("/teams/{team_id}", response_model=TeamOut)
+def update_team(team_id: int, body: TeamIn, db: Session = Depends(get_db), admin: User = Depends(require_admin)):
+    t = db.get(Team, team_id)
+    if t is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND)
+    if body.kind == "rotating" and body.day1 is None and body.cycle_offset is None:
+        body.cycle_offset = t.cycle_offset
+    audit.log_changes(db, t, _team_fields(db, body), user_id=admin.id, entity="team", entity_id=t.id)
+    db.commit()
+    return t
+
+
+def _team_refs(db: Session, team_id: int) -> int:
+    """其他表里还有多少条记录引用这个班组（不含它自己的调班记录）。"""
+    n = 0
+    for table in Base.metadata.sorted_tables:
+        if table.name == "team_shift_overrides":
+            continue
+        for col in table.columns:
+            if any(fk.column.table.name == "teams" for fk in col.foreign_keys):
+                n += db.scalar(select(func.count()).select_from(table).where(col == team_id)) or 0
+    return n
+
+
+@router.delete("/teams/{team_id}", status_code=204)
+def delete_team(team_id: int, db: Session = Depends(get_db), admin: User = Depends(require_admin)):
+    """只能删除没用过的班组（没有员工、账号、任务、出勤、加班、巡查……）；用过的请设置结束日期。"""
+    t = db.get(Team, team_id)
+    if t is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND)
+    if _team_refs(db, team_id):
+        raise HTTPException(status.HTTP_409_CONFLICT, "team in use; set an end date instead")
+    for o in db.scalars(select(TeamShiftOverride).where(TeamShiftOverride.team_id == team_id)).all():
+        db.delete(o)
+    db.flush()  # 先删调班记录，再删班组（两者之间没有 relationship，不 flush 的话删除顺序不确定）
+    audit.log(db, user_id=admin.id, action="delete", entity="team", entity_id=team_id,
+              old={"name_zh": t.name_zh, "kind": t.kind})
+    db.delete(t)
+    db.commit()
+
+
+# ---------------- 排班检查：有没有哪个班次没人上 ----------------
+class CoverageProblem(BaseModel):
+    day: date
+    shift_kind: str
+    problem: str  # none / multiple
+    team_ids: list[int]
+
+
+@router.get("/shifts/coverage", response_model=list[CoverageProblem])
+def shifts_coverage(start: date, end: date, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+    if end < start or (end - start).days > 92:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "range must be 0..92 days")
+    return [CoverageProblem(day=d, shift_kind=k, problem=p, team_ids=ids)
+            for d, k, p, ids in coverage_problems(load_schedule(db), start, end)]

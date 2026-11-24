@@ -19,7 +19,7 @@ def load_schedule(db: Session) -> Schedule:
     workdays = frozenset(d for d, k in rows if k == "workday")
     return Schedule(
         base_date=cfg.base_date,
-        teams=tuple(TeamInfo(t.id, t.kind, t.cycle_offset) for t in teams),
+        teams=tuple(TeamInfo(t.id, t.kind, t.cycle_offset, t.active_from, t.active_to) for t in teams),
         day_start=cfg.day_start,
         middle_start=cfg.middle_start,
         night_start=cfg.night_start,

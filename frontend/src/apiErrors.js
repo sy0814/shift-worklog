@@ -32,6 +32,10 @@ const T = {
   same_shift: ['两人那天是同一个班', 'Oba radnika imaju istu smenu tog dana', 'Both have the same shift that day'],
   admin_only: ['只有管理员可以操作', 'Samo administrator', 'Administrator only'],
   analysis_running: ['已经有一个分析在进行，请稍后', 'Analiza je već u toku', 'Another analysis is running'],
+  team_used: ['这个班组已经用过（有员工、账号或任务），不能删除；可以给它设置结束日期', 'Ekipa je korišćena i ne može da se obriše; postavite krajnji datum', 'This team has been used and cannot be deleted; give it an end date instead'],
+  team_name: ['请填写班组名称', 'Unesite naziv ekipe', 'Enter a team name'],
+  two_teams: ['请选两个不同的班组', 'Izaberite dve različite ekipe', 'Choose two different teams'],
+  pairs: ['四个倒班班组必须错开（白、中、夜、休各有一个班组）', 'Smenske ekipe moraju da pokriju sve smene', 'Rotating teams must cover every shift'],
   self: ['不能降级或停用自己', 'Ne možete sebi oduzeti prava', 'You cannot demote or disable yourself'],
 }
 const RULES = [
@@ -68,6 +72,10 @@ const RULES = [
   [/^admin only/, 'admin_only'],
   [/^another analysis is running/, 'analysis_running'],
   [/^cannot demote or disable yourself/, 'self'],
+  [/^team in use/, 'team_used'],
+  [/^team name required/, 'team_name'],
+  [/^need two different teams/, 'two_teams'],
+  [/^teams must be in different shift pairs/, 'pairs'],
 ]
 const IDX = { zh: 0, sr: 1, en: 2 }
 
