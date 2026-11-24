@@ -6,9 +6,9 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import audit
+from .. import app_settings, audit
 from ..db import get_db
-from ..models import User, Worker
+from ..models import AppSetting, User, Worker
 from ..schemas import PasswordReset, UserCreate, UserOut, UserUpdate
 from ..security import hash_password, require_admin
 
@@ -59,6 +59,7 @@ def reset_password(user_id: int, body: PasswordReset, db: Session = Depends(get_
         raise HTTPException(status.HTTP_404_NOT_FOUND)
     u.password_hash = hash_password(body.password)
     u.failed_logins, u.locked_until = 0, None
+    u.must_change_password = u.id != admin.id  # 别人重设的密码：登录后必须先改
     audit.log(db, user_id=admin.id, action="reset_password", entity="user", entity_id=u.id)
     db.commit()
 
@@ -93,3 +94,30 @@ def relink(user_id: int, body: Relink, db: Session = Depends(get_db), admin: Use
               old=old, new=w.id)
     db.commit()
     return u
+
+
+# ---------------- 新员工默认密码 ----------------
+class DefaultPassword(BaseModel):
+    password: str
+
+
+@router.get("/default-password", response_model=DefaultPassword)
+def get_default_password(db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    return DefaultPassword(password=app_settings.default_password(db))
+
+
+@router.put("/default-password", response_model=DefaultPassword)
+def put_default_password(body: DefaultPassword, db: Session = Depends(get_db), admin: User = Depends(require_admin)):
+    """新员工开账号时用的默认密码（至少 6 位，班组账号和个人账号都能用）；登录后会被要求改掉。"""
+    pw = body.password.strip()
+    if len(pw) < 6:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "password must be at least 6 characters")
+    row = db.get(AppSetting, app_settings.DEFAULT_PASSWORD_KEY)
+    if row is None:
+        db.add(AppSetting(key=app_settings.DEFAULT_PASSWORD_KEY, value=pw))
+    else:
+        row.value = pw
+    audit.log(db, user_id=admin.id, action="update", entity="setting", entity_id="default_password",
+              field="default_password")  # 不记密码本身
+    db.commit()
+    return DefaultPassword(password=pw)

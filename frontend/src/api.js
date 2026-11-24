@@ -29,6 +29,8 @@ api.interceptors.response.use(
     if (status === 401 && router.currentRoute.value.name !== 'login') {
       localStorage.removeItem('token')
       router.push({ name: 'login' })
+    } else if (status === 403 && err.response?.data?.detail === 'password change required') {
+      if (router.currentRoute.value.name !== 'change-password') router.push({ name: 'change-password' })
     } else if (!err.config?.silent) {
       const detail = err.response?.data?.detail
       ElMessage.error(typeof detail === 'string'

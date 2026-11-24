@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 import bcrypt
 import jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
@@ -31,7 +31,11 @@ def create_token(user: User) -> str:
     return jwt.encode({"sub": str(user.id), "exp": exp}, s.secret_key, algorithm=ALGORITHM)
 
 
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> User:
+# 必须先改密码的账号，只能访问这些（看自己、改密码、登录后加载的班组列表）
+ALLOWED_BEFORE_CHANGE = ("/api/auth/me", "/api/auth/change-password", "/api/teams")
+
+
+def get_current_user(request: Request, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> User:
     err = HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid token",
                         headers={"WWW-Authenticate": "Bearer"})
     try:
@@ -42,6 +46,8 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     user = db.get(User, uid)
     if user is None or not user.is_active:
         raise err
+    if user.must_change_password and request.url.path not in ALLOWED_BEFORE_CHANGE:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "password change required")
     return user
 
 

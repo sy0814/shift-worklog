@@ -106,6 +106,7 @@ const freeWorkers = computed(() => workers.value.filter((w) => !users.value.some
           <el-tag v-if="isLocked(row)" type="danger" size="small">{{ t('acc.locked') }}</el-tag>
           <el-tag v-else-if="!row.is_active" type="info" size="small">{{ t('acc.disabled') }}</el-tag>
           <el-tag v-else type="success" size="small">{{ t('acc.active') }}</el-tag>
+          <el-tag v-if="row.must_change_password" type="warning" size="small" effect="plain">{{ t('dp.mustChange') }}</el-tag>
         </template>
       </el-table-column>
       <el-table-column :label="t('users.lastLogin')" width="130"><template #default="{ row }">{{ row.last_login_at ? dayjs(row.last_login_at).format('MM-DD HH:mm') : '—' }}</template></el-table-column>

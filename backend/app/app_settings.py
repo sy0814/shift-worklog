@@ -9,6 +9,14 @@ DEFAULTS: dict = {
     "overdue_hours": 24,
     "overdue_handovers": 3,
 }
+# 新员工默认密码（不在 DEFAULTS 里，避免通过 GET /api/settings 给所有人看到；只有管理员能读写）
+DEFAULT_PASSWORD_KEY = "default_password"
+DEFAULT_PASSWORD = "123456"
+
+
+def default_password(db: Session) -> str:
+    row = db.get(AppSetting, DEFAULT_PASSWORD_KEY)
+    return row.value if row is not None and isinstance(row.value, str) and row.value else DEFAULT_PASSWORD
 
 
 def get_all(db: Session) -> dict:

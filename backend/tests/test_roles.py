@@ -68,6 +68,10 @@ def test_member_team_login_and_permissions(client, admin_h, teams, roles):
     r = pin_login(client, acc["user_id"], "1234")
     assert r.status_code == 200 and r.json()["user"]["perms"]["task.create"] == "none"
     mh = {"Authorization": f"Bearer {r.json()['access_token']}"}
+    # 管理员设的密码：必须先改密码才能用
+    assert r.json()["user"]["must_change_password"] is True
+    assert client.get("/api/tasks", headers=mh).status_code == 403
+    assert client.post("/api/auth/change-password", headers=mh, json={"old_password": "1234", "new_password": "8765"}).status_code == 204
 
     # 班长建两条任务：一条有这个成员，一条没有
     lead = next(x for x in client.get("/api/users", headers=admin_h).json() if x["team_id"] == tid and x["role"] == "staff"
@@ -167,3 +171,31 @@ def test_assign_only_people_on_duty(client, admin_h, teams):
     # 管理员不限
     assert not client.get("/api/assignable", headers=admin_h, params={"team_id": tid}).json()["restricted"]
     assert client.patch(f"/api/tasks/{t['id']}", headers=admin_h, json={"worker_ids": [here["id"], away["id"]]}).status_code == 200
+
+
+def test_new_worker_gets_default_password_and_must_change(client, admin_h, teams, leader_h):
+    """新加的员工自动开账号（默认密码），第一次登录必须改密码；改的时候不能还用默认密码。"""
+    assert client.get("/api/users/default-password", headers=leader_h).status_code == 403
+    assert client.put("/api/users/default-password", headers=admin_h, json={"password": "123"}).status_code == 400
+    assert client.put("/api/users/default-password", headers=admin_h, json={"password": "Abc2026"}).json()["password"] == "Abc2026"
+    w = client.post("/api/workers", headers=admin_h, json={"name": "Brand New", "team_id": teams["T2"]}).json()
+    acc = client.get(f"/api/workers/{w['id']}/account", headers=admin_h).json()
+    assert acc["user_id"] and acc["login_mode"] == "pin" and acc["must_change_password"]
+    r = client.post("/api/auth/pin", json={"user_id": acc["user_id"], "pin": "Abc2026"})
+    assert r.status_code == 200 and r.json()["user"]["must_change_password"]
+    h = {"Authorization": f"Bearer {r.json()['access_token']}"}
+    assert client.get("/api/board", headers=h).json()["detail"] == "password change required"
+    assert client.get("/api/auth/me", headers=h).status_code == 200 and client.get("/api/teams", headers=h).status_code == 200
+    bad = client.post("/api/auth/change-password", headers=h, json={"old_password": "Abc2026", "new_password": "Abc2026"})
+    assert bad.status_code == 400
+    assert client.post("/api/auth/change-password", headers=h, json={"old_password": "Abc2026", "new_password": "4455"}).status_code == 204
+    assert client.get("/api/board", headers=h).status_code == 200
+    # 批量：给没账号的人开账号（这里都已经有了 → 0）
+    assert client.post("/api/workers/accounts/open-all", headers=admin_h).json()["created"] >= 0
+    # 个人账号角色（班长）：用户名 = 工号
+    roles = {x["code"]: x["id"] for x in client.get("/api/roles", headers=admin_h).json()}
+    w2 = client.post("/api/workers", headers=admin_h, json={"name": "New Lead", "employee_no": "E9001", "team_id": teams["T2"]}).json()
+    client.patch(f"/api/workers/{w2['id']}", headers=admin_h, json={"role_id": roles["leader"]})
+    acc2 = client.get(f"/api/workers/{w2['id']}/account", headers=admin_h).json()
+    assert acc2["login_mode"] == "password" and acc2["username"] == "E9001"
+    client.put("/api/users/default-password", headers=admin_h, json={"password": "123456"})

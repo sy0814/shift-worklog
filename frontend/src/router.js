@@ -3,6 +3,7 @@ import { useAuth } from './stores/auth'
 
 const routes = [
   { path: '/login', name: 'login', component: () => import('./views/Login.vue'), meta: { public: true } },
+  { path: '/change-password', name: 'change-password', component: () => import('./views/ChangePassword.vue') },
   {
     path: '/',
     component: () => import('./views/Layout.vue'),
@@ -32,6 +33,9 @@ router.beforeEach(async (to) => {
   if (to.meta.public) return true
   const auth = useAuth()
   if (!(await auth.restore())) return { name: 'login', query: { next: to.fullPath } }
+  // 用默认密码 / 别人重设的密码登录：先改密码
+  if (auth.user?.must_change_password && to.name !== 'change-password') return { name: 'change-password', query: { next: to.fullPath } }
+  if (to.name === 'change-password' && !auth.user?.must_change_password) return { name: 'home' }
   if (to.meta.admin && !auth.isAdmin) return { name: 'home' }
   if (to.meta.perm && !auth.can(to.meta.perm)) return { name: 'home' }
   return true

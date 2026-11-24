@@ -115,6 +115,13 @@ async function saveDraft() {
   const w = (await api.post('/workers', { name: d.name.trim(), employee_no: d.employee_no.trim() || null, team_id: d.team_id })).data
   rows.value.push(w)
   flash(w.id, 'name')
+  ElMessage.success({ message: t('dp.added', { n: w.name }), duration: 4000 }) // 已自动开账号，默认密码，第一次登录要改
+}
+// 给名册里还没有账号的在职员工都开账号（默认密码）
+async function openAll() {
+  await ElMessageBox.confirm(t('dp.openAllConfirm'), t('dp.openAll'), { type: 'info' })
+  const r = (await api.post('/workers/accounts/open-all')).data
+  ElMessageBox.alert(t('dp.openAllDone', { n: r.created, p: r.password }), t('dp.openAll'), { type: 'success' })
 }
 
 // ---------------- 列 ----------------
@@ -218,6 +225,7 @@ async function saveBulk() {
         </el-tooltip>
         <input ref="fileInput" type="file" accept=".xlsx" hidden @change="importFile" />
         <el-button @click="bulk.team_id = teamFilter; bulkOpen = true">{{ t('workers.bulk') }}</el-button>
+        <el-button @click="openAll">{{ t('dp.openAll') }}</el-button>
       </template>
     </div>
     <div class="muted small">{{ readonly ? t('workers.leaderHint') : t('workers.editHint') }}</div>

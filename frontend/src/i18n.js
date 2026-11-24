@@ -146,6 +146,8 @@ const messages = {
       toTeam: '分给班组', toPerson: '分给个人', pickTeam: '选班组', pickPerson: '选人', noShift: '近期没有班', onNow: '正在上班',
       notNow: '这个人现在不在班，下一个班：{s}' },
     names: { translate: '自动翻译', hint: '只填一种语言也行：点「自动翻译」先看看，或者直接保存，空着的语言保存时自动翻译', failed: '现在翻译不了（没配置翻译接口或网络不通），可以手动填写' },
+    cp: { title: '请先修改密码', hint: '{name}，你现在用的是默认密码（或管理员 / 班长帮你重设的密码），改成只有你自己知道的密码后才能继续使用。', again: '再输一次新密码', tooShort: '至少 {n} 位', same: '新密码不能和原密码一样', mismatch: '两次输入的新密码不一样' },
+    dp: { title: '新员工默认密码', label: '默认密码', hint: '在员工名册里新加的人会自动开账号，密码就是这个；他第一次登录后必须改成自己的密码。至少 6 位。', openAll: '给没账号的人开账号', openAllConfirm: '给名册里还没有账号的在职员工都开账号（用默认密码，第一次登录必须改）？', openAllDone: '开了 {n} 个账号，默认密码：{p}', added: '已给 {n} 开账号（默认密码，第一次登录要改）', mustChange: '需改密码' },
     lead: { title: '带队人员', none: '未指定', members: '参与人员', pick: '选择带队人（可不选）' },
     duty: {
       onDuty: '在岗 {n} 人', offHours: '不在上班时间 {n}', busy: '忙碌 {n}', idle: '空闲 {n}', absent: '请假/缺勤 {n}', title: '{shift} 人员状态', support: '支援',
@@ -305,6 +307,8 @@ const messages = {
       toTeam: 'Ekipi', toPerson: 'Osobi', pickTeam: 'Izaberite ekipu', pickPerson: 'Izaberite osobu', noShift: 'nema smene uskoro', onNow: 'sada radi',
       notNow: 'Ova osoba sada ne radi; sledeća smena: {s}' },
     names: { translate: 'Prevedi', hint: 'Dovoljan je jedan jezik: kliknite „Prevedi” da proverite, ili samo sačuvajte — prazni jezici se prevode pri čuvanju', failed: 'Prevod trenutno nije dostupan; popunite ručno' },
+    cp: { title: 'Prvo promenite lozinku', hint: '{name}, koristite podrazumevanu lozinku (ili lozinku koju je postavio administrator / šef). Promenite je u lozinku koju samo vi znate da biste nastavili.', again: 'Ponovite novu lozinku', tooShort: 'Najmanje {n} znakova', same: 'Nova lozinka ne sme biti ista kao stara', mismatch: 'Nove lozinke se ne poklapaju' },
+    dp: { title: 'Podrazumevana lozinka za nove radnike', label: 'Lozinka', hint: 'Novi ljudi u spisku dobijaju nalog sa ovom lozinkom; posle prve prijave moraju da je promene. Najmanje 6 znakova.', openAll: 'Otvori naloge onima bez naloga', openAllConfirm: 'Otvoriti naloge svim aktivnim radnicima bez naloga (podrazumevana lozinka, promena pri prvoj prijavi)?', openAllDone: 'Otvoreno naloga: {n}, podrazumevana lozinka: {p}', added: 'Nalog za {n} je otvoren (podrazumevana lozinka, mora se promeniti)', mustChange: 'treba promeniti lozinku' },
     lead: { title: 'Vođa ekipe', none: 'Nije određen', members: 'Učesnici', pick: 'Izaberite vođu (opciono)' },
     duty: {
       onDuty: 'Na smeni {n}', offHours: 'Van radnog vremena {n}', busy: 'Zauzeto {n}', idle: 'Slobodno {n}', absent: 'Odsutno {n}', title: '{shift} – stanje radnika', support: 'Pomoć',
@@ -464,6 +468,8 @@ const messages = {
       toTeam: 'To a team', toPerson: 'To a person', pickTeam: 'Choose team', pickPerson: 'Choose person', noShift: 'no shift soon', onNow: 'working now',
       notNow: 'Not working now; next shift: {s}' },
     names: { translate: 'Translate', hint: 'One language is enough: click “Translate” to check, or just save — empty languages are translated when saving', failed: 'Translation is not available right now; fill it in by hand' },
+    cp: { title: 'Please change your password first', hint: '{name}, you are using the default password (or one set by an administrator / leader). Change it to a password only you know to continue.', again: 'New password again', tooShort: 'At least {n} characters', same: 'The new password must differ from the old one', mismatch: 'The new passwords do not match' },
+    dp: { title: 'Default password for new workers', label: 'Default password', hint: 'People added to the roster get an account with this password and must change it after their first sign-in. At least 6 characters.', openAll: 'Open accounts for people without one', openAllConfirm: 'Open accounts for all active workers who have none (default password, must change at first sign-in)?', openAllDone: '{n} accounts opened, default password: {p}', added: 'Account opened for {n} (default password, must be changed)', mustChange: 'must change password' },
     lead: { title: 'Lead', none: 'Not set', members: 'Workers', pick: 'Choose a lead (optional)' },
     duty: {
       onDuty: '{n} on shift', offHours: '{n} outside hours', busy: '{n} busy', idle: '{n} free', absent: '{n} absent', title: '{shift} – people', support: 'Support',

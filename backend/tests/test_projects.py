@@ -43,6 +43,7 @@ def test_leader_creates_project(client, admin_h, teams):
     m = client.post("/api/workers", headers=admin_h, json={"name": "Proj Member", "team_id": teams["T1"]}).json()
     uid = client.put(f"/api/workers/{m['id']}/account", headers=admin_h, json={"password": "1111"}).json()["user_id"]
     mh = {"Authorization": "Bearer " + client.post("/api/auth/pin", json={"user_id": uid, "pin": "1111"}).json()["access_token"]}
+    client.post("/api/auth/change-password", headers=mh, json={"old_password": "1111", "new_password": "2222"})
     assert client.post("/api/projects", headers=mh, json=body).status_code == 403
     assert any(x["id"] == p["id"] for x in client.get("/api/projects", headers=mh).json())  # 能看本班组的项目
     # 管理员可以分给任何班组

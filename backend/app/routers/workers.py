@@ -1,6 +1,7 @@
 """员工名册：所有人可查看，管理员维护（网页上逐格修改、加行加列、Excel 导入导出）。"""
 
 import io
+import re
 from datetime import date, datetime, timezone
 from pathlib import Path
 
@@ -10,7 +11,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .. import audit, permissions, worker_history
+from .. import app_settings, audit, permissions, worker_history
 from ..schedule_service import local_now
 from ..db import get_db
 from ..models import Role, Team, User, Worker, WorkerField, WorkerSchedule, utcnow
@@ -151,6 +152,7 @@ def create_worker(body: WorkerCreate, db: Session = Depends(get_db), admin: User
     worker_history.ensure_baseline(db, w, w.team_id)
     audit.log(db, user_id=admin.id, action="create", entity="worker", entity_id=w.id,
               new={"name": w.name, "employee_no": no, "team_id": w.team_id, **({"extra": w.extra} if w.extra else {})})
+    ensure_account(db, w, admin.id)
     db.commit()
     return w
 
@@ -167,6 +169,7 @@ def bulk_create(body: WorkerBulkCreate, db: Session = Depends(get_db), admin: Us
         worker_history.ensure_baseline(db, w, w.team_id)
         audit.log(db, user_id=admin.id, action="create", entity="worker", entity_id=w.id,
                   new={"name": w.name, "team_id": w.team_id})
+        ensure_account(db, w, admin.id)
         out.append(w)
     db.commit()
     return out
@@ -194,17 +197,52 @@ def update_worker(worker_id: int, body: WorkerUpdate, db: Session = Depends(get_
     if extra is not None:
         _set_extra(db, w, _clean_extra(db, extra, w.extra), admin.id)
     worker_history.sync_account(db, w)
+    if "role_id" in changes:
+        _auto_username(db, w)
     db.commit()
     return w
 
 
+def _auto_username(db: Session, w: Worker) -> None:
+    """角色改成个人账号（班长等）时，自动生成的用户名 w<编号> 换成工号（工号可用且没人占用时）。"""
+    u = db.scalar(select(User).where(User.worker_id == w.id))
+    role = permissions.role_of(db, w)
+    if u is None or role is None or role.login_mode != "password" or not re.fullmatch(r"w\d+", u.username):
+        return
+    no = w.employee_no or ""
+    if re.fullmatch(r"[A-Za-z0-9_.-]{2,50}", no) and db.scalar(select(User.id).where(User.username == no)) is None:
+        audit.log(db, user_id=None, action="update", entity="user", entity_id=u.id, field="username", old=u.username, new=no)
+        u.username = no
+
+
 # ---------------- 登录账号（名册里的人）----------------
+def ensure_account(db: Session, w: Worker, actor_id: int | None) -> User | None:
+    """新加的员工自动开账号，密码 = 「新员工默认密码」，第一次登录必须改。
+    班组账号（成员）：点头像 + 这个密码；个人账号（班长等）：用户名 = 工号（没有或重复就用 w<编号>）。"""
+    if db.scalar(select(User).where(User.worker_id == w.id)) is not None:
+        return None
+    role = permissions.role_of(db, w)
+    mode = role.login_mode if role else "pin"
+    username = f"w{w.id}"
+    if mode == "password" and w.employee_no and re.fullmatch(r"[A-Za-z0-9_.-]{2,50}", w.employee_no) \
+            and db.scalar(select(User.id).where(User.username == w.employee_no)) is None:
+        username = w.employee_no
+    u = User(username=username, password_hash=hash_password(app_settings.default_password(db)), full_name=w.name,
+             role="staff", team_id=w.team_id, worker_id=w.id, lang="zh", is_active=w.is_active, must_change_password=True)
+    db.add(u)
+    db.flush()
+    audit.log(db, user_id=actor_id, action="create", entity="user", entity_id=u.id,
+              new={"worker": w.name, "username": u.username, "login_mode": mode, "default_password": True})
+    return u
+
+
 class AccountOut(BaseModel):
     user_id: int | None  # 还没开账号时为空
     username: str | None
     login_mode: str  # password（个人账号）/ pin（班组公共账号 + 个人密码），由角色决定
     is_active: bool
     locked: bool
+    must_change_password: bool = False  # 还在用默认 / 别人设的密码
     last_login_at: datetime | None
 
 
@@ -226,7 +264,8 @@ def _account_out(db: Session, w: Worker) -> AccountOut:
     if lk is not None and lk.tzinfo is None:
         lk = lk.replace(tzinfo=timezone.utc)
     return AccountOut(user_id=u.id, username=u.username if login_mode(db, u) == "password" else None, login_mode=mode,
-                      is_active=u.is_active, locked=bool(lk and lk > utcnow()), last_login_at=u.last_login_at)
+                      is_active=u.is_active, locked=bool(lk and lk > utcnow()), last_login_at=u.last_login_at,
+                      must_change_password=u.must_change_password)
 
 
 def _can_manage_account(db: Session, user: User, w: Worker) -> bool:
@@ -282,6 +321,7 @@ def put_account(worker_id: int, body: AccountIn, db: Session = Depends(get_db), 
         check_secret(db, u, body.password)
         u.password_hash = hash_password(body.password)
         u.failed_logins, u.locked_until = 0, None
+        u.must_change_password = u.id != user.id  # 别人设的密码：登录后必须先改
         audit.log(db, user_id=user.id, action="reset_password", entity="user", entity_id=u.id)
     if body.is_active is not None and body.is_active != u.is_active:
         audit.log_changes(db, u, {"is_active": body.is_active and w.is_active}, user_id=user.id, entity="user",
@@ -515,6 +555,7 @@ async def import_workers(file: UploadFile = File(...), dry_run: bool = False, db
             db.add(w)
             db.flush()
             worker_history.ensure_baseline(db, w, w.team_id)
+            ensure_account(db, w, admin.id)
             audit.log(db, user_id=admin.id, action="import", entity="worker", entity_id=w.id,
                       new={"name": name, "employee_no": no, "team_id": team_id})
             created += 1
@@ -616,3 +657,19 @@ def delete_schedule(worker_id: int, effective_from: date, db: Session = Depends(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "cannot delete this entry")
     db.commit()
     return _entries(db, worker_id)
+
+
+class OpenAllOut(BaseModel):
+    created: int
+    password: str
+
+
+@router.post("/accounts/open-all", response_model=OpenAllOut)
+def open_all_accounts(db: Session = Depends(get_db), admin: User = Depends(require_admin)):
+    """给名册里还没有账号的在职员工都开账号（默认密码，第一次登录必须改）。"""
+    n = 0
+    for w in db.scalars(select(Worker).where(Worker.is_active.is_(True))):
+        if ensure_account(db, w, admin.id) is not None:
+            n += 1
+    db.commit()
+    return OpenAllOut(created=n, password=app_settings.default_password(db))

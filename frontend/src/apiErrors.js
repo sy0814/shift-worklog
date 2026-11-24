@@ -56,6 +56,7 @@ const T = {
   pick_target: ['请选班组或具体的人', 'Izaberite ekipu ili osobu', 'Choose a team or a person'],
   no_team: ['这个人没有班组', 'Osoba nema ekipu', 'This person has no team'],
   tr_off: ['没有配置翻译接口（管理员在「系统设置」里配置）', 'Prevod nije podešen', 'Translation is not configured'],
+  pw_same: ['新密码不能和原密码、默认密码一样', 'Nova lozinka mora biti drugačija', 'Choose a different password'],
   self: ['不能降级或停用自己', 'Ne možete sebi oduzeti prava', 'You cannot demote or disable yourself'],
 }
 const RULES = [
@@ -93,6 +94,7 @@ const RULES = [
   [/^another analysis is running/, 'analysis_running'],
   [/^cannot demote or disable yourself/, 'self'],
   [/^team in use/, 'team_used'],
+  [/^choose a different password/, 'pw_same'],
   [/^translation not configured/, 'tr_off'],
   [/^project tasks cannot be handed over/, 'proj_fixed'],
   [/^cannot assign to that team/, 'proj_team'],

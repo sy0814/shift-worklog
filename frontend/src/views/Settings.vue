@@ -80,6 +80,13 @@ async function reset() {
 // ---------------- 系统名称 ----------------
 const nameForm = reactive({ zh: '', sr: '', en: '' })
 const defaultName = (l) => i18n.global.t('app.title', {}, { locale: l })
+// 新员工默认密码（只有管理员能看、能改）
+const dp = ref('')
+async function loadDp() { try { dp.value = (await api.get('/users/default-password', { silent: true })).data.password } catch { /* 不是管理员 */ } }
+async function saveDp() {
+  dp.value = (await api.put('/users/default-password', { password: dp.value.trim() })).data.password
+  ElMessage.success(t('common.saved'))
+}
 async function saveName() {
   Object.assign(branding, (await api.put('/branding', nameForm)).data)
   ElMessage.success(t('common.saved'))
@@ -93,6 +100,7 @@ async function saveAlert() {
 }
 
 onMounted(async () => {
+  loadDp()
   await loadBranding()
   Object.assign(nameForm, branding)
   await loadLLM()
@@ -111,6 +119,18 @@ onMounted(async () => {
         </el-form-item>
         <el-form-item><span class="muted">{{ t('sys.appNameHint', { def: defaultName($i18n.locale) }) }}</span></el-form-item>
         <el-form-item><el-button type="primary" @click="saveName">{{ t('common.save') }}</el-button></el-form-item>
+      </el-form>
+    </el-card>
+
+    <!-- 新员工默认密码 -->
+    <el-card shadow="never" class="mb">
+      <template #header>{{ t('dp.title') }}</template>
+      <el-form label-width="auto" style="max-width: 520px" @submit.prevent>
+        <el-form-item :label="t('dp.label')">
+          <el-input v-model="dp" maxlength="50" style="width: 220px" />
+        </el-form-item>
+        <el-form-item><span class="muted">{{ t('dp.hint') }}</span></el-form-item>
+        <el-form-item><el-button type="primary" :disabled="dp.trim().length < 6" @click="saveDp">{{ t('common.save') }}</el-button></el-form-item>
       </el-form>
     </el-card>
 

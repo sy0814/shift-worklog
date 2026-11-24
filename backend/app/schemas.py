@@ -45,6 +45,7 @@ class UserOut(ORM):
     is_active: bool
     created_at: UTCDateTime
     worker_id: int | None = None
+    must_change_password: bool = False
     last_login_at: UTCDateTime | None = None
     locked_until: UTCDateTime | None = None
 

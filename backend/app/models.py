@@ -86,6 +86,8 @@ class User(Base):
     failed_logins: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # 用的是默认密码或别人重设的密码：登录后必须先改密码才能用系统
+    must_change_password: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
 
     team: Mapped[Team | None] = relationship()
 

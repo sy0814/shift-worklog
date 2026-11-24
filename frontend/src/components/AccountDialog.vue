@@ -56,6 +56,7 @@ async function unlock() {
         <el-tag v-if="acc.locked" type="danger">{{ t('acc.locked') }}</el-tag>
         <el-tag v-else-if="!acc.is_active" type="info">{{ t('acc.disabled') }}</el-tag>
         <el-tag v-else type="success">{{ t('acc.active') }}</el-tag>
+        <el-tag v-if="acc.must_change_password" type="warning" effect="plain">{{ t('dp.mustChange') }}</el-tag>
         <span class="muted small">{{ t('users.lastLogin') }}: {{ acc.last_login_at ? dayjs(acc.last_login_at).format('MM-DD HH:mm') : '—' }}</span>
         <el-button v-if="acc.locked && auth.isAdmin" link type="warning" @click="unlock">{{ t('acc.unlock') }}</el-button>
       </div>

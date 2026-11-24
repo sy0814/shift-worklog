@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import audit, permissions
+from .. import app_settings, audit, permissions
 from ..db import get_db
 from ..models import Role, Team, User, Worker, utcnow
 from ..schemas import MeOut, MeUpdate, PasswordChange, RoleBrief, TokenOut
@@ -185,6 +185,9 @@ def change_password(body: PasswordChange, user: User = Depends(get_current_user)
     if not verify_password(body.old_password, user.password_hash):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "wrong old password")
     check_secret(db, user, body.new_password)
+    if body.new_password == body.old_password or body.new_password == app_settings.default_password(db):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "choose a different password")
     user.password_hash = hash_password(body.new_password)
+    user.must_change_password = False
     audit.log(db, user_id=user.id, action="change_password", entity="user", entity_id=user.id)
     db.commit()

@@ -4,7 +4,7 @@ import { setLang } from '../i18n'
 import { clearOfflineData } from '../net'
 
 export const useAuth = defineStore('auth', {
-  state: () => ({ user: null, teams: [] }),
+  state: () => ({ user: null, teams: [], lastSecret: null }), // lastSecret：刚登录时输入的密码，强制改密码页预先填好「原密码」（只在内存里）
   getters: {
     isAdmin: (s) => s.user?.role === 'admin',
     // 角色权限：scope('task.edit') → none / self / team / all；can('export') → 有没有（不是 none）
@@ -28,6 +28,7 @@ export const useAuth = defineStore('auth', {
       const { data } = await api.post('/auth/login', form)
       localStorage.setItem('token', data.access_token)
       this.user = data.user
+      this.lastSecret = data.user.must_change_password ? password : null
       setLang(data.user.lang)
       await this.loadTeams()
     },
@@ -36,6 +37,7 @@ export const useAuth = defineStore('auth', {
       const { data } = await api.post('/auth/pin', { user_id: userId, pin })
       localStorage.setItem('token', data.access_token)
       this.user = data.user
+      this.lastSecret = data.user.must_change_password ? pin : null
       setLang(data.user.lang)
       await this.loadTeams()
     },
@@ -65,6 +67,7 @@ export const useAuth = defineStore('auth', {
       // 离线草稿按用户保存在本机，退出登录不会删除，下次同一账号登录后继续同步
       localStorage.removeItem('token')
       localStorage.removeItem('workers_cache')
+      this.lastSecret = null
       clearOfflineData()
       this.user = null
     },
