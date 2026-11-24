@@ -24,9 +24,9 @@ def load_schedule(db: Session) -> Schedule:
         night_start=cfg.night_start,
         holidays=holidays,
         extra_workdays=workdays,
-        overrides={(o.team_id, o.day): o.shift_kind
+        overrides={(o.team_id, o.day): o.hours or o.shift_kind  # 自定义时间段优先
                    for o in db.execute(select(TeamShiftOverride.team_id, TeamShiftOverride.day,
-                                              TeamShiftOverride.shift_kind)).all()},
+                                              TeamShiftOverride.shift_kind, TeamShiftOverride.hours)).all()},
     )
 
 

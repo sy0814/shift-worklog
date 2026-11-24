@@ -10,7 +10,7 @@ import { useAuth } from '../stores/auth'
 import ShiftTag from '../components/ShiftTag.vue'
 import CycleEditor from '../components/CycleEditor.vue'
 import TriNames from '../components/TriNames.vue'
-import { fullHours, shortEntry } from '../cycle'
+import { fullHours, shortEntry, splitHours } from '../cycle'
 
 const { t, tm, locale } = useI18n()
 const auth = useAuth()
@@ -51,15 +51,20 @@ const changes = computed(() => days.value.flatMap((d) => Object.entries(d.change
 const tsOpen = ref(false)
 const canShift = (teamId) => auth.teamOk('schedule.team_shift', teamId)
 const canShiftAny = computed(() => auth.can('schedule.team_shift'))
-const ts = reactive({ mode: 'set', team_id: null, team_b: null, range: [], shift_kind: 'day', note: '' })
+const ts = reactive({ mode: 'set', team_id: null, team_b: null, range: [], shift_kind: 'day', note: '', ranges: [] })
+// 自定义上班时间（shift_kind = 'hours' 时）
+const TIMES = Array.from({ length: 48 }, (_, i) => `${String(Math.floor(i / 2)).padStart(2, '0')}:${i % 2 ? '30' : '00'}`)
+const tsHours = computed(() => ts.ranges.filter((r) => r.a && r.b).map((r) => `${r.a}-${r.b}`).join(','))
 function openTeamShift(teamId, day) {
   if (teamId != null && !canShift(teamId)) return
   if (!canShiftAny.value) return
   const d = day || todayStr
   const cur = days.value.find((x) => x.day === d)
   const team = teamId ?? (auth.isAdmin ? auth.teams[0]?.id : auth.user.team_id)
+  const curHours = cur && teamId && cur.hours?.[teamId]
   Object.assign(ts, { mode: 'set', team_id: team, team_b: null, range: [d, d],
-    shift_kind: (cur && teamId && cur.shifts[teamId]) || 'day', note: '' })
+    shift_kind: curHours ? 'hours' : (cur && teamId && cur.shifts[teamId]) || 'day', note: '',
+    ranges: curHours ? splitHours(curHours).map(([a, b]) => ({ a, b })) : [{ a: '07:00', b: '12:00' }, { a: '14:00', b: '17:00' }] })
   tsOpen.value = true
 }
 async function saveTeamShift() {
@@ -67,7 +72,9 @@ async function saveTeamShift() {
   if (ts.mode === 'swap') {
     await api.post('/team-shifts/swap', { team_a: ts.team_id, team_b: ts.team_b, start, end, note: ts.note })
   } else {
-    await api.put('/team-shifts', { team_id: ts.team_id, start, end, shift_kind: ts.shift_kind, note: ts.note })
+    const custom = ts.shift_kind === 'hours'
+    await api.put('/team-shifts', { team_id: ts.team_id, start, end, shift_kind: custom ? 'day' : ts.shift_kind,
+      hours: custom ? tsHours.value : null, note: ts.note })
   }
   tsOpen.value = false
   await loadCalendar()
@@ -226,13 +233,25 @@ onMounted(async () => {
             <el-form-item v-if="ts.mode === 'set'" :label="t('schedule.shiftTo')">
               <el-radio-group v-model="ts.shift_kind">
                 <el-radio-button v-for="k in ['day', 'middle', 'night', 'off']" :key="k" :value="k">{{ t('shift.' + k) }}</el-radio-button>
+                <el-radio-button value="hours">⏱ {{ t('schedule.customHours') }}</el-radio-button>
               </el-radio-group>
+            </el-form-item>
+            <el-form-item v-if="ts.mode === 'set' && ts.shift_kind === 'hours'" :label="t('cyc.setHours')">
+              <div class="tsr">
+                <div v-for="(r, j) in ts.ranges" :key="j" class="rng">
+                  <el-select v-model="r.a" size="small" filterable style="width: 100px"><el-option v-for="x in TIMES" :key="x" :value="x" /></el-select>
+                  <span>–</span>
+                  <el-select v-model="r.b" size="small" filterable style="width: 100px"><el-option v-for="x in [...TIMES, '24:00']" :key="x" :value="x" /></el-select>
+                  <el-button v-if="ts.ranges.length > 1" size="small" link type="danger" @click="ts.ranges.splice(j, 1)">✕</el-button>
+                </div>
+                <el-button v-if="ts.ranges.length < 4" size="small" @click="ts.ranges.push({ a: '', b: '' })">+ {{ t('cyc.addRange') }}</el-button>
+              </div>
             </el-form-item>
             <el-form-item :label="t('schedule.note')"><el-input v-model="ts.note" maxlength="200" /></el-form-item>
           </el-form>
           <template #footer>
             <el-button v-if="ts.mode === 'set'" @click="restoreTeamShift(ts.team_id, ts.range[0], ts.range[1])">{{ t('schedule.restore') }}</el-button>
-            <el-button type="primary" :disabled="!ts.team_id || !ts.range?.length || (ts.mode === 'swap' && !ts.team_b)" @click="saveTeamShift">{{ t('common.save') }}</el-button>
+            <el-button type="primary" :disabled="!ts.team_id || !ts.range?.length || (ts.mode === 'swap' && !ts.team_b) || (ts.mode === 'set' && ts.shift_kind === 'hours' && !tsHours)" @click="saveTeamShift">{{ t('common.save') }}</el-button>
           </template>
         </el-dialog>
       </el-tab-pane>
@@ -342,6 +361,8 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+.tsr { display: flex; flex-direction: column; gap: 6px; }
+.tsr .rng { display: flex; gap: 6px; align-items: center; }
 .weekend { color: #f56c6c; }
 .toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
 .cell { display: inline-flex; flex-direction: column; align-items: center; gap: 1px; }

@@ -137,6 +137,26 @@ def test_leader_team_shift_and_swap(client, admin_h, leader_h, teams):
     assert cal() == before
 
 
+def test_team_shift_custom_hours(client, admin_h, leader_h, teams):
+    """班组调班可以填自定义时间段：算作重叠最多的班，日历显示时间，恢复后回到原排班。"""
+    d = date(2030, 3, 4)
+    q = {"start": str(d), "end": str(d)}
+    cal = lambda: client.get("/api/shifts/calendar", headers=admin_h, params=q).json()[0]
+    before = cal()
+    body = {"team_id": teams["T1"], "start": str(d), "end": str(d), "hours": "07:00-12:00, 14:00-17:00"}
+    r = client.put("/api/team-shifts", headers=leader_h, json=body)
+    assert r.status_code == 200, r.text
+    row = r.json()[0]
+    assert row["hours"] == "07:00-12:00,14:00-17:00" and row["shift_kind"] == "day"
+    c = cal()
+    assert c["shifts"][str(teams["T1"])] == "day"
+    assert c["hours"][str(teams["T1"])] == "07:00-12:00,14:00-17:00"
+    bad = client.put("/api/team-shifts", headers=leader_h, json=body | {"hours": "12:00-07:00,08:00-09:00"})
+    assert bad.status_code == 400
+    client.delete("/api/team-shifts", headers=leader_h, params={"team_id": teams["T1"], **q})
+    assert cal() == before
+
+
 def test_worker_personal_schedule_and_history(client, admin_h, leader_h, teams):
     """个人排班（每人休息日不同）+ 换班组后以前的出勤不变。"""
     w = client.post("/api/workers", headers=admin_h, json={"name": "Weekly W", "team_id": teams["DAY"]}).json()

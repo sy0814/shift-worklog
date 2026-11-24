@@ -116,22 +116,24 @@ class TeamShiftIn(BaseModel):
     team_id: int
     start: date
     end: date
-    shift_kind: str = Field(pattern="^(day|middle|night|off)$")
+    shift_kind: str = Field(default="day", pattern="^(day|middle|night|off)$")
+    hours: str | None = Field(default=None, max_length=60)  # 自定义时间段（填了就按它，shift_kind 忽略）
     note: str = Field(default="", max_length=200)
 
 
 class TeamShiftOut(BaseModel):
     team_id: int
     day: date
-    shift_kind: str
-    planned: str  # 原本按排班该上的班
+    shift_kind: str  # 算作哪个班
+    hours: str | None  # 自定义时间段
+    planned: str  # 原本按排班该上的（班次或时间段）
     note: str
 
 
 def _ts_out(sched, o: TeamShiftOverride) -> TeamShiftOut:
     team = next(t for t in sched.teams if t.id == o.team_id)
-    return TeamShiftOut(team_id=o.team_id, day=o.day, shift_kind=o.shift_kind,
-                        planned=sched.planned_shift_of(team, o.day), note=o.note)
+    return TeamShiftOut(team_id=o.team_id, day=o.day, shift_kind=o.shift_kind, hours=o.hours,
+                        planned=sched.planned_entry(team, o.day), note=o.note)
 
 
 def _range(start: date, end: date) -> list[date]:
@@ -156,7 +158,15 @@ def set_team_shift(body: TeamShiftIn, db: Session = Depends(get_db), admin: User
     if team is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "team not found")
     _require_team(db, admin, team.id)
-    _apply_team_shift(db, team.id, _range(body.start, body.end), lambda _d: body.shift_kind, body.note, admin.id)
+    entry = body.shift_kind
+    if body.hours and body.hours.strip():
+        try:
+            entry = check_hours(body.hours.replace(" ", "").replace("，", ","))
+        except ValueError as e:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"bad hours: {e}") from e
+        if parse_hours(entry) is None:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "bad hours: format HH:MM-HH:MM")
+    _apply_team_shift(db, team.id, _range(body.start, body.end), lambda _d: entry, body.note, admin.id)
     db.commit()
     return list_team_shifts(body.start, body.end, db, admin)
 
@@ -168,22 +178,25 @@ def _require_team(db: Session, user: User, *team_ids: int) -> None:
 
 
 def _apply_team_shift(db: Session, team_id: int, days: list[date], kind_of, note: str, user_id: int) -> None:
-    """把班组在这些天改成 kind_of(日期) 的班；和原排班一样的日子删掉覆盖记录。"""
+    """把班组在这些天改成 kind_of(日期)（班次或自定义时间段）；和原排班一样的日子删掉覆盖记录。"""
     sched = load_schedule(db)
     info = next(t for t in sched.teams if t.id == team_id)
     for d in days:
-        kind = kind_of(d)
+        entry = kind_of(d)
+        kind = sched.entry_kind(entry)
+        hours = entry if entry != kind else None
         row = db.scalar(select(TeamShiftOverride).where(TeamShiftOverride.team_id == team_id,
                                                         TeamShiftOverride.day == d))
-        old = sched.shift_of(info, d)
-        if kind == sched.planned_shift_of(info, d):
+        old = sched.team_entry(info, d)
+        if entry == sched.planned_entry(info, d):
             if row:
                 db.delete(row)
         elif row:
-            row.shift_kind, row.note = kind, note.strip()
+            row.shift_kind, row.hours, row.note = kind, hours, note.strip()
         else:
-            db.add(TeamShiftOverride(team_id=team_id, day=d, shift_kind=kind, note=note.strip(),
+            db.add(TeamShiftOverride(team_id=team_id, day=d, shift_kind=kind, hours=hours, note=note.strip(),
                                      created_by=user_id, created_at=utcnow()))
+        kind = entry  # 留痕记写法（含时间段）
         if old != kind:
             audit.log(db, user_id=user_id, action="update", entity="team", entity_id=team_id,
                       field="team_shift", old=f"{d} {old}", new=f"{d} {kind}",
@@ -211,8 +224,8 @@ def swap_team_shifts(body: TeamSwapIn, db: Session = Depends(get_db), user: User
     sched = load_schedule(db)
     a = next(t for t in sched.teams if t.id == body.team_a)
     b = next(t for t in sched.teams if t.id == body.team_b)
-    shift_a = {d: sched.shift_of(a, d) for d in days}  # 先记下互换前的
-    shift_b = {d: sched.shift_of(b, d) for d in days}
+    shift_a = {d: sched.team_entry(a, d) for d in days}  # 先记下互换前的（含自定义时间段）
+    shift_b = {d: sched.team_entry(b, d) for d in days}
     _apply_team_shift(db, a.id, days, lambda d: shift_b[d], body.note, user.id)
     _apply_team_shift(db, b.id, days, lambda d: shift_a[d], body.note, user.id)
     db.commit()
@@ -232,7 +245,7 @@ def clear_team_shift(team_id: int, start: date, end: date, db: Session = Depends
     for row in db.scalars(select(TeamShiftOverride).where(TeamShiftOverride.team_id == team_id,
                                                           TeamShiftOverride.day.in_(days))).all():
         audit.log(db, user_id=admin.id, action="update", entity="team", entity_id=team_id, field="team_shift",
-                  old=f"{row.day} {row.shift_kind}", new=f"{row.day} {sched.planned_shift_of(info, row.day)}",
+                  old=f"{row.day} {row.hours or row.shift_kind}", new=f"{row.day} {sched.planned_entry(info, row.day)}",
                   extra={"day": str(row.day), "restore": True})
         db.delete(row)
     db.commit()

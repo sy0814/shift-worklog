@@ -281,7 +281,7 @@
   - 循环（班组的、个人的）里某一天除了 day / middle / night / off，还可以写时间段，例如 `07:00-12:00,14:00-17:00`（最多 4 段，按先后、不重叠，最后一段可以跨午夜，一天最多 16 小时；`shifts.check_hours` 校验并规范写法）。循环编辑器每天右上角 ⏱ 设置，可「所有上班的天都用这个时间」
   - **算作哪个班**（`Schedule.entry_kind`）：和白 / 中 / 夜哪个班重叠最多就算哪个（凌晨开始的段算前一个班次日的夜班）。分组、合并显示、交接、任务归属班次、排班提醒都按这个班算；`shift_of` 仍然只返回班次
   - **实际时间**（`Schedule.entry_hours`、`team_entry` / `worker_entry`）用在：出勤格子 `hours`（出勤页有 ⏱ 标记，悬停看时间）；排班日历 `CalendarDay.hours`；首页人员状态——在这个班但现在不在时间段里（午休、还没到点）显示「不在上班时间」（`off_hours`，不算在岗）；时间段跨过班次分界（例如 14:00-17:00 在 16:00）仍算在岗；加班从他实际下班的时间算（`overtime_service.expand`）
-  - 班组整体调班仍然只能改成白 / 中 / 夜 / 休（会覆盖自定义时间）
+  - 班组整体调班也可以填自定义时间段（2026-11-24 第九轮起，见下）
   - 前端显示用 `frontend/src/cycle.js`（`shortEntry` 显示成「7-12 14-17」）
 - [x] 用户反馈第六轮修改 第 3 步（2026-11-24）：**项目和子项目**（「项目」页 `views/Projects.vue`、`/api/projects`、`app/project_service.py`，迁移 0011）
   - 表 `projects`（三语名称，自动翻译：`translation_service.enqueue_project`，和任务共用翻译队列）；`tasks.project_id`。**子项目就是普通任务**，出现在对应班组的交接班里，任务卡片带「📁 项目名 完成数/总数」
@@ -303,6 +303,7 @@
 - [x] 用户反馈第九轮修改（2026-11-24）
   - **离线开始 / 完成任务**：任务详情的开始 / 完成 / 撤销开始 / 重新打开都走发件箱（`outbox.submitStatus`，类型 `status`），断网时存手机，联网后按点的先后提交。请求带 `expect`（点的时候看到的状态；服务器上已经被别人改了 → 409 `task status changed meanwhile`，不覆盖）和 `at`（点的时间，开始 / 完成时间按它记，不晚于现在、不早于 3 天前和任务录入时间）；同一操作重发（已经是那个状态）直接成功。没同步的任务卡片显示「⏳ 待同步」，详情里有提示
   - 给已有任务补照片本来就走发件箱（`submitPhotos`）
+  - **班组调班可以填自定义时间段**：`team_shift_overrides.hours`（迁移 0014），`shift_kind` 存它算作的班；`Schedule.overrides` 的值是时间段或班次，`shift_of` 经 `entry_kind` 换算，`team_entry` 返回原写法，`planned_entry` = 不算调班时循环里写的。和原排班写法一样 = 删掉覆盖；互换按写法换。「班组调班」弹窗里「⏱ 自定义时间」
   - **离线能打开任务详情**：联网时首页（警示 + 交接班）和任务列表会顺便把未完成任务的详情读一遍（`offline.warmTasks`，每条 10 分钟一次、最多 40 条），Service Worker 缓存下来
 - 工厂时区由 `APP_TIMEZONE` 配置，默认 `Europe/Belgrade`
 - 排班推算是纯函数，在 `backend/app/shifts.py`，测试在 `backend/tests/test_shifts.py`

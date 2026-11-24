@@ -200,8 +200,14 @@ class Schedule:
             return OFF
         o = self.overrides.get((team.id, d))
         if o is not None:
-            return o
+            return self.entry_kind(o)
         return self.planned_shift_of(team, d)
+
+    def planned_entry(self, team: TeamInfo, d: date) -> str:
+        """不考虑整体调班时，循环里这一天写的（班次或时间段）。"""
+        if not team.active_on(d) or team.cycle is None:
+            return OFF
+        return self.cycle_entry(team.cycle, d)
 
     def planned_shift_of(self, team: TeamInfo, d: date) -> str:
         """不考虑整体调班时，按循环推算的班次。"""
@@ -210,7 +216,7 @@ class Schedule:
         return self.cycle_shift(team.cycle, d)
 
     def team_entry(self, team: TeamInfo, d: date) -> str:
-        """班组这一天的安排：整体调班优先（只有班次）；否则循环里写的（可能是自定义时间段）。"""
+        """班组这一天的安排：整体调班优先；否则循环里写的。两者都可能是班次或自定义时间段。"""
         if not team.active_on(d):
             return OFF
         o = self.overrides.get((team.id, d))

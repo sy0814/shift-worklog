@@ -121,7 +121,8 @@ class TeamShiftOverride(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"), index=True)
     day: Mapped[date] = mapped_column(Date, index=True)  # 班次日（夜班归属开始的那天）
-    shift_kind: Mapped[str] = mapped_column(String(10))  # day / middle / night / off
+    shift_kind: Mapped[str] = mapped_column(String(10))  # day / middle / night / off（有 hours 时 = 它算作的班）
+    hours: Mapped[str | None] = mapped_column(String(60), nullable=True)  # 自定义时间段，例 07:00-12:00,14:00-17:00
     note: Mapped[str] = mapped_column(String(200), default="")
     created_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
