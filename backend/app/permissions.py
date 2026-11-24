@@ -38,6 +38,7 @@ PERMS: dict[str, tuple[str, ...]] = {
     "export": ("none", "team", "all"),  # 导出 Excel
     "worker.avatar": ("none", "team", "all"),  # 改员工头像
     "worker.pin": ("none", "team", "all"),  # 重设成员的个人密码
+    "project.manage": ("none", "team", "all"),  # 建项目、加子项目、改派（team = 子项目只能分给本班组和合并的班组；all = 可以分给任何班组）
 }
 
 LEADER_PERMS = {
@@ -46,6 +47,7 @@ LEADER_PERMS = {
     "photo.upload": "team", "photo.delete": "team", "translation.correct": "team",
     "attendance.edit": "team", "overtime.edit": "team", "schedule.team_shift": "team",
     "inspection.manage": "team", "export": "team", "worker.avatar": "team", "worker.pin": "team",
+    "project.manage": "team",
 }
 MEMBER_PERMS = {k: ("team" if k == "task.view" else "self" if k in ("task.status", "photo.upload", "photo.delete")
                     else "none") for k in PERMS}

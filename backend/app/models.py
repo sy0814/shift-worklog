@@ -17,6 +17,7 @@ from sqlalchemy import (
     Time,
     UniqueConstraint,
     false,
+    true,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -173,6 +174,28 @@ class Worker(Base):
     role_id: Mapped[int | None] = mapped_column(ForeignKey("roles.id"), nullable=True)  # 空 = 成员
 
 
+class Project(Base):
+    """项目：下面有多个子项目（子项目就是普通任务，tasks.project_id 指向这里）。
+    所有子项目都完成（或废弃）才算完成。可移交的项目，子项目本班没做完会在下班后自动移交给下一个班组。"""
+
+    __tablename__ = "projects"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name_zh: Mapped[str | None] = mapped_column(Text, nullable=True)
+    name_sr: Mapped[str | None] = mapped_column(Text, nullable=True)
+    name_en: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_lang: Mapped[str] = mapped_column(String(5))
+    translation_status: Mapped[str] = mapped_column(String(10), default="pending")
+    transferable: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())
+    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"), index=True)  # 建项目的班组（班长按它判断能不能管）
+    deadline: Mapped[date | None] = mapped_column(Date, nullable=True)
+    created_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    updated_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # 全部子项目结束的时间
+
+
 class WorkerSchedule(Base):
     """员工的班组 / 排班变更记录：从 effective_from 这天起，属于哪个班组、跟班组排班还是按个人循环。
     出勤、工时按当天有效的那条算，所以换班组后以前的出勤不变。"""
@@ -234,6 +257,7 @@ class Task(Base):
     origin_team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"))  # 创建班组
     source_task_id: Mapped[int | None] = mapped_column(ForeignKey("tasks.id"), nullable=True)
     inspection_id: Mapped[int | None] = mapped_column(ForeignKey("inspection_templates.id"), nullable=True, index=True)
+    project_id: Mapped[int | None] = mapped_column(ForeignKey("projects.id"), nullable=True, index=True)  # 属于哪个项目（子项目）
     # 带队人员（一个，可不填）。带队人同时也在 workers（task_workers）里，所以按「参与」统计时自动算上他
     lead_worker_id: Mapped[int | None] = mapped_column(ForeignKey("workers.id"), nullable=True, index=True)
 
@@ -267,6 +291,7 @@ class Task(Base):
     # 全部参与人（含带队人）；带队人另见 lead
     workers: Mapped[list[Worker]] = relationship(secondary="task_workers", order_by="Worker.id")
     lead: Mapped[Worker | None] = relationship(foreign_keys=[lead_worker_id], viewonly=True)
+    project: Mapped["Project | None"] = relationship(foreign_keys=[project_id], viewonly=True)
     attachments: Mapped[list["Attachment"]] = relationship(
         primaryjoin="and_(Attachment.task_id == Task.id, Attachment.deleted_at.is_(None))",
         order_by="Attachment.taken_at", viewonly=True)

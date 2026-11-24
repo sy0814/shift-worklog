@@ -283,6 +283,13 @@
   - **实际时间**（`Schedule.entry_hours`、`team_entry` / `worker_entry`）用在：出勤格子 `hours`（出勤页有 ⏱ 标记，悬停看时间）；排班日历 `CalendarDay.hours`；首页人员状态——在这个班但现在不在时间段里（午休、还没到点）显示「不在上班时间」（`off_hours`，不算在岗）；时间段跨过班次分界（例如 14:00-17:00 在 16:00）仍算在岗；加班从他实际下班的时间算（`overtime_service.expand`）
   - 班组整体调班仍然只能改成白 / 中 / 夜 / 休（会覆盖自定义时间）
   - 前端显示用 `frontend/src/cycle.js`（`shortEntry` 显示成「7-12 14-17」）
+- [x] 用户反馈第六轮修改 第 3 步（2026-11-24）：**项目和子项目**（「项目」页 `views/Projects.vue`、`/api/projects`、`app/project_service.py`，迁移 0011）
+  - 表 `projects`（三语名称，自动翻译：`translation_service.enqueue_project`，和任务共用翻译队列）；`tasks.project_id`。**子项目就是普通任务**，出现在对应班组的交接班里，任务卡片带「📁 项目名 完成数/总数」
+  - 子项目分给班组（班长再安排人），或直接分给某个人（带队人 = 他，任务归他今天所在的班组，班次 = 他下一个上班的班）；选人时显示每个人下一个班（`/api/projects/people`），现在不在班的有提示，可「改派」（`/subs/{id}/assign`：改给班组会清掉原来的人）
+  - 权限 `project.manage`（角色权限里，迁移给班长、副班长默认 team）：team = 子项目只能分给本班组和合并显示的班组；all = 任何班组
+  - **可移交 / 不可移交**（项目上设置，可随时改）：不可移交的子项目不能移交（`perms.handover` 为 false，接口 409），一直留在原班组；可移交的：子项目所在班次结束 30 分钟后还没做完、那个班组不在班，定时任务（每分钟，`project_service.auto_handover_job`）自动移交给此刻在班的主班组，留痕操作人为空（系统自动），移交记录的操作人记为项目最后修改人
+  - 移交逻辑抽成 `handover.perform_handover`（手动、自动共用）；移交时新任务带上 `project_id`、`inspection_id`
+  - **完成**：只看每条链的最新一条（不算「已移交」的），全部「已完成」或「已废弃」才算完成，记 `closed_at`；之后再加子项目会重新打开
 - 工厂时区由 `APP_TIMEZONE` 配置，默认 `Europe/Belgrade`
 - 排班推算是纯函数，在 `backend/app/shifts.py`，测试在 `backend/tests/test_shifts.py`
 - 留痕：业务代码统一调用 `app/audit.py` 的 `log()` / `log_changes()`；数据库触发器禁止对 `audit_log` 做 UPDATE / DELETE（SQLite、PostgreSQL 都已验证）

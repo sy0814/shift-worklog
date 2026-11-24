@@ -289,6 +289,15 @@ class AttachmentOut(BaseModel):
     can_delete: bool = False
 
 
+class ProjectBrief(BaseModel):
+    id: int
+    name: Trilingual
+    source_lang: str
+    transferable: bool
+    done: int
+    total: int
+
+
 class TaskOut(BaseModel):
     id: int
     client_id: str
@@ -326,6 +335,7 @@ class TaskOut(BaseModel):
     can_correct: bool = False  # 能否校对译文
     # 当前用户对这条任务能做什么：edit / status（开始、完成）/ handover / discard / photo（传照片）/ correct（校对译文）
     perms: dict[str, bool] = {}
+    project: "ProjectBrief | None" = None  # 属于哪个项目（子项目）
     # 移交 / 废弃 / 警示
     chain_started_at: UTCDateTime
     handover_count: int
@@ -394,3 +404,6 @@ class ImportResult(BaseModel):
     added: int
     updated: int
     skipped: int
+
+
+TaskOut.model_rebuild()

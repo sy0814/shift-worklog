@@ -23,6 +23,7 @@ const leftover = computed(() => localText(props.task.leftover, props.task.leftov
       <span class="muted">{{ task.shift_date.slice(5) }}</span>
       <el-tag v-if="task.overdue" type="danger" size="small" effect="dark">{{ t('overdue.badge') }} {{ Math.floor(task.age_hours) }}h</el-tag>
       <el-tag v-if="task.inspection_id" size="small" type="success" effect="plain">{{ t('insp.tag') }}</el-tag>
+      <el-tag v-if="task.project" size="small" type="primary" effect="plain" class="ptag">📁 {{ localText(task.project.name, task.project.source_lang).text }} {{ task.project.done }}/{{ task.project.total }}</el-tag>
       <el-tag v-if="task.handover_in" size="small" effect="plain">← {{ localName(auth.teamById(task.handover_in.team_id)) }}</el-tag>
       <el-tag v-if="task.handover_out" size="small" type="warning" effect="plain">→ {{ localName(auth.teamById(task.handover_out.team_id)) }}</el-tag>
       <span class="spacer" />
@@ -57,4 +58,5 @@ const leftover = computed(() => localText(props.task.leftover, props.task.leftov
 .leftover { color: #b88230; font-size: 13px; margin-bottom: 4px; }
 .row3 { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; }
 .muted { color: #909399; display: inline-flex; align-items: center; gap: 2px; }
+.ptag { max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
 </style>

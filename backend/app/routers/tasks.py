@@ -25,6 +25,7 @@ from ..schemas import (
     AuditOut,
     HandoverInfo,
     HistoryOut,
+    ProjectBrief,
     TaskCreate,
     TaskOut,
     TaskPage,
@@ -97,7 +98,9 @@ def task_perms(w: "permissions.Who | None", task: Task) -> dict[str, bool]:
     return {
         "edit": live and done_ok and w.task_ok("task.edit", task),
         "status": live and done_ok and w.task_ok("task.status", task),
-        "handover": open_ and w.task_ok("task.handover", task),
+        # 不可移交的项目的子项目不能移交
+        "handover": open_ and w.task_ok("task.handover", task) and not (task.project_id and task.project
+                                                                        and not task.project.transferable),
         "discard": open_ and w.task_ok("task.discard", task),
         "photo": live and done_ok and w.task_ok("photo.upload", task),
         "correct": done_ok and w.task_ok("translation.correct", task),
@@ -131,6 +134,20 @@ class OutCtx:
     now: datetime
     inspections: dict[int, str]  # 巡查项 id → 名称
     who: "permissions.Who | None"  # 当前用户的权限
+    projects: dict  # 项目 id → ProjectBrief
+
+
+def _project_briefs(db: Session, ids: set[int]) -> dict:
+    from .. import project_service
+    from ..models import Project
+
+    if not ids:
+        return {}
+    prog = project_service.progress(db, list(ids))
+    return {p.id: ProjectBrief(id=p.id, name=Trilingual(zh=p.name_zh, sr=p.name_sr, en=p.name_en),
+                               source_lang=p.source_lang, transferable=p.transferable,
+                               done=prog[p.id].done + prog[p.id].discarded, total=prog[p.id].total)
+            for p in db.scalars(select(Project).where(Project.id.in_(ids)))}
 
 
 def make_ctx(db: Session, tasks: list[Task], user: User | None = None) -> OutCtx:
@@ -144,6 +161,7 @@ def make_ctx(db: Session, tasks: list[Task], user: User | None = None) -> OutCtx
     return OutCtx(
         inspections=inspections,
         who=permissions.who(db, user) if user is not None else None,
+        projects=_project_briefs(db, {t.project_id for t in tasks if t.project_id}),
         names=_names(db),
         ho_from={h.from_task_id: h for h in hos},
         ho_to={h.to_task_id: h for h in hos},
@@ -203,6 +221,7 @@ def task_out(task: Task, user: User, ctx: OutCtx) -> TaskOut:
         can_edit=perms["edit"],
         can_correct=perms["correct"],
         perms=perms,
+        project=ctx.projects.get(task.project_id),
         chain_started_at=task.chain_started_at, handover_count=task.handover_count,
         age_hours=round(age, 1), overdue=overdue,
         handover_in=_ho_info(ctx.ho_to.get(task.id), True, names),

@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from . import audit, translator
 from .config import get_settings
 from .db import SessionLocal
-from .models import GlossaryTerm, Task, utcnow
+from .models import GlossaryTerm, Project, Task, utcnow
 
 log = logging.getLogger("translation")
 
@@ -163,6 +163,50 @@ _queued: set[int] = set()
 _threads: list[threading.Thread] = []
 
 
+# ---------------- 项目名称 ----------------
+def translate_project(project_id: int) -> str:
+    """翻译项目名称缺的语言（和任务一样：原文原样保留，原文语言以模型判断为准）。"""
+    with SessionLocal() as db:
+        p = db.get(Project, project_id)
+        if p is None:
+            return "missing"
+        src = getattr(p, f"name_{p.source_lang}")
+        if all(getattr(p, f"name_{l}") for l in LANGS) or not src:
+            p.translation_status = "done"
+            db.commit()
+            return "done"
+        if not translator.is_configured():
+            return p.translation_status
+        glossary = load_glossary(db)
+        db.rollback()
+    try:
+        with client_factory() as client:
+            r = translator.translate(src, glossary, client=client)
+    except translator.TranslationError as e:
+        log.warning("translate project %s failed: %s", project_id, e)
+        return "pending"
+    with SessionLocal() as db:
+        p = db.get(Project, project_id)
+        if p is None or getattr(p, f"name_{p.source_lang}") != src:
+            return "stale"  # 翻译期间名称被改过
+        new = {"source_lang": r.source_lang}
+        for l in LANGS:
+            new[f"name_{l}"] = src if l == r.source_lang else r.get(l)
+        for k, v in new.items():
+            setattr(p, k, v)
+        p.translation_status = "done"
+        audit.log(db, user_id=None, action="translate", entity="project", entity_id=p.id, field="name", new=new)
+        db.commit()
+        return "done"
+
+
+def enqueue_project(project_id: int) -> None:
+    if not _threads:
+        translate_project(project_id)
+        return
+    _queue.put(("project", project_id))
+
+
 def enqueue(task_id: int) -> None:
     if not _threads:
         translate_task(task_id)
@@ -179,6 +223,12 @@ def _work() -> None:
         tid = _queue.get()
         if tid is None:
             return
+        if isinstance(tid, tuple):  # ("project", id)
+            try:
+                translate_project(tid[1])
+            except Exception:  # noqa: BLE001
+                log.exception("translate project %s crashed", tid[1])
+            continue
         with _lock:
             _queued.discard(tid)
         try:
@@ -211,6 +261,10 @@ def retry_pending() -> int:
                          .order_by(Task.updated_at).limit(200)).all()
     for tid in ids:
         enqueue(tid)
+    with SessionLocal() as db:
+        pids = db.scalars(select(Project.id).where(Project.translation_status == "pending").limit(50)).all()
+    for pid in pids:
+        enqueue_project(pid)
     return len(ids)
 
 
@@ -244,6 +298,11 @@ def start_scheduler() -> None:
     from . import inspection_service
 
     _scheduler.add_job(inspection_service.run_due, "interval", seconds=60, id="inspections",
+                       max_instances=1, coalesce=True, next_run_time=utcnow())
+    # 项目：可移交的子项目下班后没做完，自动移交给下一个班组
+    from . import project_service
+
+    _scheduler.add_job(project_service.auto_handover_job, "interval", seconds=60, id="project_handover",
                        max_instances=1, coalesce=True, next_run_time=utcnow())
     # 员工提前登记的换班组（例如「下周一起调到 2 班」）：到那天自动生效
     _scheduler.add_job(_sync_workers, "interval", seconds=60, id="worker_sync",

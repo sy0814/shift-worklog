@@ -48,9 +48,6 @@ def handover_default(team_id: int, db: Session = Depends(get_db), _: User = Depe
 @router.post("/handover", response_model=list[TaskOut])
 def handover(body: HandoverRequest, db: Session = Depends(get_db),
              user: User = Depends(get_current_user)):
-    sched = load_schedule(db)
-    now_local = local_now()
-    now = utcnow()
     lang = body.lang or user.lang
     note = (body.note or "").strip() or None
     if body.to_team_id is not None and db.get(Team, body.to_team_id) is None:
@@ -60,27 +57,44 @@ def handover(body: HandoverRequest, db: Session = Depends(get_db),
     for t in tasks:
         if t.status not in OPEN:
             raise HTTPException(status.HTTP_409_CONFLICT, f"task {t.id} is {t.status}")
+        if t.project_id and t.project and not t.project.transferable:
+            raise HTTPException(status.HTTP_409_CONFLICT, "project tasks cannot be handed over")
         _require(db, t, user, "handover")
-        if t.status not in OPEN:
-            raise HTTPException(status.HTTP_409_CONFLICT, f"task {t.id} is {t.status}")
 
+    created = perform_handover(db, tasks, body.to_team_id, note, lang, user.id)
+    db.commit()
+    for t in created:
+        if t.translation_status == "pending":
+            translation_service.enqueue(t.id)
+    return tasks_out(db, [_get_task(db, t.id) for t in created], user)
+
+
+def perform_handover(db: Session, tasks: list[Task], to_team_id: int | None, note: str | None, lang: str,
+                     actor_id: int, auto: bool = False) -> list[Task]:
+    """把一批未完成的任务移交出去（不 commit）。to_team_id 为空 = 按交接顺序的默认接班班组。
+    auto=True：系统自动移交（项目子项目下班没做完），留痕的操作人记为「系统」，移交记录的操作人记为 actor_id。"""
+    sched = load_schedule(db)
+    now_local = local_now()
+    now = utcnow()
+    log_user = None if auto else actor_id
     created: list[Task] = []
     for src in tasks:
         default = sched.default_handover_target(_team_info(sched, src.team_id), now_local)
-        to_team_id = body.to_team_id or (default.id if default else None)
-        if to_team_id is None:
+        target = to_team_id or (default.id if default else None)
+        if target is None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "no target team")
-        if to_team_id == src.team_id:
+        if target == src.team_id:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "cannot hand over to the same team")
-        rd, rk = sched.receiving_slot(_team_info(sched, to_team_id), now_local)
+        rd, rk = sched.receiving_slot(_team_info(sched, target), now_local)
 
         new = Task(
             client_id=str(uuid.uuid4()),
             content_zh=src.content_zh, content_sr=src.content_sr, content_en=src.content_en,
             source_lang=src.source_lang, translation_status=src.translation_status,
-            team_id=to_team_id, origin_team_id=src.origin_team_id, source_task_id=src.id,
+            team_id=target, origin_team_id=src.origin_team_id, source_task_id=src.id,
+            inspection_id=src.inspection_id, project_id=src.project_id,
             status=src.status, shift_date=rd, shift_kind=rk, start_at=src.start_at,
-            created_by=user.id, updated_by=user.id, recorded_at=now, created_at=now, updated_at=now,
+            created_by=actor_id, updated_by=actor_id, recorded_at=now, created_at=now, updated_at=now,
             chain_started_at=src.chain_started_at, handover_count=src.handover_count + 1,
             manual_fields=[m for m in (src.manual_fields or []) if not m.startswith("leftover_")]
             if note else list(src.manual_fields or []),
@@ -107,29 +121,24 @@ def handover(body: HandoverRequest, db: Session = Depends(get_db),
             ))
 
         db.add(TaskHandover(
-            from_task_id=src.id, to_task_id=new.id, from_team_id=src.team_id, to_team_id=to_team_id,
+            from_task_id=src.id, to_task_id=new.id, from_team_id=src.team_id, to_team_id=target,
             default_team_id=default.id if default else None, note=note, note_lang=lang if note else None,
-            by_user_id=user.id, at=now,
+            by_user_id=actor_id, at=now,
         ))
-        extra = {"to_task_id": new.id, "to_team_id": to_team_id,
-                 "default_team_id": default.id if default else None, "note": note}
-        audit.log_changes(db, src, {"status": "handed_over"}, user_id=user.id, entity="task",
+        extra = {"to_task_id": new.id, "to_team_id": target,
+                 "default_team_id": default.id if default else None, "note": note, "auto": auto}
+        audit.log_changes(db, src, {"status": "handed_over"}, user_id=log_user, entity="task",
                           entity_id=src.id, action="handover")
-        audit.log(db, user_id=user.id, action="handover", entity="task", entity_id=src.id,
-                  field="to_team", new=to_team_id, extra=extra)
-        src.updated_by = user.id
+        audit.log(db, user_id=log_user, action="handover", entity="task", entity_id=src.id,
+                  field="to_team", new=target, extra=extra)
+        src.updated_by = actor_id
         src.updated_at = now
-        audit.log(db, user_id=user.id, action="receive", entity="task", entity_id=new.id,
-                  new={"from_task_id": src.id, "from_team_id": src.team_id, "to_team_id": to_team_id,
+        audit.log(db, user_id=log_user, action="receive", entity="task", entity_id=new.id,
+                  new={"from_task_id": src.id, "from_team_id": src.team_id, "to_team_id": target,
                        "shift": f"{rd} {rk}", "note": note},
-                  extra={"handover_count": new.handover_count})
+                  extra={"handover_count": new.handover_count, "auto": auto})
         created.append(new)
-
-    db.commit()
-    for t in created:
-        if t.translation_status == "pending":
-            translation_service.enqueue(t.id)
-    return tasks_out(db, [_get_task(db, t.id) for t in created], user)
+    return created
 
 
 @router.post("/tasks/{task_id}/discard", response_model=TaskOut)

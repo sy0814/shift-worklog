@@ -10,6 +10,7 @@ const routes = [
       { path: '', name: 'home', component: () => import('./views/Home.vue') },
       { path: 'board', redirect: '/' }, // 交接班已合并到首页
       { path: 'tasks', name: 'tasks', component: () => import('./views/Tasks.vue') },
+      { path: 'projects', name: 'projects', component: () => import('./views/Projects.vue') },
       { path: 'attendance', name: 'attendance', component: () => import('./views/Attendance.vue') },
       { path: 'schedule', name: 'schedule', component: () => import('./views/Schedule.vue') },
       { path: 'users', name: 'users', component: () => import('./views/Users.vue'), meta: { admin: true } },

@@ -51,6 +51,10 @@ const T = {
   need_password: ['请填写密码', 'Unesite lozinku', 'Enter a password'],
   pw_short: ['密码至少 {x} 位', 'Lozinka mora imati bar {x} znakova', 'The password needs at least {x} characters'],
   bad_hours: ['上班时间写得不对：{x}（每段「开始–结束」，按先后顺序、不能重叠，最多 4 段、一天最多 16 小时）', 'Neispravno radno vreme: {x}', 'Invalid working hours: {x}'],
+  proj_fixed: ['这个项目设为「不可移交」，子项目不能移交', 'Projekat je „bez predaje”', 'This project’s sub-tasks cannot be handed over'],
+  proj_team: ['不能把子项目分给这个班组（只能分给本班组和合并的班组）', 'Ne možete dodeliti toj ekipi', 'You cannot assign to that team'],
+  pick_target: ['请选班组或具体的人', 'Izaberite ekipu ili osobu', 'Choose a team or a person'],
+  no_team: ['这个人没有班组', 'Osoba nema ekipu', 'This person has no team'],
   self: ['不能降级或停用自己', 'Ne možete sebi oduzeti prava', 'You cannot demote or disable yourself'],
 }
 const RULES = [
@@ -88,6 +92,10 @@ const RULES = [
   [/^another analysis is running/, 'analysis_running'],
   [/^cannot demote or disable yourself/, 'self'],
   [/^team in use/, 'team_used'],
+  [/^project tasks cannot be handed over/, 'proj_fixed'],
+  [/^cannot assign to that team/, 'proj_team'],
+  [/^give either team_id or worker_id$/, 'pick_target'],
+  [/^worker has no team/, 'no_team'],
   [/^bad hours '([^']*)'/, 'bad_hours'],
   [/^(.+) is not on duty in this shift/, 'not_on_duty'],
   [/^permission denied/, 'perm_denied'],
