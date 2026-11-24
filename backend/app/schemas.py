@@ -25,8 +25,11 @@ class TeamOut(ORM):
     name_zh: str
     name_sr: str
     name_en: str
-    kind: str
-    cycle_offset: int | None
+    kind: str  # cycle / manual
+    pattern: list[str] | None = None
+    cycle_start: date | None = None
+    holiday_off: bool = False
+    is_main: bool = False
     sort_order: int = 0
     active_from: date | None = None
     active_to: date | None = None
@@ -81,19 +84,16 @@ class MeUpdate(BaseModel):
 
 
 class ShiftConfigOut(ORM):
-    base_date: date
+    """班次时间（各班组的循环在「班组管理」里各自设置）。"""
     day_start: time
     middle_start: time
     night_start: time
 
 
 class ShiftConfigIn(BaseModel):
-    base_date: date
     day_start: time
     middle_start: time
     night_start: time
-    # 基准日各倒班班组在循环中的位置 0..7，键为 team_id
-    offsets: dict[int, int]
 
 
 class HolidayIO(ORM):

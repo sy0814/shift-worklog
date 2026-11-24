@@ -78,8 +78,10 @@ def test_audit_trigger_installed_by_migration(engine):
 
 
 def _seed(c):
-    c.execute(text("INSERT INTO teams (id, code, name_zh, name_sr, name_en, kind, cycle_offset, sort_order) "
-                   "VALUES (1, 'T1', '1班', 'Smena 1', 'Team 1', 'rotating', 4, 0)"))
+    c.execute(text("INSERT INTO teams (id, code, name_zh, name_sr, name_en, kind, pattern, cycle_start, holiday_off, "
+                   "is_main, sort_order) VALUES (1, 'T1', '1班', 'Smena 1', 'Team 1', 'cycle', "
+                   "'[\"day\",\"day\",\"middle\",\"middle\",\"night\",\"night\",\"off\",\"off\"]', "
+                   "'2026-10-28', false, true, 0)"))
     c.execute(text("INSERT INTO users (id, username, password_hash, full_name, role, team_id, lang, is_active, created_at) "
                    "VALUES (1, 'u', 'h', 'U', 'leader', 1, 'zh', true, CURRENT_TIMESTAMP)"))
     c.execute(text("INSERT INTO workers (id, name, team_id, is_active, created_at) VALUES (1, 'Petar', 1, true, CURRENT_TIMESTAMP)"))
@@ -146,6 +148,42 @@ def test_legacy_database_refused_when_different(engine):
     with pytest.raises(migrate.SchemaMismatch) as e:
         migrate.upgrade(engine)
     assert "holidays" in str(e.value)
+
+
+def test_0009_converts_old_teams(engine):
+    """0009：原来的「倒班 offset + 基准日」「常白班」转换成循环设置，排班结果完全不变；员工补第一条班组记录。"""
+    from datetime import date, timedelta
+
+    from app.schedule_service import team_info
+    from app.models import Team
+    from app.shifts import Schedule, day_team, rotating
+    from sqlalchemy.orm import Session
+
+    cfg = migrate.alembic_config()
+    with engine.begin() as c:
+        cfg.attributes["connection"] = c
+        command.upgrade(cfg, "0008")
+        c.execute(text("INSERT INTO shift_config (id, base_date, day_start, middle_start, night_start) "
+                       "VALUES (1, '2026-11-01', '07:00:00', '15:00:00', '23:00:00')"))
+        for i, (code, kind, off) in enumerate([("T1", "rotating", 4), ("T2", "rotating", 6), ("T3", "rotating", 0),
+                                               ("T4", "rotating", 2), ("DAY", "day", None), ("X6", "manual", None)], 1):
+            c.execute(text("INSERT INTO teams (id, code, name_zh, name_sr, name_en, kind, cycle_offset, sort_order) "
+                           "VALUES (:i, :c, :c, :c, :c, :k, :o, :i)"), {"i": i, "c": code, "k": kind, "o": off})
+        c.execute(text("INSERT INTO workers (id, name, team_id, is_active, created_at, extra) "
+                       "VALUES (1, 'Petar', 2, true, CURRENT_TIMESTAMP, '{}')"))
+    migrate.upgrade(engine)
+    with Session(engine) as db:
+        teams = {t.code: team_info(t) for t in db.query(Team)}
+        assert [t.is_main for t in teams.values()] == [True, True, True, True, False, False]
+        assert teams["X6"].cycle is None
+        new = Schedule(teams=tuple(teams.values()))
+        old = Schedule(teams=(rotating(1, 4), rotating(2, 6), rotating(3, 0), rotating(4, 2), day_team(5)))
+        for n in range(-30, 400):
+            d = date(2026, 11, 1) + timedelta(days=n)
+            for code, ot in zip(["T1", "T2", "T3", "T4", "DAY"], old.teams):
+                assert new.shift_of(teams[code], d) == old.shift_of(ot, d), (code, d)
+        row = db.execute(text("SELECT worker_id, effective_from, team_id FROM worker_schedules")).one()
+        assert row[0] == 1 and str(row[1]) == "2000-01-01" and row[2] == 2
 
 
 def test_alembic_ini_is_ascii():

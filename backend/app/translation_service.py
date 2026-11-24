@@ -245,7 +245,21 @@ def start_scheduler() -> None:
 
     _scheduler.add_job(inspection_service.run_due, "interval", seconds=60, id="inspections",
                        max_instances=1, coalesce=True, next_run_time=utcnow())
+    # 员工提前登记的换班组（例如「下周一起调到 2 班」）：到那天自动生效
+    _scheduler.add_job(_sync_workers, "interval", seconds=60, id="worker_sync",
+                       max_instances=1, coalesce=True, next_run_time=utcnow())
     _scheduler.start()
+
+
+def _sync_workers() -> None:
+    from . import worker_history
+    from .schedule_service import local_now
+
+    try:
+        with SessionLocal() as db:
+            worker_history.sync_current(db, local_now().date())
+    except Exception:  # noqa: BLE001 —— 定时任务出错不能把调度器弄停
+        log.exception("worker sync failed")
 
 
 def stop_scheduler() -> None:

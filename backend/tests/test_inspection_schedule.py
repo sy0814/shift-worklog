@@ -3,11 +3,10 @@
 from datetime import date, datetime, time
 
 from app.inspection_schedule import Rule, assignment, next_occurrence, upcoming
-from app.shifts import DAY, MIDDLE, NIGHT, Schedule, TeamInfo
+from app.shifts import DAY, MIDDLE, NIGHT, Schedule, day_team, rotating
 
-T = {"T1": TeamInfo(1, "rotating", 4), "T2": TeamInfo(2, "rotating", 6), "T3": TeamInfo(3, "rotating", 0),
-     "T4": TeamInfo(4, "rotating", 2), "DAY": TeamInfo(5, "day", None)}
-S = Schedule(base_date=date(2026, 11, 1), teams=tuple(T.values()), holidays=frozenset({date(2026, 11, 25)}))
+T = {"T1": rotating(1, 4), "T2": rotating(2, 6), "T3": rotating(3, 0), "T4": rotating(4, 2), "DAY": day_team(5)}
+S = Schedule(teams=tuple(T.values()), holidays=frozenset({date(2026, 11, 25)}))
 AT = lambda *a: datetime(*a)
 
 

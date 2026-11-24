@@ -29,7 +29,7 @@ def pair(teams, code_of):
     """今天常白班的搭班班组（今天是周末/节假日则为 None）。"""
     with SessionLocal() as db:
         sched = load_schedule(db)
-        day = next(t for t in sched.teams if t.kind == "day")
+        day = sched.team(teams["DAY"])
         p = sched.paired_teams(day, local_now().date())
     return code_of[p[0].id] if p else None
 

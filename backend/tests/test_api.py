@@ -73,11 +73,10 @@ def test_shifts_now(client, leader_h):
 
 
 def test_config_validation(client, admin_h):
-    teams = {t["code"]: t["id"] for t in client.get("/api/teams", headers=admin_h).json()}
-    bad = {"base_date": "2026-11-01", "day_start": "07:00", "middle_start": "15:00",
-           "night_start": "23:00",
-           "offsets": {teams["T1"]: 4, teams["T2"]: 5, teams["T3"]: 0, teams["T4"]: 2}}
+    bad = {"day_start": "15:00", "middle_start": "07:00", "night_start": "23:00"}  # 班次时间要从早到晚
     assert client.put("/api/shifts/config", headers=admin_h, json=bad).status_code == 400
+    ok = {"day_start": "07:00", "middle_start": "15:00", "night_start": "23:00"}
+    assert client.put("/api/shifts/config", headers=admin_h, json=ok).status_code == 200
 
 
 def test_holiday_crud(client, admin_h, leader_h):

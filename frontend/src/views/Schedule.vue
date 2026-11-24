@@ -5,8 +5,10 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import dayjs from 'dayjs'
 import api from '../api'
 import { localName } from '../i18n'
+import { isNarrow } from '../format'
 import { useAuth } from '../stores/auth'
 import ShiftTag from '../components/ShiftTag.vue'
+import CycleEditor from '../components/CycleEditor.vue'
 
 const { t, tm, locale } = useI18n()
 const auth = useAuth()
@@ -18,13 +20,17 @@ const WEEK = { zh: '日一二三四五六', sr: ['ned', 'pon', 'uto', 'sre', 'č
 const weekday = (d) => WEEK[locale.value][dayjs(d).day()]
 
 const coverage = ref([])
+const narrow = isNarrow() // 手机上日历列宽固定，免得加载后再算一次列宽（表头左右跳）
 async function loadCalendar() {
   const m = dayjs(month.value + '-01')
   const params = { start: m.format('YYYY-MM-DD'), end: m.endOf('month').format('YYYY-MM-DD') }
   const [c, cov] = await Promise.all([api.get('/shifts/calendar', { params }), api.get('/shifts/coverage', { params })])
   days.value = c.data
   coverage.value = cov.data
+  // 表格第一次画出来时列宽还没算好（手机上会先窄后宽地跳一下）：等两帧算好列宽再显示
+  if (!calReady.value) requestAnimationFrame(() => requestAnimationFrame(() => { calReady.value = true }))
 }
+const calReady = ref(false)
 // 排班提醒：某个班次没有班组上 / 两个主班组同时上
 const covText = (p) => {
   const d = `${p.day.slice(5)} ${weekday(p.day)}`
@@ -78,14 +84,11 @@ async function restoreTeamShift(teamId, start, end) {
   loadCalendar()
 }
 
-// ---- 管理员：排班基准 ----
-const rotating = computed(() => auth.teams.filter((x) => x.kind === 'rotating'))
-const cfg = reactive({ base_date: '', day_start: '', middle_start: '', night_start: '', offsets: {} })
+// ---- 管理员：班次时间（各班组的循环在「班组管理」里设置）----
+const cfg = reactive({ day_start: '', middle_start: '', night_start: '' })
 async function loadConfig() {
   const c = (await api.get('/shifts/config')).data
-  Object.assign(cfg, c, {
-    day_start: c.day_start.slice(0, 5), middle_start: c.middle_start.slice(0, 5), night_start: c.night_start.slice(0, 5),
-    offsets: Object.fromEntries(rotating.value.map((x) => [x.id, x.cycle_offset])) })
+  Object.assign(cfg, { day_start: c.day_start.slice(0, 5), middle_start: c.middle_start.slice(0, 5), night_start: c.night_start.slice(0, 5) })
 }
 async function saveConfig() {
   await api.put('/shifts/config', cfg)
@@ -98,24 +101,24 @@ async function saveConfig() {
 const teamDlg = ref(false)
 const teamEditing = ref(null)
 const tf = reactive({})
-// 循环位置 → 最近一次（今天或之前）的「白班第 1 天」：基准日往前推 offset 天，再按 8 天一循环挪到今天附近
-function day1Of(team) {
-  if (team.cycle_offset == null || !cfg.base_date) return null
-  const first = dayjs(cfg.base_date).subtract(team.cycle_offset, 'day')
-  const n = Math.floor(dayjs(todayStr).diff(first, 'day') / 8)
-  return first.add(n * 8, 'day').format('YYYY-MM-DD')
-}
+// 循环的简短写法：「白白中中夜夜休休（8 天）」
+const cycleText = (team) => (team.kind === 'cycle' && team.pattern
+  ? `${team.pattern.map((k) => t('cyc.short.' + k)).join(' ')}（${team.pattern.length}）` : t('schedule.kindShort.manual'))
 function openTeam(team) {
   teamEditing.value = team || null
   Object.assign(tf, team
-    ? { name_zh: team.name_zh, name_sr: team.name_sr, name_en: team.name_en, kind: team.kind, day1: day1Of(team) || todayStr,
+    ? { name_zh: team.name_zh, name_sr: team.name_sr, name_en: team.name_en, kind: team.kind, is_main: team.is_main,
+        cyc: { pattern: [...(team.pattern || ['day', 'day', 'middle', 'middle', 'night', 'night', 'off', 'off'])],
+          cycle_start: team.cycle_start || todayStr, holiday_off: team.holiday_off },
         temporary: !!(team.active_from || team.active_to), active_from: team.active_from, active_to: team.active_to }
-    : { name_zh: '', name_sr: '', name_en: '', kind: 'rotating', day1: todayStr, temporary: false, active_from: todayStr, active_to: null })
+    : { name_zh: '', name_sr: '', name_en: '', kind: 'cycle', is_main: false,
+        cyc: { pattern: ['day', 'day', 'middle', 'middle', 'night', 'night', 'off', 'off'], cycle_start: todayStr, holiday_off: false },
+        temporary: false, active_from: todayStr, active_to: null })
   teamDlg.value = true
 }
 async function saveTeam() {
-  const body = { name_zh: tf.name_zh, name_sr: tf.name_sr, name_en: tf.name_en, kind: tf.kind,
-    day1: tf.kind === 'rotating' ? tf.day1 : null,
+  const body = { name_zh: tf.name_zh, name_sr: tf.name_sr, name_en: tf.name_en, kind: tf.kind, is_main: tf.is_main,
+    ...(tf.kind === 'cycle' ? { pattern: tf.cyc.pattern, cycle_start: tf.cyc.cycle_start, holiday_off: tf.cyc.holiday_off } : {}),
     active_from: tf.temporary ? tf.active_from : null, active_to: tf.temporary ? tf.active_to : null }
   if (teamEditing.value) await api.put(`/teams/${teamEditing.value.id}`, body)
   else await api.post('/teams', body)
@@ -173,11 +176,11 @@ onMounted(async () => {
           <div v-for="(p, i) in coverage.slice(0, 8)" :key="i">{{ covText(p) }}</div>
           <div v-if="coverage.length > 8">…（{{ coverage.length }}）</div>
         </el-alert>
-        <el-table :data="days" size="small" border :row-class-name="({ row }) => [row.day === todayStr ? 'is-today' : '', covAt.has(row.day) ? 'is-gap' : ''].join(' ')">
-          <el-table-column :label="t('schedule.date')" width="110" fixed>
+        <el-table :data="days" size="small" border :class="['cal', { hidden: !calReady }]" :row-class-name="({ row }) => [row.day === todayStr ? 'is-today' : '', covAt.has(row.day) ? 'is-gap' : ''].join(' ')">
+          <el-table-column :label="t('schedule.date')" :width="narrow ? 86 : 110" fixed>
             <template #default="{ row }">{{ row.day.slice(5) }} <small :class="{ weekend: !row.workday }">{{ weekday(row.day) }}</small></template>
           </el-table-column>
-          <el-table-column v-for="team in auth.teams" :key="team.id" :label="localName(team)" min-width="90" align="center">
+          <el-table-column v-for="team in auth.teams" :key="team.id" :label="localName(team)" :width="narrow ? 84 : undefined" min-width="90" align="center">
             <template #default="{ row }">
               <span :class="['cell', { admin: canShift(team.id), changed: row.changed?.[team.id] }]" @click="openTeamShift(team.id, row.day)">
                 <ShiftTag v-if="teamActive(team, row.day)" :kind="row.shifts[team.id]" />
@@ -231,15 +234,23 @@ onMounted(async () => {
         </el-dialog>
       </el-tab-pane>
 
-      <el-tab-pane v-if="auth.isAdmin" :label="t('schedule.teams')">
+      <el-tab-pane v-if="auth.isAdmin" lazy :label="t('schedule.teams')">
         <div class="toolbar"><el-button type="primary" @click="openTeam(null)">{{ t('schedule.addTeam') }}</el-button></div>
-        <el-table :data="auth.teams" size="small" border style="max-width: 900px">
-          <el-table-column :label="t('schedule.teamName')" min-width="200">
+        <!-- 列宽都固定：切到这个标签时表格不用再算一次列宽（否则会左右跳一下） -->
+        <el-table :data="auth.teams" size="small" border class="teams-table">
+          <el-table-column :label="t('schedule.teamName')" width="250">
             <template #default="{ row }"><b>{{ localName(row) }}</b> <small class="muted">{{ [row.name_zh, row.name_sr, row.name_en].filter((x) => x !== localName(row)).join(' / ') }}</small></template>
           </el-table-column>
-          <el-table-column :label="t('schedule.kind')" width="130"><template #default="{ row }">{{ t('schedule.kindShort.' + row.kind) }}</template></el-table-column>
-          <el-table-column :label="t('schedule.day1')" width="170"><template #default="{ row }">{{ day1Of(row) || '—' }}</template></el-table-column>
-          <el-table-column :label="t('schedule.period')" min-width="190">
+          <el-table-column :label="t('schedule.isMain')" width="110">
+            <template #default="{ row }"><el-tag v-if="row.is_main" size="small">{{ t('schedule.isMain') }}</el-tag><span v-else class="muted">{{ t('schedule.merged') }}</span></template>
+          </el-table-column>
+          <el-table-column :label="t('schedule.cycleCol')" width="300">
+            <template #default="{ row }">
+              <span class="cyctext">{{ cycleText(row) }}</span>
+              <div v-if="row.kind === 'cycle'" class="muted small">{{ t('cyc.start') }} {{ row.cycle_start }}<template v-if="row.holiday_off"> · {{ t('schedule.holidayOffShort') }}</template></div>
+            </template>
+          </el-table-column>
+          <el-table-column :label="t('schedule.period')" width="230">
             <template #default="{ row }"><el-tag v-if="row.active_from || row.active_to" type="warning" size="small">{{ t('schedule.temporary') }}</el-tag> {{ periodText(row) }}</template>
           </el-table-column>
           <el-table-column width="130">
@@ -251,7 +262,7 @@ onMounted(async () => {
         </el-table>
         <p class="muted">{{ t('schedule.teamUsedHint') }}</p>
 
-        <el-dialog v-model="teamDlg" :title="teamEditing ? t('schedule.editTeam') : t('schedule.addTeam')" width="min(540px, 94vw)" append-to-body>
+        <el-dialog v-model="teamDlg" :title="teamEditing ? t('schedule.editTeam') : t('schedule.addTeam')" width="min(720px, 96vw)" :fullscreen="isNarrow()" append-to-body>
           <el-form label-width="auto">
             <el-form-item :label="t('schedule.teamName')">
               <div class="names">
@@ -261,13 +272,19 @@ onMounted(async () => {
                 <small class="muted">{{ t('schedule.namesHint') }}</small>
               </div>
             </el-form-item>
+            <el-form-item :label="t('schedule.isMain')">
+              <div class="names">
+                <el-switch v-model="tf.is_main" />
+                <small class="muted">{{ t('schedule.isMainHint') }}</small>
+              </div>
+            </el-form-item>
             <el-form-item :label="t('schedule.kind')">
               <el-radio-group v-model="tf.kind" class="kinds">
-                <el-radio v-for="k in ['rotating', 'day', 'manual']" :key="k" :value="k">{{ t('schedule.kinds.' + k) }}</el-radio>
+                <el-radio v-for="k in ['cycle', 'manual']" :key="k" :value="k">{{ t('schedule.kinds.' + k) }}</el-radio>
               </el-radio-group>
             </el-form-item>
-            <el-form-item v-if="tf.kind === 'rotating'" :label="t('schedule.day1')">
-              <el-date-picker v-model="tf.day1" value-format="YYYY-MM-DD" :clearable="false" />
+            <el-form-item v-if="tf.kind === 'cycle'" :label="t('schedule.cycleCol')">
+              <CycleEditor v-model="tf.cyc" />
             </el-form-item>
             <p v-if="tf.kind === 'manual'" class="muted">{{ t('schedule.manualHint') }}</p>
             <el-form-item :label="t('schedule.temporary')"><el-switch v-model="tf.temporary" /></el-form-item>
@@ -289,16 +306,8 @@ onMounted(async () => {
         </el-dialog>
       </el-tab-pane>
 
-      <el-tab-pane v-if="auth.isAdmin" :label="t('schedule.config')">
+      <el-tab-pane v-if="auth.isAdmin" lazy :label="t('schedule.config')">
         <el-form label-width="auto" style="max-width: 520px">
-          <el-form-item :label="t('schedule.baseDate')">
-            <el-date-picker v-model="cfg.base_date" value-format="YYYY-MM-DD" :clearable="false" />
-          </el-form-item>
-          <el-form-item v-for="team in rotating" :key="team.id" :label="`${localName(team)} · ${t('schedule.offset')}`">
-            <el-select v-model="cfg.offsets[team.id]" style="width: 120px">
-              <el-option v-for="(p, i) in tm('schedule.pos')" :key="i" :label="p" :value="i" />
-            </el-select>
-          </el-form-item>
           <el-form-item :label="t('schedule.dayStart')"><el-time-select v-model="cfg.day_start" start="00:00" step="00:30" end="23:30" format="HH:mm" /></el-form-item>
           <el-form-item :label="t('schedule.middleStart')"><el-time-select v-model="cfg.middle_start" start="00:00" step="00:30" end="23:30" format="HH:mm" /></el-form-item>
           <el-form-item :label="t('schedule.nightStart')"><el-time-select v-model="cfg.night_start" start="00:00" step="00:30" end="23:30" format="HH:mm" /></el-form-item>
@@ -306,7 +315,7 @@ onMounted(async () => {
         </el-form>
       </el-tab-pane>
 
-      <el-tab-pane v-if="auth.isAdmin" :label="t('schedule.holidays')">
+      <el-tab-pane v-if="auth.isAdmin" lazy :label="t('schedule.holidays')">
         <div class="toolbar">
           <el-input-number v-model="year" :min="2020" :max="2100" controls-position="right" />
           <el-date-picker v-model="newHoliday.day" value-format="YYYY-MM-DD" :placeholder="t('schedule.date')" />
@@ -348,4 +357,10 @@ onMounted(async () => {
 .names { display: flex; flex-direction: column; gap: 6px; width: 100%; }
 .row2 { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .kinds { display: flex; flex-direction: column; align-items: flex-start; }
+/* 日历表头不换行：手机上列宽算出来之前表头会先换行变高，再缩回去（表格往上跳） */
+.cal :deep(th .cell) { white-space: nowrap; }
+.cal.hidden { visibility: hidden; }
+.teams-table { width: max-content; max-width: 100%; }
+.cyctext { font-family: ui-monospace, Menlo, Consolas, monospace; letter-spacing: 1px; }
+.small { font-size: 12px; }
 </style>

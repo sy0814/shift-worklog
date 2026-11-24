@@ -77,7 +77,7 @@ def duty(which: str = Query(default="current", pattern="^(current|next)$"), db: 
     start, end = sched.shift_window(d, k)
     slot_teams = sched.teams_on(d, k)
     slot_ids = {t.id for t in slot_teams}
-    main = sched.rotating_team_on(d, k)
+    main = sched.main_team_on(d, k)
 
     workers = list(db.scalars(select(Worker).where(Worker.is_active.is_(True)).order_by(Worker.name)))
     eff = att.effective(db, workers, d, d)
@@ -114,7 +114,7 @@ def duty(which: str = Query(default="current", pattern="^(current|next)$"), db: 
             by_worker.setdefault(w.id, []).append(t)
 
     teams, counts = [], {"on_duty": 0, "busy": 0, "idle": 0, "absent": 0}
-    order = [t.id for t in sorted(slot_teams, key=lambda t: t.kind != "rotating")]
+    order = [t.id for t in sorted(slot_teams, key=lambda t: not t.is_main)]
     order += [tid for tid in rows if tid not in order]
     for tid in order:
         out = []

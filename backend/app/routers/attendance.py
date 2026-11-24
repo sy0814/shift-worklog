@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from .. import attendance_service as att
+from .. import attendance_service as att, worker_history
 from .. import audit
 from ..db import get_db
 from ..models import Attendance, Task, Team, User, Worker, utcnow
@@ -97,7 +97,8 @@ def grid(start: date, end: date, team_id: int | None = None, db: Session = Depen
          _: User = Depends(get_current_user)):
     if end < start or (end - start).days >= MAX_DAYS:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"range must be 1..{MAX_DAYS} days")
-    workers = _workers(db, team_id)
+    # 指定班组时：这段时间里属于过这个班组的人（换过班组的按变更记录，以前的出勤不变）
+    workers = worker_history.members(db, team_id, start, end) if team_id else _workers(db, None)
     guests: list[Worker] = []
     if team_id:
         # 这段时间里来这个班组顶班的其他班组员工，也显示出来
@@ -204,10 +205,12 @@ def swap(body: AttendanceSwap, db: Session = Depends(get_db), user: User = Depen
     if (ea.status, ea.shift_kind, ea.team_id) == (eb.status, eb.shift_kind, eb.team_id):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "both have the same shift that day")
     note = body.note.strip() or f"swap {a.name} ⇄ {b.name}"
+    tl = worker_history.Timelines(db, [a, b])
     for w, other in ((a, eb), (b, ea)):
         if other.status is None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "worker without team cannot be swapped")
-        team = other.team_id if other.status == "present" and other.team_id != w.team_id else None
+        mine = tl.on(w.id, body.day).team_id  # 这个人当天所属的班组
+        team = other.team_id if other.status == "present" and other.team_id != mine else None
         _apply(db, w, body.day, other.status, other.shift_kind, team, note, "manual", user.id)
     audit.log(db, user_id=user.id, action="swap", entity="attendance", entity_id=f"{a.id}:{b.id}:{body.day}",
               new={"day": body.day, "a": a.name, "b": b.name, "note": note})

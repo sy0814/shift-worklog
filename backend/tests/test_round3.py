@@ -6,7 +6,7 @@ import pytest
 
 from app.db import SessionLocal
 from app.schedule_service import load_schedule, local_now
-from app.shifts import Schedule, TeamInfo
+from app.shifts import Schedule, rotating
 
 from .conftest import login
 
@@ -32,10 +32,10 @@ def test_branding(client, admin_h, leader_h):
 
 
 def test_schedule_override_pure():
-    s = Schedule(base_date=date(2026, 11, 1), teams=(TeamInfo(1, "rotating", 4), TeamInfo(3, "rotating", 0)),
+    s = Schedule(teams=(rotating(1, 4), rotating(3, 0)),
                  overrides={(1, date(2026, 11, 21)): "off"})
-    assert s.planned_shift_of(TeamInfo(1, "rotating", 4), date(2026, 11, 21)) == "day"
-    assert s.shift_of(TeamInfo(1, "rotating", 4), date(2026, 11, 21)) == "off"
+    assert s.planned_shift_of(rotating(1, 4), date(2026, 11, 21)) == "day"
+    assert s.shift_of(rotating(1, 4), date(2026, 11, 21)) == "off"
     assert s.rotating_team_on(date(2026, 11, 21), "day") is None
 
 

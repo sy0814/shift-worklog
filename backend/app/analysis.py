@@ -68,6 +68,7 @@ def build_stats(db: Session, start: date, end: date, team_id: int | None, lang: 
     sched = load_schedule(db)
     days = [start + timedelta(days=i) for i in range((end - start).days + 1)]
     ot_hours = overtime_service.hours_by_worker(db, start, end, list(workers.values()))
+    planned = att.scheduled_counts(db, list(workers.values()), start, end, sched)
 
     def overdue(t: Task) -> bool:
         if t.status not in OPEN:
@@ -84,7 +85,7 @@ def build_stats(db: Session, start: date, end: date, team_id: int | None, lang: 
         people.append({
             "name": w.name,
             "team": tname(w.team_id),
-            "scheduled_shifts": sum(1 for d in days if att.default_for(sched, w, d).status == "present"),
+            "scheduled_shifts": planned[w.id],
             "present_shifts": present,
             "leave": sum(1 for a in row.values() if a.status == "leave"),
             "sick": sum(1 for a in row.values() if a.status == "sick"),
@@ -115,7 +116,7 @@ def build_stats(db: Session, start: date, end: date, team_id: int | None, lang: 
         counts = [p["tasks"] for p in members]
         team_rows.append({
             "team": tname(tid),
-            "kind": teams[tid].kind if tid in teams else "",
+            "kind": ("main" if teams[tid].is_main else "merged") if tid in teams else "",  # 主班组 / 合并显示的班组
             "tasks": len(tt),
             "by_status": {s: sum(1 for t in tt if t.status == s) for s in ("not_started", "in_progress", "done", "handed_over", "discarded")},
             "handovers_out": sum(1 for h in hos if h.from_team_id == tid),

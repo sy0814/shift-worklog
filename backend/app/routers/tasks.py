@@ -89,8 +89,13 @@ def editable_team_ids(db: Session, user: User) -> set[int] | None:
     team = next((t for t in sched.teams if t.id == user.team_id), None)
     if team is None:
         return {user.team_id}
-    today = local_now().date()  # 按日历日判断搭班
-    return {user.team_id} | {t.id for t in sched.paired_teams(team, today)}
+    # 和本班组合并显示的班组：今天它上的那个班；如果昨天上的是夜班（凌晨还在班），也算昨天夜班合并的
+    today = local_now().date()
+    out = {user.team_id} | {t.id for t in sched.paired_teams(team, today)}
+    yesterday = today - timedelta(days=1)
+    if sched.shift_of(team, yesterday) == "night":
+        out |= {t.id for t in sched.paired_teams(team, yesterday)}
+    return out
 
 
 def _can_edit(task: Task, editable: set[int] | None) -> bool:

@@ -22,7 +22,7 @@ from ..schemas import (
 from pydantic import BaseModel, Field
 
 from ..security import get_current_user, require_admin
-from ..shifts import CYCLE, coverage_problems
+from ..shifts import KINDS, MAX_CYCLE, OFF, coverage_problems
 
 router = APIRouter(prefix="/api", tags=["schedule"])
 
@@ -66,25 +66,11 @@ def get_config(db: Session = Depends(get_db), _: User = Depends(get_current_user
 @router.put("/shifts/config", response_model=ShiftConfigOut)
 def put_config(body: ShiftConfigIn, db: Session = Depends(get_db),
                admin: User = Depends(require_admin)):
+    """班次时间。各班组的循环在「班组管理」里各自设置。"""
     if not (body.day_start < body.middle_start < body.night_start):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "shift start times must be increasing")
-    rotating = {t.id: t for t in db.scalars(select(Team).where(Team.kind == "rotating"))}
-    if set(body.offsets) != set(rotating):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "offsets must cover every rotating team")
-    if any(not 0 <= v < len(CYCLE) for v in body.offsets.values()):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "offset must be 0..7")
-    # 每天的白/中/夜/休都要有倒班班组：同一循环里两个位置属于同一班次（0,1 / 2,3 ...），
-    # 四个「班次对」都要有人；倒班班组多于 4 个时允许两个班组同一个班（例如加的临时倒班班组）
-    pairs = {v // 2 for v in body.offsets.values()}
-    if len(rotating) >= 4 and pairs != {0, 1, 2, 3} or len(rotating) < 4 and len(pairs) != len(rotating):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST,
-                            "teams must be in different shift pairs (2 days apart)")
     cfg = db.get(ShiftConfig, 1)
-    audit.log_changes(db, cfg, body.model_dump(exclude={"offsets"}),
-                      user_id=admin.id, entity="shift_config", entity_id=1)
-    for tid, off in body.offsets.items():
-        audit.log_changes(db, rotating[tid], {"cycle_offset": off},
-                          user_id=admin.id, entity="team", entity_id=tid)
+    audit.log_changes(db, cfg, body.model_dump(), user_id=admin.id, entity="shift_config", entity_id=1)
     db.commit()
     return cfg
 
@@ -255,11 +241,24 @@ class TeamIn(BaseModel):
     name_zh: str = Field(default="", max_length=50)
     name_sr: str = Field(default="", max_length=50)
     name_en: str = Field(default="", max_length=50)
-    kind: str = Field(pattern="^(rotating|day|manual)$")
-    cycle_offset: int | None = Field(default=None, ge=0, le=7)
-    day1: date | None = None  # 倒班：哪天是它「白班第 1 天」（给了就按它算循环位置）
+    kind: str = Field(pattern="^(cycle|manual)$")  # 按循环排班 / 不固定（只按调班）
+    pattern: list[str] | None = None  # 循环里每天的班：day / middle / night / off
+    cycle_start: date | None = None  # 循环第 1 天
+    holiday_off: bool = False
+    is_main: bool = False
     active_from: date | None = None
     active_to: date | None = None
+
+
+def check_cycle(pattern: list[str] | None, start: date | None) -> list[str]:
+    """校验循环设置（班组和个人排班共用）。"""
+    if not pattern or start is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "cycle pattern and start date required")
+    if not 1 <= len(pattern) <= MAX_CYCLE or any(k not in KINDS for k in pattern):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"pattern must be 1..{MAX_CYCLE} days of day/middle/night/off")
+    if all(k == OFF for k in pattern):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "pattern has no working day")
+    return list(pattern)
 
 
 def _team_fields(db: Session, body: TeamIn) -> dict:
@@ -270,16 +269,12 @@ def _team_fields(db: Session, body: TeamIn) -> dict:
     names = {k: v or first for k, v in names.items()}  # 没填的语言先用填了的那个
     if body.active_from and body.active_to and body.active_to < body.active_from:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "active_to before active_from")
-    offset = None
-    if body.kind == "rotating":
-        if body.day1 is not None:
-            base = db.get(ShiftConfig, 1).base_date
-            offset = (base - body.day1).days % len(CYCLE)
-        elif body.cycle_offset is not None:
-            offset = body.cycle_offset
-        else:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "rotating team needs day1 or cycle_offset")
-    return {**names, "kind": body.kind, "cycle_offset": offset,
+    if body.kind == "cycle":
+        cyc = dict(pattern=check_cycle(body.pattern, body.cycle_start), cycle_start=body.cycle_start,
+                   holiday_off=body.holiday_off)
+    else:
+        cyc = dict(pattern=None, cycle_start=None, holiday_off=False)
+    return {**names, "kind": body.kind, **cyc, "is_main": body.is_main,
             "active_from": body.active_from, "active_to": body.active_to}
 
 
@@ -305,8 +300,6 @@ def update_team(team_id: int, body: TeamIn, db: Session = Depends(get_db), admin
     t = db.get(Team, team_id)
     if t is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
-    if body.kind == "rotating" and body.day1 is None and body.cycle_offset is None:
-        body.cycle_offset = t.cycle_offset
     audit.log_changes(db, t, _team_fields(db, body), user_id=admin.id, entity="team", entity_id=t.id)
     db.commit()
     return t
@@ -336,7 +329,7 @@ def delete_team(team_id: int, db: Session = Depends(get_db), admin: User = Depen
         db.delete(o)
     db.flush()  # 先删调班记录，再删班组（两者之间没有 relationship，不 flush 的话删除顺序不确定）
     audit.log(db, user_id=admin.id, action="delete", entity="team", entity_id=team_id,
-              old={"name_zh": t.name_zh, "kind": t.kind})
+              old={"name_zh": t.name_zh, "kind": t.kind, "pattern": t.pattern})
     db.delete(t)
     db.commit()
 
@@ -345,7 +338,7 @@ def delete_team(team_id: int, db: Session = Depends(get_db), admin: User = Depen
 class CoverageProblem(BaseModel):
     day: date
     shift_kind: str
-    problem: str  # none / multiple
+    problem: str  # none / nomain / multiple
     team_ids: list[int]
 
 

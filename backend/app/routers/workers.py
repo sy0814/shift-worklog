@@ -1,6 +1,7 @@
 """员工名册：所有人可查看，管理员维护（网页上逐格修改、加行加列、Excel 导入导出）。"""
 
 import io
+from datetime import date
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
@@ -9,9 +10,10 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .. import audit
+from .. import audit, worker_history
+from ..schedule_service import local_now
 from ..db import get_db
-from ..models import Team, User, Worker, WorkerField
+from ..models import Team, User, Worker, WorkerField, WorkerSchedule
 from ..schemas import WorkerBulkCreate, WorkerCreate, WorkerOut, WorkerUpdate
 from ..config import get_settings
 from ..images import InvalidImage, process_avatar
@@ -146,6 +148,7 @@ def create_worker(body: WorkerCreate, db: Session = Depends(get_db), admin: User
     w = Worker(name=body.name.strip(), employee_no=no, team_id=body.team_id, extra=_clean_extra(db, body.extra))
     db.add(w)
     db.flush()
+    worker_history.ensure_baseline(db, w, w.team_id)
     audit.log(db, user_id=admin.id, action="create", entity="worker", entity_id=w.id,
               new={"name": w.name, "employee_no": no, "team_id": w.team_id, **({"extra": w.extra} if w.extra else {})})
     db.commit()
@@ -161,6 +164,7 @@ def bulk_create(body: WorkerBulkCreate, db: Session = Depends(get_db), admin: Us
         w = Worker(name=name[:100], team_id=body.team_id)
         db.add(w)
         db.flush()
+        worker_history.ensure_baseline(db, w, w.team_id)
         audit.log(db, user_id=admin.id, action="create", entity="worker", entity_id=w.id,
                   new={"name": w.name, "team_id": w.team_id})
         out.append(w)
@@ -181,7 +185,10 @@ def update_worker(worker_id: int, body: WorkerUpdate, db: Session = Depends(get_
         changes["name"] = changes["name"].strip()
     extra = changes.pop("extra", None)
     _check(db, changes.get("team_id", w.team_id), changes.get("employee_no"), exclude_id=w.id)
+    new_team = changes.pop("team_id", w.team_id)
     audit.log_changes(db, w, changes, user_id=admin.id, entity="worker", entity_id=w.id)
+    if new_team != w.team_id:  # 换班组：从今天起生效，以前的出勤还按原班组算
+        worker_history.change_team(db, w, w.team_id, new_team, admin.id, local_now().date())
     if extra is not None:
         _set_extra(db, w, _clean_extra(db, extra, w.extra), admin.id)
     db.commit()
@@ -412,6 +419,7 @@ async def import_workers(file: UploadFile = File(...), dry_run: bool = False, db
                        extra={k: v for k, v in ex.items() if v})
             db.add(w)
             db.flush()
+            worker_history.ensure_baseline(db, w, w.team_id)
             audit.log(db, user_id=admin.id, action="import", entity="worker", entity_id=w.id,
                       new={"name": name, "employee_no": no, "team_id": team_id})
             created += 1
@@ -419,8 +427,6 @@ async def import_workers(file: UploadFile = File(...), dry_run: bool = False, db
         changes = {"name": name}
         if no:
             changes["employee_no"] = no
-        if "team" in cols:
-            changes["team_id"] = team_id
         if active is not None:
             changes["is_active"] = active
         new_extra = dict(target.extra or {})
@@ -431,6 +437,9 @@ async def import_workers(file: UploadFile = File(...), dry_run: bool = False, db
                 new_extra.pop(k, None)
         a = audit.log_changes(db, target, changes, user_id=admin.id, entity="worker", entity_id=target.id,
                               action="import")
+        if "team" in cols and team_id != target.team_id:  # 换班组：从今天起生效
+            worker_history.change_team(db, target, target.team_id, team_id, admin.id, local_now().date())
+            a = True
         b = _set_extra(db, target, new_extra, admin.id, action="import")
         if a or b:
             updated += 1
@@ -438,3 +447,77 @@ async def import_workers(file: UploadFile = File(...), dry_run: bool = False, db
             unchanged += 1
     db.commit()
     return ImportResult(created=created, updated=updated, unchanged=unchanged, columns_added=added, errors=[])
+
+
+# ---------------- 班组 / 个人排班变更记录（管理员）----------------
+class ScheduleEntryOut(BaseModel):
+    effective_from: date
+    team_id: int | None
+    pattern: list[str] | None  # 空 = 跟班组排班
+    cycle_start: date | None
+    holiday_off: bool
+    note: str
+
+
+class ScheduleEntryIn(BaseModel):
+    effective_from: date
+    team_id: int | None = None
+    personal: bool = False  # True = 按个人循环；False = 跟班组排班
+    pattern: list[str] | None = None
+    cycle_start: date | None = None
+    holiday_off: bool = False
+    note: str = Field(default="", max_length=200)
+
+
+def _entries(db: Session, worker_id: int) -> list[ScheduleEntryOut]:
+    rows = db.scalars(select(WorkerSchedule).where(WorkerSchedule.worker_id == worker_id)
+                      .order_by(WorkerSchedule.effective_from)).all()
+    return [ScheduleEntryOut(effective_from=r.effective_from, team_id=r.team_id, pattern=r.pattern,
+                             cycle_start=r.cycle_start, holiday_off=r.holiday_off, note=r.note) for r in rows]
+
+
+@router.get("/{worker_id}/schedule", response_model=list[ScheduleEntryOut])
+def get_schedule(worker_id: int, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+    w = db.get(Worker, worker_id)
+    if w is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND)
+    worker_history.ensure_baseline(db, w, w.team_id)
+    db.commit()
+    return _entries(db, worker_id)
+
+
+@router.put("/{worker_id}/schedule", response_model=list[ScheduleEntryOut])
+def put_schedule(worker_id: int, body: ScheduleEntryIn, db: Session = Depends(get_db),
+                 admin: User = Depends(require_admin)):
+    """从某天起：属于哪个班组、跟班组排班还是按个人循环（例如每人休息日不同的一周排班）。
+    同一天已有记录就覆盖。以前的出勤不受影响。"""
+    from .schedule import check_cycle
+    from ..shifts import Cycle
+
+    w = db.get(Worker, worker_id)
+    if w is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND)
+    if body.team_id is not None and db.get(Team, body.team_id) is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "team not found")
+    cycle = None
+    if body.personal:
+        cycle = Cycle(tuple(check_cycle(body.pattern, body.cycle_start)), body.cycle_start, body.holiday_off)
+    elif body.team_id is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "choose a team or a personal cycle")
+    worker_history.record(db, w, body.effective_from, body.team_id, cycle, admin.id, body.note,
+                          today=local_now().date())
+    db.commit()
+    return _entries(db, worker_id)
+
+
+@router.delete("/{worker_id}/schedule/{effective_from}", response_model=list[ScheduleEntryOut])
+def delete_schedule(worker_id: int, effective_from: date, db: Session = Depends(get_db),
+                    admin: User = Depends(require_admin)):
+    """删掉某一次变更（最早那条不能删）。"""
+    w = db.get(Worker, worker_id)
+    if w is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND)
+    if not worker_history.remove(db, w, effective_from, admin.id, local_now().date()):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "cannot delete this entry")
+    db.commit()
+    return _entries(db, worker_id)

@@ -1,37 +1,78 @@
 """排班推算（纯函数，不依赖数据库）。
 
-倒班：8 天循环「白 白 中 中 夜 夜 休 休」，位置 0..7。
-某日某班位置 = (起始位置 + 距基准天数) mod 8。
-夜班归属开始的那一天：11-21 23:00 ~ 11-22 07:00 记为 11-21 的夜班。
-常白班：周一到周五白班时段上班，周末和节假日休息。
-不固定班组（manual，例如临时班组）：没有自己的循环，默认休息，只按「班组整体调班」安排上班。
+每个长期班组有一个**循环**：几天一循环、循环里每天上什么（白 / 中 / 夜 / 休）、循环第 1 天是哪天，
+以及「节假日休息」开关（打开后节假日休息，调休上班的日子按它的主要班次上班）。
+  例：倒班 1～4 班 = 8 天「白 白 中 中 夜 夜 休 休」；常白班 = 7 天「白×5 休 休」从周一开始 + 节假日休息。
+不固定班组（cycle 为空，例如临时班组）：默认休息，只按「班组调班」安排上班。
 临时班组有起止日期（active_from / active_to），范围以外一律休息。
+主班组（is_main，例如 1～4 班）：首页卡片、交接班单独显示；其他班组上哪个班，就合并到这个班次的主班组里显示。
+员工也可以有个人循环（见 worker_shift），不跟班组排班。
+夜班归属开始的那一天：11-21 23:00 ~ 11-22 07:00 记为 11-21 的夜班。
 交接顺序：夜班 → 白班 → 中班 → 夜班。
 """
 
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 
 DAY, MIDDLE, NIGHT, OFF = "day", "middle", "night", "off"
-CYCLE = (DAY, DAY, MIDDLE, MIDDLE, NIGHT, NIGHT, OFF, OFF)
+KINDS = (DAY, MIDDLE, NIGHT, OFF)
+CYCLE = (DAY, DAY, MIDDLE, MIDDLE, NIGHT, NIGHT, OFF, OFF)  # 原来四班三倒的 8 天循环
+WEEKDAYS = (DAY, DAY, DAY, DAY, DAY, OFF, OFF)  # 周一到周五白班（从周一开始）
 ORDER = (DAY, MIDDLE, NIGHT)  # 一个「班次日」内的先后顺序
+MAX_CYCLE = 62
+
+
+@dataclass(frozen=True)
+class Cycle:
+    pattern: tuple[str, ...]  # 循环里每天的班
+    start: date  # 循环第 1 天
+    holiday_off: bool = False  # 节假日休息；调休上班日按主要班次上班
+
+    @property
+    def work_shift(self) -> str:
+        """主要班次：循环里出现最多的班（调休上班日用）。"""
+        c = Counter(k for k in self.pattern if k != OFF)
+        return max(ORDER, key=lambda k: (c[k], -ORDER.index(k))) if c else DAY
+
+    def planned(self, d: date, holidays=frozenset(), workdays=frozenset()) -> str:
+        k = self.pattern[(d - self.start).days % len(self.pattern)]
+        if self.holiday_off:
+            if d in holidays:
+                return OFF
+            if d in workdays and k == OFF:
+                return self.work_shift
+        return k
 
 
 @dataclass(frozen=True)
 class TeamInfo:
     id: int
-    kind: str  # rotating（倒班）/ day（常白班型）/ manual（不固定，只按调班安排）
-    cycle_offset: int | None = None
+    cycle: Cycle | None = None  # None = 不固定（只按调班安排）
+    is_main: bool = False
     active_from: date | None = None  # 临时班组：从哪天起有效（含）
     active_to: date | None = None  # 到哪天为止（含）；空 = 长期
+
+    @property
+    def kind(self) -> str:
+        return "cycle" if self.cycle else "manual"
 
     def active_on(self, d: date) -> bool:
         return (self.active_from is None or d >= self.active_from) and (self.active_to is None or d <= self.active_to)
 
 
+def rotating(team_id: int, offset: int, base: date = date(2026, 11, 1)) -> TeamInfo:
+    """按原来的写法（基准日在 8 天循环里的位置）构造倒班主班组。"""
+    return TeamInfo(team_id, Cycle(CYCLE, base - timedelta(days=offset)), is_main=True)
+
+
+def day_team(team_id: int, monday: date = date(2026, 11, 2)) -> TeamInfo:
+    """常白班：周一到周五白班，节假日休息，合并显示。"""
+    return TeamInfo(team_id, Cycle(WEEKDAYS, monday, holiday_off=True))
+
+
 @dataclass(frozen=True)
 class Schedule:
-    base_date: date
     teams: tuple[TeamInfo, ...]
     day_start: time = time(7)
     middle_start: time = time(15)
@@ -42,14 +83,17 @@ class Schedule:
     overrides: dict = field(default_factory=dict, hash=False, compare=False)
 
     # ---- 单个班组 ----
-    def cycle_pos(self, team: TeamInfo, d: date) -> int:
-        assert team.kind == "rotating" and team.cycle_offset is not None
-        return (team.cycle_offset + (d - self.base_date).days) % len(CYCLE)
+    def team(self, team_id: int | None) -> TeamInfo | None:
+        return next((t for t in self.teams if t.id == team_id), None)
 
     def is_workday(self, d: date) -> bool:
+        """日历上的工作日（周一到周五且不是节假日，或调休上班日），只用于显示。"""
         if d in self.extra_workdays:
             return True
         return d.weekday() < 5 and d not in self.holidays
+
+    def cycle_shift(self, cycle: Cycle, d: date) -> str:
+        return cycle.planned(d, self.holidays, self.extra_workdays)
 
     def shift_of(self, team: TeamInfo, d: date) -> str:
         if not team.active_on(d):
@@ -60,23 +104,18 @@ class Schedule:
         return self.planned_shift_of(team, d)
 
     def planned_shift_of(self, team: TeamInfo, d: date) -> str:
-        """不考虑整体调班时，按循环 / 工作日推算的班次。"""
-        if not team.active_on(d):
+        """不考虑整体调班时，按循环推算的班次。"""
+        if not team.active_on(d) or team.cycle is None:
             return OFF
-        if team.kind == "rotating":
-            return CYCLE[self.cycle_pos(team, d)]
-        if team.kind == "day":
-            return DAY if self.is_workday(d) else OFF
-        return OFF  # manual：只按调班安排
+        return self.cycle_shift(team.cycle, d)
 
     # ---- 某天 / 某时刻 ----
-    def rotating_team_on(self, d: date, kind: str) -> TeamInfo | None:
-        """某班次的「主班组」：优先倒班班组，没有的话用不固定班组（临时班组），常白班型不算。"""
-        for want in ("rotating", "manual"):
-            for t in self.teams:
-                if t.kind == want and self.shift_of(t, d) == kind:
-                    return t
-        return None
+    def main_team_on(self, d: date, kind: str) -> TeamInfo | None:
+        """某班次的「主班组」：第一个上这个班的主班组；没有主班组上的话，用第一个上这个班的其他班组。"""
+        on = self.teams_on(d, kind)
+        return next((t for t in on if t.is_main), on[0] if on else None)
+
+    rotating_team_on = main_team_on  # 旧名字
 
     def teams_on(self, d: date, kind: str) -> list[TeamInfo]:
         """某班次日某班次在班的所有班组（白班时可能包含常白班）。"""
@@ -109,11 +148,9 @@ class Schedule:
         return start, datetime.combine(nd, end_t)
 
     def handover_target(self, team: TeamInfo, d: date, kind: str) -> TeamInfo | None:
-        """默认移交对象：倒班交给下一个班次的倒班班组；常白班交给当天中班。"""
-        if team.kind == "day":
-            return self.rotating_team_on(d, MIDDLE)
+        """默认移交对象：下一个班次的主班组（常白班 07-15 下班 → 当天中班）。"""
         nd, nk = self.next_shift(d, kind)
-        return self.rotating_team_on(nd, nk)
+        return self.main_team_on(nd, nk)
 
     def next_shift_of_team(self, team: TeamInfo, after: date, kind: str) -> tuple[date, str]:
         """班组在 (after, kind) 之后的下一个上班班次（最多向后找 30 天）。"""
@@ -153,20 +190,29 @@ class Schedule:
             return d, k
         return self.next_shift_of_team(team, d, k)
 
-    # ---- 常白班搭班 ----
-    def paired_teams(self, team: TeamInfo, d: date) -> list[TeamInfo]:
-        """当天和本班组搭班的班组：常白班（型）上班的日子，常白班 ↔ 当天上白班的主班组。
-        有多个常白班型班组时，它们和白班主班组合成一组。"""
-        days = [t for t in self.teams if t.kind == "day" and self.shift_of(t, d) == DAY]
-        if not days:
-            return []
-        rot = self.rotating_team_on(d, DAY)
-        if rot is None:
-            return []
-        group = [rot, *days]
-        if all(t.id != team.id for t in group):
-            return []
-        return [t for t in group if t.id != team.id]
+    # ---- 合并显示（原「常白班搭班」）----
+    def group_of(self, team: TeamInfo, d: date, kind: str | None = None) -> list[TeamInfo]:
+        """班次 (d, kind) 里和 team 合并在一起的班组，主班组排第一。kind 默认是 team 当天的班。
+        非主班组合并到这个班次的第一个主班组；没有主班组时，非主班组之间合在一起。"""
+        kind = kind or self.shift_of(team, d)
+        if kind == OFF or not self.is_on(team, d, kind):
+            return [team]
+        on = self.teams_on(d, kind)
+        mains = [t for t in on if t.is_main]
+        others = [t for t in on if not t.is_main]
+        if team.is_main:
+            return [team, *others] if mains[0].id == team.id else [team]
+        return [mains[0], *others] if mains else others
+
+    def paired_teams(self, team: TeamInfo, d: date, kind: str | None = None) -> list[TeamInfo]:
+        """和 team 合并显示的其他班组（交接班合并、两边班长都能操作）。"""
+        return [t for t in self.group_of(team, d, kind) if t.id != team.id]
+
+    def worker_shift(self, team: TeamInfo | None, personal: Cycle | None, d: date) -> str:
+        """员工某天该上的班：有个人循环按个人的（不受班组整体调班影响），否则跟班组。"""
+        if personal is not None:
+            return self.cycle_shift(personal, d)
+        return self.shift_of(team, d) if team else OFF
 
     def recording_slot(self, team: TeamInfo, now: datetime, grace_hours: float = 2) -> tuple[date, str]:
         """班组录入任务时，任务归属哪个班次：
@@ -188,16 +234,19 @@ class Schedule:
 
 def coverage_problems(sched: Schedule, start: date, end: date) -> list[tuple[date, str, str, list[int]]]:
     """检查一段日期里每个班次有没有人上：(日期, 班次, 问题, 班组 id)。
-    问题：none = 没有任何班组上（白班有常白班型也算没人，因为它不是主班组）；
-    multiple = 两个以上主班组（倒班 / 不固定）同时上同一个班（可能是有意的，只提示）。"""
+    none = 没有任何班组上；nomain = 只有非主班组上（首页会单独显示它）；
+    multiple = 两个以上主班组同时上同一个班（可能是有意的，只提示）。"""
     out = []
     d = start
     while d <= end:
         for k in ORDER:
-            main = [t for t in sched.teams if t.kind != "day" and sched.shift_of(t, d) == k]
-            if not main:
+            on = sched.teams_on(d, k)
+            mains = [t for t in on if t.is_main]
+            if not on:
                 out.append((d, k, "none", []))
-            elif len(main) > 1:
-                out.append((d, k, "multiple", [t.id for t in main]))
+            elif not mains:
+                out.append((d, k, "nomain", [t.id for t in on]))
+            elif len(mains) > 1:
+                out.append((d, k, "multiple", [t.id for t in mains]))
         d += timedelta(days=1)
     return out

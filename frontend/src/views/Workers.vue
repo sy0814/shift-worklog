@@ -8,6 +8,7 @@ import api, { download } from '../api'
 import { localName } from '../i18n'
 import { useAuth } from '../stores/auth'
 import WorkerAvatar from '../components/WorkerAvatar.vue'
+import WorkerScheduleDialog from '../components/WorkerScheduleDialog.vue'
 
 const { t, locale } = useI18n()
 const auth = useAuth()
@@ -114,6 +115,14 @@ async function colCommand(f, cmd) {
   load()
 }
 
+// ---------------- 班组与排班（变更记录、个人循环）----------------
+const wsOpen = ref(false)
+const wsWorker = ref(null)
+function openSchedule(w) {
+  wsWorker.value = w
+  wsOpen.value = true
+}
+
 // ---------------- 头像 ----------------
 const avatarInput = ref()
 const avatarFor = ref(null)
@@ -201,6 +210,7 @@ async function saveBulk() {
             <th>{{ t('workers.no') }}</th>
             <th>{{ t('workers.team') }}</th>
             <th class="c-act">{{ t('workers.active') }}</th>
+            <th class="c-ws">{{ t('schedule.cycleCol') }}</th>
             <th v-for="f in fields" :key="f.id" class="xcol">
               <el-dropdown trigger="click" @command="(c) => colCommand(f, c)">
                 <span class="colhead">{{ f.label }} ▾</span>
@@ -233,7 +243,7 @@ async function saveBulk() {
               <td :class="['cell', { on: isEditing(w, key), ok: flashed === `${w.id}|${key}` }]" @click="startEdit(w, key)">
                 <el-input v-if="isEditing(w, key)" v-model="editing.value" size="small" class="cell-editor" :maxlength="key === 'name' ? 100 : 50"
                           @blur="commit" @keydown="onKey" />
-                <span v-else>{{ w[key] }}</span>
+                <span :class="{ ghost: isEditing(w, key) }">{{ w[key] }}</span>
               </td>
             </template>
             <td :class="['cell', { on: isEditing(w, 'team_id'), ok: flashed === `${w.id}|team_id` }]" @click="startEdit(w, 'team_id')">
@@ -241,15 +251,16 @@ async function saveBulk() {
                          :placeholder="t('workers.noTeam')" @change="commit" @visible-change="(v) => !v && commit()">
                 <el-option v-for="tm in auth.teams" :key="tm.id" :label="localName(tm)" :value="tm.id" />
               </el-select>
-              <span v-else :class="{ muted: !w.team_id }">{{ teamName(w.team_id) }}</span>
+              <span :class="{ muted: !w.team_id, ghost: isEditing(w, 'team_id') }">{{ teamName(w.team_id) }}</span>
             </td>
             <td :class="['cell', 'c-act', { ok: flashed === `${w.id}|is_active` }]">
               <el-switch :model-value="w.is_active" size="small" @change="(v) => { editing.id = w.id; editing.key = 'is_active'; editing.value = v; commit() }" />
             </td>
+            <td class="c-ws"><el-button link type="primary" size="small" @click="openSchedule(w)">{{ t('ws.btn') }}</el-button></td>
             <td v-for="f in fields" :key="f.id" :class="['cell', { on: isEditing(w, 'x' + f.id), ok: flashed === `${w.id}|x${f.id}` }]" @click="startEdit(w, 'x' + f.id)">
               <el-input v-if="isEditing(w, 'x' + f.id)" v-model="editing.value" size="small" class="cell-editor" maxlength="500"
                         @blur="commit" @keydown="onKey" />
-              <span v-else>{{ w.extra?.[String(f.id)] }}</span>
+              <span :class="{ ghost: isEditing(w, 'x' + f.id) }">{{ w.extra?.[String(f.id)] }}</span>
             </td>
             <td />
           </tr>
@@ -263,7 +274,7 @@ async function saveBulk() {
                 <el-option v-for="tm in auth.teams" :key="tm.id" :label="localName(tm)" :value="tm.id" />
               </el-select>
             </td>
-            <td :colspan="fields.length + 2">
+            <td :colspan="fields.length + 3">
               <el-button size="small" type="primary" :disabled="!draft.name.trim()" @click="saveDraft">{{ t('common.save') }}</el-button>
               <el-button size="small" @click="draft = null">{{ t('common.cancel') }}</el-button>
             </td>
@@ -273,6 +284,7 @@ async function saveBulk() {
     </div>
     <el-button class="addrow" :icon="Plus" @click="addRow">{{ t('workers.addRow') }}</el-button>
 
+    <WorkerScheduleDialog v-model="wsOpen" :worker="wsWorker" @saved="load" />
     <input ref="avatarInput" type="file" accept="image/*,.heic,.heif" hidden @change="uploadAvatar" />
 
     <el-dialog v-model="bulkOpen" :title="t('workers.bulk')" width="min(420px, 94vw)">
@@ -306,15 +318,20 @@ async function saveBulk() {
 .sheet .av { width: 40px; text-align: center; padding: 0 4px; }
 .c-name { min-width: 130px; }
 .c-act { width: 60px; text-align: center !important; }
+.c-ws { width: 70px; text-align: center !important; }
 .xcol { min-width: 110px; }
 .colhead { cursor: pointer; color: #303133; }
 .colhead:hover { color: #409eff; }
 .addcol { width: 1%; }
 .cell { cursor: text; min-width: 90px; transition: background .4s; }
 .cell:hover { background: #f5faff; }
-.cell.on { padding: 0 2px; background: #ecf5ff; }
+.cell { position: relative; }
+.cell.on { background: #ecf5ff; }
+/* 编辑框盖在格子上（绝对定位），不改变列宽和行高，点格子时表格不会跳 */
+.cell .cell-editor { position: absolute; inset: 3px 2px; width: auto; min-width: 0; }
+.cell.on > span.ghost { visibility: hidden; }
 .cell.ok { background: #e1f3d8; }
-.cell-editor { width: 100%; min-width: 120px; }
+
 .avbtn { cursor: pointer; display: inline-flex; }
 tr.inactive td { color: #a8abb2; }
 tr.draft td { background: #fdf6ec; }

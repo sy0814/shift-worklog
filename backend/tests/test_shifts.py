@@ -1,11 +1,11 @@
 from datetime import date, datetime
 
 from app.seed import TEAMS
-from app.shifts import DAY, MIDDLE, NIGHT, OFF, Schedule, TeamInfo
+from app.shifts import DAY, MIDDLE, NIGHT, OFF, Schedule, day_team, rotating
 
 IDS = {code: i + 1 for i, (code, *_rest) in enumerate(TEAMS)}
-TEAM = {code: TeamInfo(IDS[code], kind, off) for code, _zh, _sr, _en, kind, off in TEAMS}
-S = Schedule(base_date=date(2026, 11, 1), teams=tuple(TEAM.values()),
+TEAM = {code: rotating(IDS[code], off) if kind == "rotating" else day_team(IDS[code]) for code, _zh, _sr, _en, kind, off in TEAMS}
+S = Schedule(teams=tuple(TEAM.values()),
              holidays=frozenset({date(2026, 11, 11)}))
 
 
@@ -91,7 +91,7 @@ def test_receiving_slot():
 
 
 def test_extra_workday_for_day_team():
-    s = Schedule(base_date=date(2026, 11, 1), teams=tuple(TEAM.values()),
+    s = Schedule(teams=tuple(TEAM.values()),
                  extra_workdays=frozenset({date(2026, 11, 21)}))  # 周六调休上班
     assert s.shift_of(TEAM["DAY"], date(2026, 11, 21)) == DAY
     assert s.shift_of(TEAM["DAY"], date(2026, 11, 22)) == OFF

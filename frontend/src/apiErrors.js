@@ -36,6 +36,11 @@ const T = {
   team_name: ['请填写班组名称', 'Unesite naziv ekipe', 'Enter a team name'],
   two_teams: ['请选两个不同的班组', 'Izaberite dve različite ekipe', 'Choose two different teams'],
   pairs: ['四个倒班班组必须错开（白、中、夜、休各有一个班组）', 'Smenske ekipe moraju da pokriju sve smene', 'Rotating teams must cover every shift'],
+  cyc_req: ['请设置循环（每天上什么、循环第 1 天）', 'Podesite ciklus (smene i prvi dan)', 'Set up the cycle (shifts and first day)'],
+  cyc_bad: ['循环设置不对（1～62 天）', 'Neispravan ciklus (1–62 dana)', 'Invalid cycle (1–62 days)'],
+  cyc_off: ['循环里至少要有一天上班', 'Ciklus mora imati bar jedan radni dan', 'The cycle needs at least one working day'],
+  ws_team: ['请选择班组，或设置个人循环', 'Izaberite ekipu ili lični ciklus', 'Choose a team or a personal cycle'],
+  ws_del: ['最早的那条记录不能删除', 'Prvi zapis ne može da se obriše', 'The first entry cannot be deleted'],
   self: ['不能降级或停用自己', 'Ne možete sebi oduzeti prava', 'You cannot demote or disable yourself'],
 }
 const RULES = [
@@ -73,6 +78,11 @@ const RULES = [
   [/^another analysis is running/, 'analysis_running'],
   [/^cannot demote or disable yourself/, 'self'],
   [/^team in use/, 'team_used'],
+  [/^cycle pattern and start date required/, 'cyc_req'],
+  [/^pattern must be/, 'cyc_bad'],
+  [/^pattern has no working day/, 'cyc_off'],
+  [/^choose a team or a personal cycle/, 'ws_team'],
+  [/^cannot delete this entry/, 'ws_del'],
   [/^team name required/, 'team_name'],
   [/^need two different teams/, 'two_teams'],
   [/^teams must be in different shift pairs/, 'pairs'],

@@ -16,6 +16,7 @@ from sqlalchemy import (
     Text,
     Time,
     UniqueConstraint,
+    false,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -34,9 +35,13 @@ class Team(Base):
     name_zh: Mapped[str] = mapped_column(String(50))
     name_sr: Mapped[str] = mapped_column(String(50))
     name_en: Mapped[str] = mapped_column(String(50))
-    kind: Mapped[str] = mapped_column(String(10))  # rotating（倒班）/ day（常白班型）/ manual（不固定，只按调班）
-    # 倒班班组在基准日处于 8 天循环中的位置 0..7；其他类型为空
-    cycle_offset: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    kind: Mapped[str] = mapped_column(String(10))  # cycle（按循环排班）/ manual（不固定，只按调班）
+    # 循环：每天上什么（day / middle / night / off），循环第 1 天，节假日是否休息（见 shifts.Cycle）
+    pattern: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    cycle_start: Mapped[date | None] = mapped_column(Date, nullable=True)
+    holiday_off: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    # 主班组：首页卡片、交接班单独显示；其他班组合并到同一班次的主班组里
+    is_main: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     # 临时班组的有效期（含首尾）；空 = 长期。范围以外这个班组一律休息
     active_from: Mapped[date | None] = mapped_column(Date, nullable=True)
@@ -66,7 +71,6 @@ class ShiftConfig(Base):
     __tablename__ = "shift_config"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    base_date: Mapped[date] = mapped_column(Date)
     day_start: Mapped[time] = mapped_column(Time)
     middle_start: Mapped[time] = mapped_column(Time)
     night_start: Mapped[time] = mapped_column(Time)
@@ -142,6 +146,25 @@ class Worker(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     avatar_path: Mapped[str | None] = mapped_column(String(255), nullable=True)  # 头像（上传目录下的相对路径）
     extra: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")  # 自定义列的值 {列 id: 文字}
+
+
+class WorkerSchedule(Base):
+    """员工的班组 / 排班变更记录：从 effective_from 这天起，属于哪个班组、跟班组排班还是按个人循环。
+    出勤、工时按当天有效的那条算，所以换班组后以前的出勤不变。"""
+
+    __tablename__ = "worker_schedules"
+    __table_args__ = (UniqueConstraint("worker_id", "effective_from"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    worker_id: Mapped[int] = mapped_column(ForeignKey("workers.id"), index=True)
+    effective_from: Mapped[date] = mapped_column(Date)
+    team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"), nullable=True)
+    pattern: Mapped[list | None] = mapped_column(JSON, nullable=True)  # 空 = 跟班组排班
+    cycle_start: Mapped[date | None] = mapped_column(Date, nullable=True)
+    holiday_off: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    note: Mapped[str] = mapped_column(String(200), default="", server_default="")
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class WorkerField(Base):

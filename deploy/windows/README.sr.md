@@ -223,7 +223,7 @@ Posle prijave otvorite meni **Upravljanje** gore i uradite redom:
 
 1. **Nalozi:** nalozi šefova smena već postoje (`t1_leader1`–`t4_leader1`, `day_leader1`–`day_leader3`). **Njihova početna lozinka je ista kao korisničko ime, što nije bezbedno.** Za svaki nalog kliknite „Resetuj lozinku”, postavite novu lozinku i javite je šefu smene. Ovde možete i dodavati ili isključivati naloge i menjati imena.
 2. **Radnici:** kliknite „Dodaj više”, izaberite ekipu, nalepite jedno ime po redu i sačuvajte. Uradite to za svaku ekipu.
-3. **Raspored** (gornji meni): u „Kalendaru smena” proverite da današnje smene odgovaraju stvarnosti. Ako ne odgovaraju, podesite „Osnovu rasporeda” (samo administrator). Državne praznike unesite u „Praznici / radne subote”.
+3. **Raspored** (gornji meni): u „Kalendaru smena” proverite da današnje smene odgovaraju stvarnosti. Ako ne odgovaraju, u „Ekipe” izmenite ciklus te ekipe (dužina ciklusa, smena za svaki dan, prvi dan ciklusa; samo administrator). Državne praznike unesite u „Praznici / radne subote”.
 4. **Podešavanja:**
    - Ako DeepSeek ključ niste uneli tokom instalacije, unesite ga u polje „API ključ”, kliknite „**Testiraj vezu**”, i kada se pojavi zeleno „Veza radi” sa primerima prevoda, kliknite „**Sačuvaj**”.
    - U „Podešavanju upozorenja” možete promeniti posle koliko sati se nezavršen zadatak označava crveno.

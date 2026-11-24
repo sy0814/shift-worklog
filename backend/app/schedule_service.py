@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from .config import get_settings
 from .models import Holiday, ShiftConfig, Team, TeamShiftOverride
 from .schemas import ShiftSlot
-from .shifts import Schedule, TeamInfo
+from .shifts import Cycle, Schedule, TeamInfo
 
 
 def load_schedule(db: Session) -> Schedule:
@@ -18,8 +18,7 @@ def load_schedule(db: Session) -> Schedule:
     holidays = frozenset(d for d, k in rows if k != "workday")
     workdays = frozenset(d for d, k in rows if k == "workday")
     return Schedule(
-        base_date=cfg.base_date,
-        teams=tuple(TeamInfo(t.id, t.kind, t.cycle_offset, t.active_from, t.active_to) for t in teams),
+        teams=tuple(team_info(t) for t in teams),
         day_start=cfg.day_start,
         middle_start=cfg.middle_start,
         night_start=cfg.night_start,
@@ -29,6 +28,12 @@ def load_schedule(db: Session) -> Schedule:
                    for o in db.execute(select(TeamShiftOverride.team_id, TeamShiftOverride.day,
                                               TeamShiftOverride.shift_kind)).all()},
     )
+
+
+def team_info(t: Team) -> TeamInfo:
+    cycle = Cycle(tuple(t.pattern), t.cycle_start, bool(t.holiday_off)) \
+        if t.kind == "cycle" and t.pattern and t.cycle_start else None
+    return TeamInfo(t.id, cycle, bool(t.is_main), t.active_from, t.active_to)
 
 
 def local_now() -> datetime:

@@ -176,12 +176,13 @@ def build_workbook(db: Session, start: date, end: date, team_id: int | None, wor
     sched = load_schedule(db)
     days = [start + timedelta(days=i) for i in range((end - start).days + 1)]
     ot_hours = overtime_service.hours_by_worker(db, start, end, workers)
+    planned = att.scheduled_counts(db, workers, start, end, sched)
 
     # ---- 人员工作量 ----
     ws2 = wb.create_sheet(T["sheet_load"])
     _header(ws2, T["load"])
     for w in workers:
-        sched_n = sum(1 for d in days if att.default_for(sched, w, d).status == "present")  # 按排班应上的班次
+        sched_n = planned[w.id]  # 按排班应上的班次
         present = sum(1 for a in eff[w.id].values() if a.status == "present")
         mine = [t for t in tasks if any(x.id == w.id for x in t.workers)]
         hours = sum(h for t in mine if (h := _hours(t)) is not None)

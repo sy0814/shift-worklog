@@ -194,7 +194,7 @@ const exportOpen = ref(false)
     </div>
     <div class="muted small">{{ t('att.defaultHint') }} · {{ t('att.legend') }}</div>
 
-    <div v-loading="loading" class="grid-wrap">
+    <div v-loading="loading" :class="['grid-wrap', { first: !data }]">
       <table v-if="data" class="grid">
         <thead>
           <tr>
@@ -218,6 +218,8 @@ const exportOpen = ref(false)
       <el-empty v-if="data && !data.workers.length" />
     </div>
 
+    <!-- 出勤表加载出来之前先不显示下面的加班记录，免得表格出来时把它往下推（页面跳动） -->
+    <template v-if="data">
     <h4>{{ t('ot.list') }}</h4>
     <el-table v-if="otList.length" :data="otList" size="small" class="otlist">
       <el-table-column prop="day" :label="t('ot.day')" width="110" />
@@ -237,6 +239,7 @@ const exportOpen = ref(false)
       </el-table-column>
     </el-table>
     <div v-else class="muted small">{{ t('ot.none') }}</div>
+    </template>
     <OvertimeDialog v-model="otOpen" :preset="otPreset" @saved="load" />
 
     <el-dialog v-model="dlg" :title="cur.worker ? `${cur.worker.name} · ${cur.day}` : ''" width="min(560px, 96vw)" :fullscreen="isNarrow()" append-to-body>
@@ -365,4 +368,5 @@ const exportOpen = ref(false)
 tr.guest .name { background: #fdf6ec; }
 h4 { margin: 16px 0 8px; }
 .tasks { display: flex; flex-direction: column; gap: 8px; min-height: 40px; }
+.grid-wrap.first { min-height: 240px; }
 </style>

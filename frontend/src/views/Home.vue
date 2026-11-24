@@ -43,9 +43,9 @@ onMounted(() => {
 onUnmounted(() => clearInterval(timer))
 
 const fmt = (s) => dayjs(s.slice(0, 16)).format('MM-DD HH:mm')
-// 卡片上只显示倒班 / 临时班组（常白班型合并进去，点开人员状态时才分开显示）
+// 卡片上只显示主班组（常白班等合并显示的班组合并进去，点开人员状态时才分开显示）
 const mainTeam = (s) => {
-  const rot = s.team_ids.filter((id) => auth.teamById(id)?.kind !== 'day') // 倒班 + 不固定（临时）班组
+  const rot = s.team_ids.filter((id) => auth.teamById(id)?.is_main) // 主班组；其他班组合并进去
   return (rot.length ? rot : s.team_ids).map((id) => localName(auth.teamById(id))).join(' + ')
 }
 const cards = computed(() => now.value && [

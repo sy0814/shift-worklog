@@ -152,13 +152,9 @@ def discard(task_id: int, body: DiscardRequest, db: Session = Depends(get_db),
     return tasks_out(db, [_get_task(db, task.id)], user)[0]
 
 
-def board_teams(sched, team, today) -> list:
-    """交接班合并：常白班上班的日子，常白班和当天白班的倒班班组合并成一块（倒班班组在前）。"""
-    pair = sched.paired_teams(team, today)
-    if not pair:
-        return [team]
-    group = [team, *pair]
-    return sorted(group, key=lambda t: t.kind != "rotating")
+def board_teams(sched, team, d, kind=None) -> list:
+    """交接班合并：这个班次里和 team 合并显示的班组（主班组在前）。"""
+    return sched.group_of(team, d, kind)
 
 
 @router.get("/board", response_model=BoardOut)
@@ -175,14 +171,18 @@ def board(team_id: int | None = None, db: Session = Depends(get_db), user: User 
         if user.role != "admin" and user.team_id:
             team_id = user.team_id
         else:
-            rot = sched.rotating_team_on(d, k)
+            rot = sched.main_team_on(d, k)
             team_id = rot.id if rot else sched.teams[0].id
     team = _team_info(sched, team_id)
-    group = board_teams(sched, team, now_local.date())
+    # 显示这个班组当前在上的班；不在班就显示它的下一个班。合并同一班次的其他班组
+    try:
+        sd, sk = (d, k) if sched.is_on(team, d, k) else sched.next_shift_of_team(team, d, k)
+    except ValueError:  # 不固定班组没安排班：只显示它自己
+        sd, sk = d, k
+    group = board_teams(sched, team, sd, sk)
     main = group[0]
     ids = [t.id for t in group]
     on_duty = any(sched.is_on(t, d, k) for t in group)
-    sd, sk = (d, k) if sched.is_on(main, d, k) else sched.next_shift_of_team(main, d, k)
     pd, pk = sched.prev_shift(sd, sk)
     prev_ids = [t.id for t in sched.teams_on(pd, pk) if t.id not in ids]
     nxt = sched.default_handover_target(main, now_local)

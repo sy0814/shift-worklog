@@ -1,7 +1,7 @@
 """首次启动时写入初始数据：5 个班组、排班基准、管理员和班长账号。"""
 
 import csv
-from datetime import date, time
+from datetime import date, time, timedelta
 from pathlib import Path
 
 from sqlalchemy import select
@@ -11,16 +11,29 @@ from . import audit
 from .config import get_settings
 from .models import AppSetting, ShiftConfig, Team, User
 from .security import hash_password
+from .shifts import CYCLE, WEEKDAYS
 
 # 基准日 2026-11-01：3 班白1(0)、4 班中1(2)、1 班夜1(4)、2 班休1(6)
+# 循环第 1 天 = 基准日往前推 offset 天
+BASE_DATE = date(2026, 11, 1)
 TEAMS = [
-    # code, zh, sr, en, kind, offset
+    # code, zh, sr, en, kind, offset（常白班为 None）
     ("T1", "1班", "Smena 1", "Team 1", "rotating", 4),
     ("T2", "2班", "Smena 2", "Team 2", "rotating", 6),
     ("T3", "3班", "Smena 3", "Team 3", "rotating", 0),
     ("T4", "4班", "Smena 4", "Team 4", "rotating", 2),
     ("DAY", "常白班", "Dnevna smena", "Day team", "day", None),
 ]
+
+
+def team_cycle(kind: str, offset: int | None) -> dict:
+    """初始班组的循环设置：倒班 8 天「白白中中夜夜休休」主班组；常白班 7 天「白×5 休休」从周一开始、节假日休息。"""
+    if kind == "rotating":
+        return dict(kind="cycle", pattern=list(CYCLE), cycle_start=BASE_DATE - timedelta(days=offset),
+                    holiday_off=False, is_main=True)
+    monday = BASE_DATE - timedelta(days=BASE_DATE.weekday())
+    return dict(kind="cycle", pattern=list(WEEKDAYS), cycle_start=monday, holiday_off=True, is_main=False)
+
 
 # 初始班长账号：倒班每班 1 个，常白班 3 个。初始密码 = 用户名，首次登录后请修改。
 LEADERS = [
@@ -40,12 +53,10 @@ def seed(db: Session) -> None:
     s = get_settings()
     teams: dict[str, Team] = {}
     for i, (code, zh, sr, en, kind, off) in enumerate(TEAMS):
-        t = Team(code=code, name_zh=zh, name_sr=sr, name_en=en, kind=kind,
-                 cycle_offset=off, sort_order=i)
+        t = Team(code=code, name_zh=zh, name_sr=sr, name_en=en, sort_order=i, **team_cycle(kind, off))
         db.add(t)
         teams[code] = t
-    db.add(ShiftConfig(id=1, base_date=date(2026, 11, 1),
-                       day_start=time(7), middle_start=time(15), night_start=time(23)))
+    db.add(ShiftConfig(id=1, day_start=time(7), middle_start=time(15), night_start=time(23)))
     db.flush()
 
     db.add(User(username=s.admin_username, password_hash=hash_password(s.admin_password),

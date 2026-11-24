@@ -221,7 +221,7 @@ After logging in, open the **Admin** menu at the top and do the following:
 
 1. **Accounts:** team leader accounts already exist (`t1_leader1`–`t4_leader1`, `day_leader1`–`day_leader3`). **Their initial password is the same as the user name, which is not safe.** Click "Reset password" for each one, set a new password and tell each team leader. Here you can also add or disable accounts and change names.
 2. **Workers:** click "Bulk add", choose a team, paste one name per line, and save. Do this for each team.
-3. **Schedule** (top menu): check in the "Shift calendar" that today's shifts match reality. If not, adjust the "Schedule baseline" (admin only). Enter public holidays under "Holidays / make-up workdays".
+3. **Schedule** (top menu): check in the "Shift calendar" that today's shifts match reality. If not, edit that team's cycle under "Teams" (cycle length, shift for each day, first day of the cycle; admin only). Enter public holidays under "Holidays / make-up workdays".
 4. **Settings:**
    - If you did not enter the DeepSeek key during installation, enter it under "API key", click "**Test connection**", and when you see the green "Works" with sample translations, click "**Save**".
    - Under "Alert settings" you can change after how many hours an unfinished task is marked red.
