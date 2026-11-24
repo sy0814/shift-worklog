@@ -12,7 +12,7 @@ def _utc(d: datetime) -> datetime:
 UTCDateTime = Annotated[datetime, AfterValidator(_utc)]
 
 Lang = Literal["zh", "sr", "en"]
-Role = Literal["admin", "leader"]
+Role = Literal["admin", "staff"]
 
 
 class ORM(BaseModel):
@@ -44,27 +44,44 @@ class UserOut(ORM):
     lang: str
     is_active: bool
     created_at: UTCDateTime
+    worker_id: int | None = None
+    last_login_at: UTCDateTime | None = None
+    locked_until: UTCDateTime | None = None
+
+
+class RoleBrief(BaseModel):
+    id: int
+    code: str
+    name_zh: str
+    name_sr: str
+    name_en: str
+    login_mode: str
+    show_on_top: bool
+
+
+class MeOut(UserOut):
+    """当前用户：账号 + 角色 + 权限表（{权限: 范围}；管理员为全部 all）+ 本班组和合并显示的班组。"""
+    role_info: RoleBrief | None = None
+    perms: dict[str, str] = {}
+    group_team_ids: list[int] = []
 
 
 class TokenOut(BaseModel):
     access_token: str
     token_type: str = "bearer"
-    user: UserOut
+    user: MeOut
 
 
 class UserCreate(BaseModel):
     username: str = Field(min_length=2, max_length=50, pattern=r"^[A-Za-z0-9_.-]+$")
     password: str = Field(min_length=6, max_length=100)
     full_name: str = Field(min_length=1, max_length=100)
-    role: Role = "leader"
-    team_id: int | None = None
+    role: Literal["admin"] = "admin"  # 这里只建系统管理员账号；名册里的人的账号在「员工名册」里开
     lang: Lang = "zh"
 
 
 class UserUpdate(BaseModel):
     full_name: str | None = Field(default=None, min_length=1, max_length=100)
-    role: Role | None = None
-    team_id: int | None = None
     lang: Lang | None = None
     is_active: bool | None = None
 
@@ -75,7 +92,7 @@ class PasswordReset(BaseModel):
 
 class PasswordChange(BaseModel):
     old_password: str
-    new_password: str = Field(min_length=6, max_length=100)
+    new_password: str = Field(min_length=4, max_length=100)  # 个人账号至少 6 位（接口里再查）；班组账号的个人密码至少 4 位
 
 
 class MeUpdate(BaseModel):
@@ -144,6 +161,7 @@ class WorkerOut(ORM):
     is_active: bool
     avatar_url: str | None = None  # 没有头像时为空，前端显示名字
     extra: dict[str, str] = {}  # 自定义列 {列 id: 值}
+    role_id: int | None = None  # 空 = 成员
 
     @model_validator(mode="before")
     @classmethod
@@ -153,6 +171,7 @@ class WorkerOut(ORM):
 
             return {"id": v.id, "name": v.name, "employee_no": v.employee_no, "team_id": v.team_id,
                     "is_active": v.is_active, "extra": {str(k): str(x) for k, x in (v.extra or {}).items()},
+                    "role_id": v.role_id,
                     "avatar_url": avatar_url(v.id, v.avatar_path) if v.avatar_path else None}
         return v
 
@@ -170,6 +189,7 @@ class WorkerBulkCreate(BaseModel):
 
 
 class WorkerUpdate(BaseModel):
+    role_id: int | None = None  # 角色（只有管理员能改）
     name: str | None = Field(default=None, min_length=1, max_length=100)
     employee_no: str | None = Field(default=None, max_length=50)
     team_id: int | None = None
@@ -265,6 +285,7 @@ class AttachmentOut(BaseModel):
     url_thumb: str
     url_view: str
     url_original: str
+    can_delete: bool = False
 
 
 class TaskOut(BaseModel):
@@ -300,8 +321,10 @@ class TaskOut(BaseModel):
     lead: WorkerOut | None = None  # 带队人员
     workers: list[WorkerOut]  # 参与人员（不含带队人）
     attachments: list[AttachmentOut]
-    can_edit: bool
+    can_edit: bool  # = perms.edit
     can_correct: bool = False  # 能否校对译文
+    # 当前用户对这条任务能做什么：edit / status（开始、完成）/ handover / discard / photo（传照片）/ correct（校对译文）
+    perms: dict[str, bool] = {}
     # 移交 / 废弃 / 警示
     chain_started_at: UTCDateTime
     handover_count: int

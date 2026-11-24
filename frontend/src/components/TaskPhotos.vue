@@ -5,7 +5,9 @@ import { useI18n } from 'vue-i18n'
 import { Delete } from '@element-plus/icons-vue'
 import { fmtFull, fmtTime } from '../format'
 
-const props = defineProps({ photos: { type: Array, required: true }, canDelete: Boolean })
+// canDelete：true / false，或按每张照片判断的函数 (photo) => bool（例如只能删自己传的）
+const props = defineProps({ photos: { type: Array, required: true }, canDelete: { type: [Boolean, Function], default: false } })
+const deletable = (p) => (typeof props.canDelete === 'function' ? props.canDelete(p) : props.canDelete)
 const emit = defineEmits(['delete'])
 const { t } = useI18n()
 const previews = computed(() => props.photos.map((p) => p.url_view))
@@ -18,7 +20,7 @@ const previews = computed(() => props.photos.map((p) => p.url_view))
       <div class="time" :title="`${t('photo.takenAt')} ${fmtFull(p.taken_at)} · ${t('photo.src_' + p.taken_at_source)}`">
         <span :class="['dot', p.taken_at_source]" />{{ fmtTime(p.taken_at) }}
       </div>
-      <button v-if="canDelete" type="button" class="rm" :title="t('photo.remove')" @click="emit('delete', p)">
+      <button v-if="deletable(p)" type="button" class="rm" :title="t('photo.remove')" @click="emit('delete', p)">
         <el-icon><Delete /></el-icon>
       </button>
     </div>

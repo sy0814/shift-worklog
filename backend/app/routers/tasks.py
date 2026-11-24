@@ -5,15 +5,16 @@
 """
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
+from pydantic import BaseModel
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
-from .. import app_settings, audit, translation_service
+from .. import app_settings, audit, permissions, translation_service
 from ..config import get_settings
 from ..db import get_db
 from ..images import InvalidImage, parse_exif_datetime, process_upload
@@ -64,7 +65,7 @@ def _names(db: Session) -> dict[int, str]:
     return dict(db.execute(select(User.id, User.full_name)).all())
 
 
-def _att_out(a: Attachment, names: dict[int, str]) -> AttachmentOut:
+def _att_out(a: Attachment, names: dict[int, str], can_delete: bool = False) -> AttachmentOut:
     t = file_token(a.id)
     base = f"/api/files/{a.id}"
     return AttachmentOut(
@@ -72,46 +73,46 @@ def _att_out(a: Attachment, names: dict[int, str]) -> AttachmentOut:
         taken_at=a.taken_at, taken_at_source=a.taken_at_source, uploaded_by=a.uploaded_by,
         uploaded_by_name=names.get(a.uploaded_by, ""), uploaded_at=a.uploaded_at,
         url_thumb=f"{base}/thumb?t={t}", url_view=f"{base}/view?t={t}",
-        url_original=f"{base}/original?t={t}",
+        url_original=f"{base}/original?t={t}", can_delete=can_delete,
     )
 
 
 def editable_team_ids(db: Session, user: User) -> set[int] | None:
-    """用户能操作哪些班组的任务。None = 全部（管理员）。
-
-    班长：本班组 + 今天和本班组搭班的班组（常白班上班的日子，常白班 ↔ 当天白班的倒班班组）。
-    """
+    """本班组 + 合并显示的班组。None = 管理员（全部）。"""
     if user.role == "admin":
         return None
-    if user.team_id is None:
-        return set()
-    sched = load_schedule(db)
-    team = next((t for t in sched.teams if t.id == user.team_id), None)
-    if team is None:
-        return {user.team_id}
-    # 和本班组合并显示的班组：今天它上的那个班；如果昨天上的是夜班（凌晨还在班），也算昨天夜班合并的
-    today = local_now().date()
-    out = {user.team_id} | {t.id for t in sched.paired_teams(team, today)}
-    yesterday = today - timedelta(days=1)
-    if sched.shift_of(team, yesterday) == "night":
-        out |= {t.id for t in sched.paired_teams(team, yesterday)}
-    return out
+    team_id = permissions.who(db, user).group
+    return set(team_id or set())
 
 
-def _can_edit(task: Task, editable: set[int] | None) -> bool:
-    if task.status in TERMINAL:
+def task_perms(w: "permissions.Who | None", task: Task) -> dict[str, bool]:
+    """当前用户对这条任务能做什么（按角色权限）。已完成的任务要有「改已完成的任务」权限；已移交 / 已废弃的不能再改
+    （校对译文除外）。"""
+    keys = ("edit", "status", "handover", "discard", "photo", "correct")
+    if w is None:
+        return dict.fromkeys(keys, False)
+    live = task.status not in TERMINAL
+    open_ = task.status in OPEN
+    done_ok = task.status != "done" or w.task_ok("task.edit_done", task)
+    return {
+        "edit": live and done_ok and w.task_ok("task.edit", task),
+        "status": live and done_ok and w.task_ok("task.status", task),
+        "handover": open_ and w.task_ok("task.handover", task),
+        "discard": open_ and w.task_ok("task.discard", task),
+        "photo": live and done_ok and w.task_ok("photo.upload", task),
+        "correct": done_ok and w.task_ok("translation.correct", task),
+    }
+
+
+def photo_delete_ok(w: "permissions.Who | None", task: Task, a: Attachment) -> bool:
+    if w is None or task.status in TERMINAL:
         return False
-    if editable is None:  # 管理员
-        return True
-    # 班长：已完成的任务不能再改（包括重新打开），只有管理员能改
-    return task.status != "done" and task.team_id in editable
-
-
-def can_correct(task: Task, editable: set[int] | None) -> bool:
-    """校对译文：已移交 / 已废弃的也可以；已完成的只有管理员。"""
-    if editable is None:
-        return True
-    return task.status != "done" and task.team_id in editable
+    if task.status == "done" and not w.task_ok("task.edit_done", task):
+        return False
+    s = w.scope("photo.delete")
+    if s == "self":
+        return a.uploaded_by == w.user.id
+    return w.task_ok("photo.delete", task)
 
 
 def _aware(d: datetime) -> datetime:
@@ -129,7 +130,7 @@ class OutCtx:
     overdue_handovers: int
     now: datetime
     inspections: dict[int, str]  # 巡查项 id → 名称
-    editable: set[int] | None  # 当前用户能操作的班组（None = 全部）
+    who: "permissions.Who | None"  # 当前用户的权限
 
 
 def make_ctx(db: Session, tasks: list[Task], user: User | None = None) -> OutCtx:
@@ -142,7 +143,7 @@ def make_ctx(db: Session, tasks: list[Task], user: User | None = None) -> OutCtx
                                   .where(InspectionTemplate.id.in_(insp_ids))).all()) if insp_ids else {}
     return OutCtx(
         inspections=inspections,
-        editable=editable_team_ids(db, user) if user is not None else set(),
+        who=permissions.who(db, user) if user is not None else None,
         names=_names(db),
         ho_from={h.from_task_id: h for h in hos},
         ho_to={h.to_task_id: h for h in hos},
@@ -174,6 +175,7 @@ def _ho_info(h: TaskHandover | None, incoming: bool, names: dict[int, str]) -> H
 
 def task_out(task: Task, user: User, ctx: OutCtx) -> TaskOut:
     names = ctx.names
+    perms = task_perms(ctx.who, task)
     age = (ctx.now - _aware(task.chain_started_at)).total_seconds() / 3600
     overdue = task.status in OPEN and (age >= ctx.overdue_hours or task.handover_count >= ctx.overdue_handovers)
     return TaskOut(
@@ -197,9 +199,10 @@ def task_out(task: Task, user: User, ctx: OutCtx) -> TaskOut:
         recorded_at=task.recorded_at, created_at=task.created_at, updated_at=task.updated_at,
         lead=WorkerOut.model_validate(task.lead) if task.lead_worker_id and task.lead else None,
         workers=[WorkerOut.model_validate(w) for w in task.workers if w.id != task.lead_worker_id],
-        attachments=[_att_out(a, names) for a in task.attachments],
-        can_edit=_can_edit(task, ctx.editable),
-        can_correct=can_correct(task, ctx.editable),
+        attachments=[_att_out(a, names, photo_delete_ok(ctx.who, task, a)) for a in task.attachments],
+        can_edit=perms["edit"],
+        can_correct=perms["correct"],
+        perms=perms,
         chain_started_at=task.chain_started_at, handover_count=task.handover_count,
         age_hours=round(age, 1), overdue=overdue,
         handover_in=_ho_info(ctx.ho_to.get(task.id), True, names),
@@ -227,13 +230,49 @@ def _get_task(db: Session, task_id: int) -> Task:
     return task
 
 
-def _require_edit(db: Session, task: Task, user: User) -> None:
-    if task.status in TERMINAL:
+def _require(db: Session, task: Task, user: User, key: str = "edit") -> "permissions.Who":
+    """检查对这条任务能不能做 key（edit / status / handover / discard / photo / correct），不能就抛错。"""
+    if task.status in TERMINAL and key != "correct":
         raise HTTPException(status.HTTP_409_CONFLICT, f"task is {task.status}")
-    if not _can_edit(task, editable_team_ids(db, user)):
-        if task.status == "done":
+    w = permissions.who(db, user)
+    if not task_perms(w, task)[key]:
+        if task.status == "done" and not w.task_ok("task.edit_done", task):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "task is done; only admin can edit it")
         raise HTTPException(status.HTTP_403_FORBIDDEN, "not your team's task")
+    return w
+
+
+def _require_edit(db: Session, task: Task, user: User) -> None:  # 旧名字
+    _require(db, task, user, "edit")
+
+
+def _visible(w: "permissions.Who", task: Task) -> bool:
+    vis = w.visible_team_ids()
+    return vis is None or task.team_id in vis or w.task_ok("task.view", task) or (
+        w.worker_id is not None and (task.lead_worker_id == w.worker_id or any(x.id == w.worker_id for x in task.workers)))
+
+
+def assignable_ids(db: Session, sched, team_id: int, d, k: str) -> set[int]:
+    """这个班次（d, k）里可以分配的人：本班组和合并显示的班组当班在岗的人（按出勤，含调班、来支援的人）。"""
+    from .. import attendance_service as att
+
+    team = sched.team(team_id)
+    group = {t.id for t in sched.group_of(team, d, k)} if team else {team_id}
+    group.add(team_id)
+    workers = list(db.scalars(select(Worker).where(Worker.is_active.is_(True))))
+    eff = att.effective(db, workers, d, d, sched)
+    return {w.id for w in workers
+            if (a := eff[w.id][d]).status == "present" and a.shift_kind == k and a.team_id in group}
+
+
+def _check_assignable(db: Session, w: "permissions.Who", team_id: int, d, k: str, new_ids: set[int]) -> None:
+    """班长只能把任务分给同一班次在岗的人（管理员 / 范围是「全部班组」的不限）。"""
+    if not new_ids or w.scope("task.edit") == "all" and w.scope("task.create") == "all":
+        return
+    bad = new_ids - assignable_ids(db, load_schedule(db), team_id, d, k)
+    if bad:
+        names = ", ".join(n for (n,) in db.execute(select(Worker.name).where(Worker.id.in_(bad))).all())
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"{names} is not on duty in this shift")
 
 
 def _load_workers(db: Session, ids: list[int]) -> list[Worker]:
@@ -272,6 +311,33 @@ def _text_changes(prefix: str, task: Task, text: str | None, lang: str, retransl
     return changes, True
 
 
+class AssignableOut(BaseModel):
+    shift_date: date
+    shift_kind: str
+    restricted: bool  # True = 只能选 worker_ids 里的人（班长）；False = 谁都能选（管理员等）
+    worker_ids: list[int]
+
+
+@router.get("/assignable", response_model=AssignableOut)
+def assignable(team_id: int | None = None, task_id: int | None = None, db: Session = Depends(get_db),
+               user: User = Depends(get_current_user)):
+    """新建 / 编辑任务时可以分配的人：同一班次在岗的人（本班组 + 合并显示的班组 + 来支援的人）。"""
+    sched = load_schedule(db)
+    w = permissions.who(db, user)
+    if task_id:
+        task = _get_task(db, task_id)
+        team_id, d, k = task.team_id, task.shift_date, task.shift_kind
+    else:
+        team_id = team_id or user.team_id
+        team = sched.team(team_id)
+        if team is None:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "team not found")
+        d, k = sched.recording_slot(team, local_now())
+    restricted = not (w.scope("task.edit") == "all" and w.scope("task.create") == "all")
+    return AssignableOut(shift_date=d, shift_kind=k, restricted=restricted,
+                         worker_ids=sorted(assignable_ids(db, sched, team_id, d, k)))
+
+
 # ---------------- 任务 ----------------
 @router.get("/tasks", response_model=TaskPage)
 def list_tasks(
@@ -288,6 +354,11 @@ def list_tasks(
     user: User = Depends(get_current_user),
 ):
     query = select(Task)
+    w = permissions.who(db, user)
+    vis = w.visible_team_ids()
+    if vis is not None:  # 只能看本班组（和合并班组）的任务，外加自己参与的
+        mine = Task.workers.any(Worker.id == w.worker_id) if w.worker_id else False
+        query = query.where(or_(Task.team_id.in_(vis), mine) if w.worker_id else Task.team_id.in_(vis))
     if team_id:
         query = query.where(Task.team_id == team_id)
     if status_:
@@ -315,7 +386,9 @@ def list_tasks(
 
 @router.get("/tasks/{task_id}", response_model=TaskOut)
 def get_task(task_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    return one_out(db, _get_task(db, task_id), user)
+    task = _get_task(db, task_id)
+    permissions.require(_visible(permissions.who(db, user), task), "not your team's task")
+    return one_out(db, task, user)
 
 
 @router.post("/tasks", response_model=TaskOut, status_code=201)
@@ -332,10 +405,14 @@ def create_task(body: TaskCreate, db: Session = Depends(get_db),
             raise HTTPException(status.HTTP_409_CONFLICT, "client_id already used")
         return one_out(db, _get_task(db, existing.id), user)
 
-    if user.role == "admin":
-        if body.team_id is None or db.get(Team, body.team_id) is None:
+    w = permissions.who(db, user)
+    permissions.require(w.has("task.create"))
+    if body.team_id is not None and w.team_ok("task.create", body.team_id):
+        if db.get(Team, body.team_id) is None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "team_id required")
         team_id = body.team_id
+    elif user.role == "admin":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "team_id required")
     else:
         team_id = user.team_id
 
@@ -371,6 +448,7 @@ def create_task(body: TaskCreate, db: Session = Depends(get_db),
         task.leftover_source_lang = body.lang
     lead_id = body.lead_worker_id
     member_ids = [i for i in body.worker_ids if i != lead_id]
+    _check_assignable(db, w, team_id, shift_date, shift_kind, set(member_ids) | ({lead_id} if lead_id else set()))
     task.workers = _load_workers(db, member_ids + ([lead_id] if lead_id else []))
     task.lead_worker_id = lead_id
     db.add(task)
@@ -391,7 +469,7 @@ def create_task(body: TaskCreate, db: Session = Depends(get_db),
 def update_task(task_id: int, body: TaskUpdate, db: Session = Depends(get_db),
                 user: User = Depends(get_current_user)):
     task = _get_task(db, task_id)
-    _require_edit(db, task, user)
+    w = _require(db, task, user, "edit")
     data = body.model_dump(exclude_unset=True)
     lang = body.lang or user.lang
     changes: dict = {}
@@ -425,6 +503,8 @@ def update_task(task_id: int, body: TaskUpdate, db: Session = Depends(get_db),
         new_members = data["worker_ids"] if data.get("worker_ids") is not None else old_members
         new_members = [i for i in dict.fromkeys(new_members) if i != new_lead]
         new_workers = _load_workers(db, new_members + ([new_lead] if new_lead else []))
+        added = {x.id for x in new_workers} - {x.id for x in task.workers}
+        _check_assignable(db, w, task.team_id, task.shift_date, task.shift_kind, added)
         names = dict(db.execute(select(Worker.id, Worker.name)).all())
         if new_lead != old_lead:
             audit.log(db, user_id=user.id, action="update", entity="task", entity_id=task.id,
@@ -453,7 +533,7 @@ def update_task(task_id: int, body: TaskUpdate, db: Session = Depends(get_db),
 def change_status(task_id: int, body: TaskStatusChange, db: Session = Depends(get_db),
                   user: User = Depends(get_current_user)):
     task = _get_task(db, task_id)
-    _require_edit(db, task, user)
+    _require(db, task, user, "status")
     new = body.status
     if new == task.status:
         return one_out(db, task, user)
@@ -513,7 +593,7 @@ async def upload_attachment(
         return _att_out(existing, names)
 
     task = _get_task(db, task_id)
-    _require_edit(db, task, user)
+    _require(db, task, user, "photo")
     if len(task.attachments) >= s.max_photos_per_task:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "too many photos")
     data = await file.read(s.max_upload_mb * 1024 * 1024 + 1)
@@ -553,7 +633,7 @@ def delete_attachment(att_id: int, db: Session = Depends(get_db), user: User = D
     if a is None or a.deleted_at is not None:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
     task = _get_task(db, a.task_id)
-    _require_edit(db, task, user)
+    permissions.require(photo_delete_ok(permissions.who(db, user), task, a), "not your team's task")
     a.deleted_at = utcnow()
     a.deleted_by = user.id
     audit.log(db, user_id=user.id, action="detach", entity="task", entity_id=task.id,

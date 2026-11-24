@@ -10,7 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from .. import audit, inspection_service, translation_service
+from .. import audit, inspection_service, permissions, translation_service
 from ..db import get_db
 from ..inspection_schedule import Rule, assignment, upcoming
 from ..models import InspectionRun, InspectionTemplate, Team, User, Worker, utcnow
@@ -110,7 +110,15 @@ def _validate(db: Session, b: InspectionIn) -> dict:
 
 def _may_manage(user: User, assign: str, team_id: int | None) -> bool:
     """管理员：全部；班长：只能管固定派给本班组的巡查项。"""
-    return user.role == "admin" or (assign == "fixed" and team_id is not None and team_id == user.team_id)
+    from ..db import SessionLocal
+
+    if user.role == "admin":
+        return True
+    with SessionLocal() as db:
+        who = permissions.who(db, user)
+        if who.scope("inspection.manage") == "all":
+            return True
+        return assign == "fixed" and who.team_ok("inspection.manage", team_id)
 
 
 def _require_manage(user: User, assign: str, team_id: int | None) -> None:

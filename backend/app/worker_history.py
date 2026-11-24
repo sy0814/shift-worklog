@@ -123,6 +123,19 @@ def sync_worker(db: Session, worker: Worker, today: date) -> None:
     team = Timelines(db, [worker]).on(worker.id, today).team_id
     if worker.team_id != team:
         worker.team_id = team
+    sync_account(db, worker)
+
+
+def sync_account(db: Session, worker: Worker) -> None:
+    """名册里的名字、班组、在职状态同步到他的登录账号（账号的这些信息以名册为准）。"""
+    from .models import User
+
+    u = db.scalar(select(User).where(User.worker_id == worker.id))
+    if u is None:
+        return
+    u.full_name, u.team_id = worker.name, worker.team_id
+    if not worker.is_active:
+        u.is_active = False
 
 
 def sync_current(db: Session, today: date) -> int:
@@ -136,6 +149,7 @@ def sync_current(db: Session, today: date) -> int:
             audit.log(db, user_id=None, action="schedule", entity="worker", entity_id=w.id, field="team_id",
                       old=w.team_id, new=team, extra={"auto": True, "day": str(today)})
             w.team_id = team
+            sync_account(db, w)
             n += 1
     if n:
         db.commit()

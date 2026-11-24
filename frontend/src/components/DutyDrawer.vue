@@ -14,13 +14,19 @@ import dayjs from 'dayjs'
 const props = defineProps({ which: { type: String, default: 'current' } })
 const visible = defineModel({ type: Boolean })
 const emit = defineEmits(['add', 'open-task', 'loaded'])
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const auth = useAuth()
 const data = ref(null)
 const loading = ref(false)
 const picked = ref([])
 
+// 角色名（上面一块的标题和每人的角色标签用）
+const roles = ref([])
+const roleName = (id) => { const r = roles.value.find((x) => x.id === id); return r ? r[`name_${locale.value}`] : '' }
+const topTitle = computed(() => roles.value.filter((r) => r.show_on_top).map((r) => r[`name_${locale.value}`]).join(' / '))
+
 async function load() {
+  if (!roles.value.length) api.get('/roles', { silent: true }).then((r) => { roles.value = r.data }).catch(() => {})
   loading.value = true
   try {
     data.value = (await api.get('/duty', { params: { which: props.which } })).data
@@ -70,9 +76,33 @@ function addTask() {
           <el-tag v-if="data.counts.absent" type="info">{{ t('duty.absent', { n: data.counts.absent }) }}</el-tag>
         </div>
         <div v-if="data.can_add" class="muted small">{{ t('duty.select') }}</div>
-        <div v-if="!data.teams.some((x) => x.workers.length)" class="muted">{{ t('duty.none') }}</div>
+        <div v-if="!data.teams.some((x) => x.workers.length) && !data.top.length" class="muted">{{ t('duty.none') }}</div>
 
-        <section v-for="team in data.teams" :key="team.team_id" class="team">
+        <!-- 上面一块：班长、副班长等「首页单独显示」的角色 -->
+        <section v-if="data.top.length" class="team top">
+          <h4>{{ topTitle }} <el-tag size="small" round>{{ data.top.length }}</el-tag></h4>
+          <div v-for="r in data.top" :key="r.worker.id" :class="['person', `s-${r.status}`]">
+            <el-checkbox v-if="canPick(r)" :model-value="picked.includes(r.worker.id)" @change="(v) => toggle(r.worker.id, v)" />
+            <span v-else class="nocheck" />
+            <WorkerAvatar :worker="r.worker" :size="40" />
+            <div class="info">
+              <div class="name">
+                <b>{{ r.worker.name }}</b>
+                <el-tag size="small" type="primary" effect="plain">{{ roleName(r.role_id) }}</el-tag>
+                <el-tag size="small" effect="plain" type="info">{{ teamName(r.team_id) }}</el-tag>
+                <el-tag :type="ST_TYPE[r.status]" size="small" effect="dark">{{ t('duty.st.' + r.status) }}</el-tag>
+                <el-tag v-if="r.overtime_until" size="small" type="warning" effect="plain">⏱ {{ t(r.overtime_prev ? 'ot.prevTag' : 'ot.untilTag', { t: hm(r.overtime_until) }) }}</el-tag>
+              </div>
+              <div v-for="task in r.tasks" :key="task.id" class="task" @click="emit('open-task', task.id)">
+                <span :class="['dot', task.status]" />
+                <span v-if="task.is_lead" class="lead">★</span>
+                <span class="tt">{{ localText(task.content, task.source_lang).text }}</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section v-for="team in data.teams.filter((x) => x.workers.length)" :key="team.team_id" class="team">
           <h4>{{ teamName(team.team_id) }} <el-tag size="small" round>{{ team.workers.filter((w) => w.status === 'busy' || w.status === 'idle').length }}</el-tag></h4>
           <div v-for="r in team.workers" :key="r.worker.id" :class="['person', `s-${r.status}`]">
             <el-checkbox v-if="canPick(r)" :model-value="picked.includes(r.worker.id)" @change="(v) => toggle(r.worker.id, v)" />
@@ -111,6 +141,7 @@ function addTask() {
 .counts { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
 .muted { color: #909399; }
 .small { font-size: 12px; margin-bottom: 8px; }
+.team.top { background: #f5f9ff; border-radius: 8px; padding: 2px 10px 6px; }
 .team h4 { margin: 14px 0 6px; display: flex; gap: 6px; align-items: center; }
 .person { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; border-bottom: 1px solid #f2f3f5; }
 .person.s-leave, .person.s-sick, .person.s-absent, .person.s-off { opacity: .6; }

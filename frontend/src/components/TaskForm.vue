@@ -58,7 +58,19 @@ async function init() {
     })
   }
   workers.value = await loadWorkers()
+  loadAssignable()
 }
+
+// 能分配的人：同一班次在岗的人（班长只能选这些；管理员不限，但「本班在岗」排在最前）
+const assignable = ref(null) // { shift_date, shift_kind, restricted, worker_ids }
+async function loadAssignable() {
+  assignable.value = null
+  try {
+    const params = props.task ? { task_id: props.task.id } : { team_id: form.team_id }
+    assignable.value = (await api.get('/assignable', { params, silent: true })).data
+  } catch { /* 断网时不限制（服务器会再检查） */ }
+}
+watch(() => form.team_id, (v, old) => { if (visible.value && !props.task && old !== undefined && v !== old) loadAssignable() })
 
 async function loadWorkers() {
   try {
@@ -86,9 +98,24 @@ const workerGroups = computed(() => {
       groups.get(w.team_id).push(w)
     }
   }
-  return [...groups.entries()]
-    .sort(([a], [b]) => (a === myTeam ? -1 : b === myTeam ? 1 : (a ?? 999) - (b ?? 999)))
-    .map(([tid, list]) => ({ label: tid ? localName(auth.teamById(tid)) : t('workers.noTeam'), list }))
+  const ok = assignable.value ? new Set(assignable.value.worker_ids) : null
+  const keep = new Set([...(props.task?.workers || []), ...(props.task?.lead ? [props.task.lead] : [])].map((w) => w.id))
+  const out = []
+  if (ok) { // 最前面一组：这个班次在岗的人（含合并班组、来支援的）
+    const onDuty = workers.value.filter((w) => ok.has(w.id))
+    if (onDuty.length) out.push({ label: t('assign.onDuty'), list: onDuty })
+  }
+  if (!assignable.value?.restricted) {
+    out.push(...[...groups.entries()]
+      .sort(([a], [b]) => (a === myTeam ? -1 : b === myTeam ? 1 : (a ?? 999) - (b ?? 999)))
+      .map(([tid, list]) => ({ label: tid ? localName(auth.teamById(tid)) : t('workers.noTeam'), list: list.filter((w) => !ok?.has(w.id)) }))
+      .filter((g) => g.list.length))
+  } else {
+    // 只能选在岗的人；编辑时已经在任务里的人保留显示
+    const kept = workers.value.filter((w) => keep.has(w.id) && !ok.has(w.id))
+    if (kept.length) out.push({ label: t('assign.current'), list: kept })
+  }
+  return out
 })
 
 // 选了带队人，就把他从参与人员里去掉（带队人本身就算参与）
@@ -186,6 +213,9 @@ async function saveEdit() {
         <el-input v-model="form.content" type="textarea" :autosize="{ minRows: 3, maxRows: 10 }"
                   :placeholder="t('task.contentPh')" maxlength="5000" />
       </el-form-item>
+      <div v-if="assignable?.restricted" class="muted small hint">
+        {{ t('assign.hint', { d: assignable.shift_date.slice(5), s: t('shift.' + assignable.shift_kind) }) }}
+      </div>
       <el-form-item :label="t('lead.title')">
         <el-select v-model="form.lead_worker_id" filterable clearable :placeholder="t('lead.pick')" style="width: 100%">
           <el-option-group v-for="g in workerGroups" :key="g.label" :label="g.label">
@@ -229,6 +259,9 @@ async function saveEdit() {
 </template>
 
 <style scoped>
+.hint { margin: -6px 0 8px; }
+.muted { color: #909399; }
+.small { font-size: 12px; }
 .two { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
 @media (max-width: 480px) { .two { grid-template-columns: 1fr; } }
 </style>

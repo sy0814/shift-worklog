@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .. import audit
+from .. import audit, permissions
 from ..db import get_db
 from ..db import Base
 from ..models import Holiday, ShiftConfig, Team, TeamShiftOverride, User, utcnow
@@ -154,14 +154,15 @@ def set_team_shift(body: TeamShiftIn, db: Session = Depends(get_db), admin: User
     team = db.get(Team, body.team_id)
     if team is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "team not found")
-    _require_team(admin, team.id)
+    _require_team(db, admin, team.id)
     _apply_team_shift(db, team.id, _range(body.start, body.end), lambda _d: body.shift_kind, body.note, admin.id)
     db.commit()
     return list_team_shifts(body.start, body.end, db, admin)
 
 
-def _require_team(user: User, *team_ids: int) -> None:
-    if user.role != "admin" and user.team_id not in team_ids:
+def _require_team(db: Session, user: User, *team_ids: int) -> None:
+    who = permissions.who(db, user)
+    if not any(who.team_ok("schedule.team_shift", t) for t in team_ids):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "not your team")
 
 
@@ -204,7 +205,7 @@ def swap_team_shifts(body: TeamSwapIn, db: Session = Depends(get_db), user: User
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "need two different teams")
     if db.get(Team, body.team_a) is None or db.get(Team, body.team_b) is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "team not found")
-    _require_team(user, body.team_a, body.team_b)
+    _require_team(db, user, body.team_a, body.team_b)
     days = _range(body.start, body.end)
     sched = load_schedule(db)
     a = next(t for t in sched.teams if t.id == body.team_a)
@@ -221,7 +222,7 @@ def swap_team_shifts(body: TeamSwapIn, db: Session = Depends(get_db), user: User
 def clear_team_shift(team_id: int, start: date, end: date, db: Session = Depends(get_db),
                      admin: User = Depends(get_current_user)):
     """恢复按排班。"""
-    _require_team(admin, team_id)
+    _require_team(db, admin, team_id)
     sched = load_schedule(db)
     info = next((t for t in sched.teams if t.id == team_id), None)
     if info is None:

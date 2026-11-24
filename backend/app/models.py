@@ -48,19 +48,43 @@ class Team(Base):
     active_to: Mapped[date | None] = mapped_column(Date, nullable=True)
 
 
+class Role(Base):
+    """角色（班长、副班长、成员……）：能做什么（权限表）、怎么登录、首页是否单独显示。管理员在「角色权限」页维护。"""
+
+    __tablename__ = "roles"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    code: Mapped[str] = mapped_column(String(20), unique=True)  # leader / deputy / member / r<n>
+    name_zh: Mapped[str] = mapped_column(String(50))
+    name_sr: Mapped[str] = mapped_column(String(50))
+    name_en: Mapped[str] = mapped_column(String(50))
+    # {权限: 范围}，范围 none / self / team / all，见 permissions.PERMS
+    permissions: Mapped[dict] = mapped_column(JSON, default=dict)
+    login_mode: Mapped[str] = mapped_column(String(10), default="pin")  # password（个人账号）/ pin（班组公共账号 + 个人密码）
+    show_on_top: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())  # 首页人员状态里单独列在上面
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    is_builtin: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+
+
 class User(Base):
+    """登录账号。管理员是系统账号（不在名册里）；其他账号都关联名册里的一个人（worker_id），
+    姓名、班组、角色以名册为准（full_name、team_id 跟着名册同步，方便查询）。"""
+
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     username: Mapped[str] = mapped_column(String(50), unique=True, index=True)
-    password_hash: Mapped[str] = mapped_column(String(100))
+    password_hash: Mapped[str] = mapped_column(String(100))  # 个人账号的密码，或班组公共账号里这个人的个人密码
     full_name: Mapped[str] = mapped_column(String(100))
-    # admin（管理员）/ leader（班长）；以后如给员工开账号，加 member
-    role: Mapped[str] = mapped_column(String(10))
+    role: Mapped[str] = mapped_column(String(10))  # admin（系统管理员）/ staff（名册里的人，权限看角色）
     team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"), nullable=True)
+    worker_id: Mapped[int | None] = mapped_column(ForeignKey("workers.id"), nullable=True, unique=True)
     lang: Mapped[str] = mapped_column(String(5), default="zh")  # zh / sr / en
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    failed_logins: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     team: Mapped[Team | None] = relationship()
 
@@ -146,6 +170,7 @@ class Worker(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     avatar_path: Mapped[str | None] = mapped_column(String(255), nullable=True)  # 头像（上传目录下的相对路径）
     extra: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")  # 自定义列的值 {列 id: 文字}
+    role_id: Mapped[int | None] = mapped_column(ForeignKey("roles.id"), nullable=True)  # 空 = 成员
 
 
 class WorkerSchedule(Base):

@@ -22,7 +22,7 @@ async function load() {
   loading.value = true
   try {
     board.value = (await api.get('/board', { params: { team_id: teamId.value || undefined } })).data
-    const openIds = new Set(openTasks.value.filter((x) => x.can_edit).map((x) => x.id))
+    const openIds = new Set(openTasks.value.filter((x) => x.perms?.handover).map((x) => x.id))
     selected.value = selected.value.filter((id) => openIds.has(id))
     watchTranslations([...board.value.received, ...board.value.todo, ...board.value.done_recent])
   } finally {
@@ -50,7 +50,7 @@ function watchTranslations(list) {
 onUnmounted(() => clearTimeout(trTimer))
 
 const openTasks = computed(() => (board.value ? [...board.value.received, ...board.value.todo] : []))
-const selectable = computed(() => openTasks.value.filter((x) => x.can_edit))
+const selectable = computed(() => openTasks.value.filter((x) => x.perms?.handover))
 const allSelected = computed(() => selectable.value.length > 0 && selected.value.length === selectable.value.length)
 function toggleAll(v) {
   selected.value = v ? selectable.value.map((x) => x.id) : []
@@ -112,7 +112,7 @@ const sections = computed(() => board.value && [
         <h3 class="sec">{{ sec.title }} <el-tag size="small" round>{{ sec.list.length }}</el-tag></h3>
         <div class="list">
           <div v-for="task in sec.list" :key="task.id" class="row">
-            <el-checkbox v-if="sec.selectable && task.can_edit" :model-value="selected.includes(task.id)" class="pick"
+            <el-checkbox v-if="sec.selectable && task.perms?.handover" :model-value="selected.includes(task.id)" class="pick"
                          @change="(v) => toggle(task.id, v)" />
             <TaskCard :task="task" class="grow" @click="open(task)" />
           </div>

@@ -26,11 +26,14 @@ def code_of(teams):
 
 @pytest.fixture(scope="module")
 def pair(teams, code_of):
-    """今天常白班的搭班班组（今天是周末/节假日则为 None）。"""
+    """常白班当前（或下一个）班次合并的主班组。"""
     with SessionLocal() as db:
         sched = load_schedule(db)
         day = sched.team(teams["DAY"])
-        p = sched.paired_teams(day, local_now().date())
+        # 首页交接班显示常白班当前在上的班；下班后显示它的下一个班
+        d, k = sched.shift_at(local_now())
+        sd, sk = (d, k) if sched.is_on(day, d, k) else sched.next_shift_of_team(day, d, k)
+        p = sched.paired_teams(day, sd, sk)
     return code_of[p[0].id] if p else None
 
 

@@ -13,7 +13,8 @@ const routes = [
       { path: 'attendance', name: 'attendance', component: () => import('./views/Attendance.vue') },
       { path: 'schedule', name: 'schedule', component: () => import('./views/Schedule.vue') },
       { path: 'users', name: 'users', component: () => import('./views/Users.vue'), meta: { admin: true } },
-      { path: 'workers', name: 'workers', component: () => import('./views/Workers.vue'), meta: { admin: true } },
+      { path: 'workers', name: 'workers', component: () => import('./views/Workers.vue'), meta: { perm: 'worker.pin' } },
+      { path: 'roles', name: 'roles', component: () => import('./views/Roles.vue'), meta: { admin: true } },
       { path: 'glossary', name: 'glossary', component: () => import('./views/Glossary.vue'), meta: { admin: true } },
       { path: 'inspections', name: 'inspections', component: () => import('./views/Inspections.vue') },
       { path: 'analysis', name: 'analysis', component: () => import('./views/Analysis.vue'), meta: { admin: true } },
@@ -31,6 +32,7 @@ router.beforeEach(async (to) => {
   const auth = useAuth()
   if (!(await auth.restore())) return { name: 'login', query: { next: to.fullPath } }
   if (to.meta.admin && !auth.isAdmin) return { name: 'home' }
+  if (to.meta.perm && !auth.can(to.meta.perm)) return { name: 'home' }
   return true
 })
 

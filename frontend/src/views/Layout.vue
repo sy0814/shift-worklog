@@ -30,11 +30,12 @@ const main = computed(() => [
   { name: 'tasks', label: t('nav2.tasks'), icon: Document },
   { name: 'attendance', label: t('att.title'), icon: Calendar },
   { name: 'schedule', label: t('nav.schedule'), icon: Clock },
-  ...(auth.isAdmin ? [] : [{ name: 'inspections', label: t('insp.title') }]), // 管理员的在「管理」里
+  ...(!auth.isAdmin && auth.can('inspection.manage') ? [{ name: 'inspections', label: t('insp.title') }] : []), // 管理员的在「管理」里
+  ...(!auth.isAdmin && auth.can('worker.pin') ? [{ name: 'workers', label: t('nav2.workers') }] : []), // 班长：给成员重设个人密码
 ])
 const admin = computed(() => auth.isAdmin ? [
   { name: 'workers', label: t('nav2.workers') }, { name: 'glossary', label: t('nav2.glossary') },
-  { name: 'inspections', label: t('insp.title') }, { name: 'analysis', label: t('ai.title') }, { name: 'users', label: t('nav.users') }, { name: 'audit', label: t('nav.audit') }, { name: 'settings', label: t('sys.title') },
+  { name: 'inspections', label: t('insp.title') }, { name: 'analysis', label: t('ai.title') }, { name: 'roles', label: t('rp.title') }, { name: 'users', label: t('nav.users') }, { name: 'audit', label: t('nav.audit') }, { name: 'settings', label: t('sys.title') },
 ] : [])
 const tabs = computed(() => main.value.slice(0, 4)) // 手机底部标签栏
 const adminActive = computed(() => admin.value.some((m) => m.name === route.name))
@@ -47,6 +48,20 @@ function logout() {
   auth.logout()
   router.push({ name: 'login' })
 }
+// 班组账号（共用手机）：30 分钟没操作自动退出，下一个人点自己的头像登录
+const teamLogin = computed(() => auth.user?.role_info?.login_mode === 'pin')
+let lastActive = Date.now()
+const touch = () => { lastActive = Date.now() }
+let idleTimer
+onMounted(() => {
+  ;['pointerdown', 'keydown'].forEach((ev) => window.addEventListener(ev, touch, { passive: true }))
+  idleTimer = setInterval(() => { if (teamLogin.value && Date.now() - lastActive > 30 * 60 * 1000) logout() }, 60 * 1000)
+})
+onUnmounted(() => {
+  ;['pointerdown', 'keydown'].forEach((ev) => window.removeEventListener(ev, touch))
+  clearInterval(idleTimer)
+})
+const roleName = computed(() => auth.roleName(locale.value))
 
 const pwDialog = ref(false)
 const pw = reactive({ old_password: '', new_password: '' })
@@ -80,12 +95,13 @@ async function changePassword() {
           <el-dropdown trigger="click">
             <span class="user">
               {{ auth.user?.full_name }}
-              <small v-if="auth.myTeam">· {{ localName(auth.myTeam) }}</small>
+              <small v-if="auth.myTeam">· {{ localName(auth.myTeam) }}<template v-if="roleName"> · {{ roleName }}</template></small>
             </span>
             <template #dropdown>
               <el-dropdown-menu>
                 <el-dropdown-item @click="pwDialog = true">{{ t('nav.password') }}</el-dropdown-item>
-                <el-dropdown-item divided @click="logout">{{ t('nav.logout') }}</el-dropdown-item>
+                <el-dropdown-item v-if="teamLogin" divided @click="logout">{{ t('users.switchUser') }}</el-dropdown-item>
+                <el-dropdown-item :divided="!teamLogin" @click="logout">{{ t('nav.logout') }}</el-dropdown-item>
               </el-dropdown-menu>
             </template>
           </el-dropdown>
@@ -116,7 +132,7 @@ async function changePassword() {
       <div class="drawer">
         <div class="who">
           <b>{{ auth.user?.full_name }}</b>
-          <span v-if="auth.myTeam" class="muted">{{ localName(auth.myTeam) }}</span>
+          <span v-if="auth.myTeam" class="muted">{{ localName(auth.myTeam) }}<template v-if="roleName"> · {{ roleName }}</template></span>
         </div>
         <div class="langs">
           <el-radio-group :model-value="locale" size="small" @change="auth.changeLang">
@@ -128,6 +144,7 @@ async function changePassword() {
         </div>
         <div class="links">
           <a class="dlink" @click="pwDialog = true; drawer = false">{{ t('nav.password') }}</a>
+          <a v-if="teamLogin" class="dlink" @click="logout">{{ t('users.switchUser') }}</a>
           <a class="dlink danger" @click="logout">{{ t('nav.logout') }}</a>
         </div>
       </div>
@@ -140,7 +157,7 @@ async function changePassword() {
       </el-form>
       <template #footer>
         <el-button @click="pwDialog = false">{{ t('common.cancel') }}</el-button>
-        <el-button type="primary" :disabled="pw.new_password.length < 6" @click="changePassword">{{ t('common.save') }}</el-button>
+        <el-button type="primary" :disabled="pw.new_password.length < (teamLogin ? 4 : 6)" @click="changePassword">{{ t('common.save') }}</el-button>
       </template>
     </el-dialog>
   </div>

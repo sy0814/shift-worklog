@@ -214,17 +214,17 @@ function histText(h) {
         <el-button v-if="task.translation_status !== 'done' && task.can_correct" link type="primary" size="small" :loading="retranslating" @click="retranslate">{{ t('tr.retry') }}</el-button>
       </div>
 
-      <div v-if="task.status === 'done' && !task.can_edit && !auth.isAdmin" class="muted small mt">🔒 {{ t('task.doneLocked') }}</div>
-      <div v-if="task.can_edit" class="actions">
+      <div v-if="task.status === 'done' && !task.perms?.edit && !task.perms?.status" class="muted small mt">🔒 {{ t('task.doneLocked') }}</div>
+      <div v-if="task.perms?.status || task.perms?.edit || task.perms?.handover || task.perms?.discard" class="actions">
+        <template v-if="task.perms?.status">
         <el-button v-if="task.status === 'not_started'" type="warning" :loading="busy" @click="setStatus('in_progress')">{{ t('task.start_action') }}</el-button>
         <el-button v-if="['not_started', 'in_progress'].includes(task.status)" type="success" :loading="busy" @click="setStatus('done')">{{ t('task.done_action') }}</el-button>
         <el-button v-if="task.status === 'in_progress'" :loading="busy" @click="setStatus('not_started')">{{ t('task.undo_start') }}</el-button>
         <el-button v-if="task.status === 'done'" :loading="busy" @click="setStatus('in_progress')">{{ t('task.reopen') }}</el-button>
-        <el-button @click="editOpen = true">{{ t('common.edit') }}</el-button>
-        <template v-if="['not_started', 'in_progress'].includes(task.status)">
-          <el-button type="primary" plain @click="hoOpen = true">{{ t('ho.handover') }}</el-button>
-          <el-button type="danger" plain @click="discard">{{ t('ho.discard') }}</el-button>
         </template>
+        <el-button v-if="task.perms?.edit" @click="editOpen = true">{{ t('common.edit') }}</el-button>
+        <el-button v-if="task.perms?.handover" type="primary" plain @click="hoOpen = true">{{ t('ho.handover') }}</el-button>
+        <el-button v-if="task.perms?.discard" type="danger" plain @click="discard">{{ t('ho.discard') }}</el-button>
       </div>
 
       <el-descriptions :column="1" border size="small" class="meta">
@@ -247,8 +247,8 @@ function histText(h) {
       </el-descriptions>
 
       <h4>{{ t('photo.title') }} ({{ task.attachments.length }})</h4>
-      <TaskPhotos :photos="task.attachments" :can-delete="task.can_edit" @delete="deletePhoto" />
-      <PhotoPicker v-if="task.can_edit" class="mt" @pick="addPhotos" />
+      <TaskPhotos :photos="task.attachments" :can-delete="(p) => p.can_delete" @delete="deletePhoto" />
+      <PhotoPicker v-if="task.perms?.photo" class="mt" @pick="addPhotos" />
 
       <el-collapse class="mt" @change="(v) => (showHistory = v.includes('h'))">
         <el-collapse-item :title="t('task.history')" name="h">

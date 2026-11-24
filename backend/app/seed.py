@@ -1,4 +1,4 @@
-"""首次启动时写入初始数据：5 个班组、排班基准、管理员和班长账号。"""
+"""首次启动时写入初始数据：5 个班组、班次时间、内置角色、管理员和班长账号（班长同时建名册记录）。"""
 
 import csv
 from datetime import date, time, timedelta
@@ -9,7 +9,9 @@ from sqlalchemy.orm import Session
 
 from . import audit
 from .config import get_settings
-from .models import AppSetting, ShiftConfig, Team, User
+from . import worker_history
+from .models import AppSetting, Role, ShiftConfig, Team, User, Worker
+from .permissions import ensure_builtin_roles
 from .security import hash_password
 from .shifts import CYCLE, WEEKDAYS
 
@@ -61,9 +63,16 @@ def seed(db: Session) -> None:
 
     db.add(User(username=s.admin_username, password_hash=hash_password(s.admin_password),
                 full_name="管理员", role="admin", lang="zh"))
+    ensure_builtin_roles(db)
+    leader = db.scalar(select(Role).where(Role.code == "leader"))
     for username, code in LEADERS:
-        db.add(User(username=username, password_hash=hash_password(username),
-                    full_name=username, role="leader", team_id=teams[code].id, lang="zh"))
+        # 班长也是名册里的人：先建名册记录（角色 = 班长），账号关联到它
+        w = Worker(name=username, team_id=teams[code].id, role_id=leader.id)
+        db.add(w)
+        db.flush()
+        worker_history.ensure_baseline(db, w, w.team_id)
+        db.add(User(username=username, password_hash=hash_password(username), full_name=username, role="staff",
+                    team_id=teams[code].id, worker_id=w.id, lang="zh"))
     db.flush()
     audit.log(db, user_id=None, action="seed", entity="system", entity_id="init")
     db.commit()

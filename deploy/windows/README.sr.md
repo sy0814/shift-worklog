@@ -221,7 +221,10 @@ Jezik se menja gore desno (中文 / Srpski / English).
 
 Posle prijave otvorite meni **Upravljanje** gore i uradite redom:
 
-1. **Nalozi:** nalozi šefova smena već postoje (`t1_leader1`–`t4_leader1`, `day_leader1`–`day_leader3`). **Njihova početna lozinka je ista kao korisničko ime, što nije bezbedno.** Za svaki nalog kliknite „Resetuj lozinku”, postavite novu lozinku i javite je šefu smene. Ovde možete i dodavati ili isključivati naloge i menjati imena.
+1. **Nalozi:** nalozi šefova smena već postoje (`t1_leader1`–`t4_leader1`, `day_leader1`–`day_leader3`). **Njihova početna lozinka je ista kao korisničko ime, što nije bezbedno.**
+   - U „Upravljanje → Nalozi” za svaki nalog kliknite „Resetuj lozinku”, postavite novu lozinku i javite je šefu smene.
+   - Svaki nalog šefa pripada jednoj osobi u „Spisku radnika” (u početku se zove kao nalog, npr. „t1_leader1”): u spisku promenite ime u pravo ime šefa; ako ta osoba već postoji u spisku, na stranici „Nalozi” kliknite „Poveži drugačije”, pa isključite višak u spisku.
+   - Naloge za ostale otvarate u spisku radnika preko „Nalog”: šefovi i zamenici dobijaju korisničko ime + lozinku; članovi koriste „Nalog ekipe” (prijava: ekipa → svoja slika → lična lozinka). Šta koja uloga sme podešava se u „Upravljanje → Uloge i prava”.
 2. **Radnici:** kliknite „Dodaj više”, izaberite ekipu, nalepite jedno ime po redu i sačuvajte. Uradite to za svaku ekipu.
 3. **Raspored** (gornji meni): u „Kalendaru smena” proverite da današnje smene odgovaraju stvarnosti. Ako ne odgovaraju, u „Ekipe” izmenite ciklus te ekipe (dužina ciklusa, smena za svaki dan, prvi dan ciklusa; samo administrator). Državne praznike unesite u „Praznici / radne subote”.
 4. **Podešavanja:**

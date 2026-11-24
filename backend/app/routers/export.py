@@ -17,7 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from .. import attendance_service as att
-from .. import audit, overtime_service
+from .. import audit, overtime_service, permissions
 from ..config import get_settings
 from ..db import get_db
 from ..models import Task, TaskHandover, Team, User, Worker
@@ -241,11 +241,13 @@ def export_tasks(
 ):
     if end < start or (end - start).days > 366:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "range must be 0..366 days")
-    if user.role != "admin":
-        # 班长只能导出本班组
-        if team_id not in (None, user.team_id):
+    who = permissions.who(db, user)
+    scope = who.scope("export")
+    permissions.require(scope != "none")
+    if scope != "all":  # 只能导出本班组（含合并显示的班组）
+        if team_id is not None and not who.team_ok("export", team_id):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "own team only")
-        team_id = user.team_id
+        team_id = team_id or user.team_id
     wb = build_workbook(db, start, end, team_id, worker_id, lang)
     audit.log(db, user_id=user.id, action="export", entity="export", entity_id="tasks",
               new={"start": start, "end": end, "team_id": team_id, "worker_id": worker_id, "lang": lang})

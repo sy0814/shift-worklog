@@ -7,6 +7,18 @@ export const useAuth = defineStore('auth', {
   state: () => ({ user: null, teams: [] }),
   getters: {
     isAdmin: (s) => s.user?.role === 'admin',
+    // 角色权限：scope('task.edit') → none / self / team / all；can('export') → 有没有（不是 none）
+    scope: (s) => (perm) => (s.user?.role === 'admin' ? 'all' : s.user?.perms?.[perm] || 'none'),
+    can: (s) => (perm) => s.user?.role === 'admin' || (s.user?.perms?.[perm] || 'none') !== 'none',
+    // 本班组 + 当天合并显示的班组
+    inGroup: (s) => (teamId) => s.user?.role === 'admin' || (s.user?.group_team_ids || []).includes(teamId),
+    // 能不能对这个班组做某事（不涉及「自己」的权限）
+    teamOk: (s) => (perm, teamId) => {
+      if (s.user?.role === 'admin') return true
+      const sc = s.user?.perms?.[perm] || 'none'
+      return sc === 'all' || (sc === 'team' && (s.user?.group_team_ids || []).includes(teamId))
+    },
+    roleName: (s) => (lang) => (s.user?.role === 'admin' ? null : s.user?.role_info?.[`name_${lang}`]),
     myTeam: (s) => s.teams.find((t) => t.id === s.user?.team_id) || null,
     teamById: (s) => (id) => s.teams.find((t) => t.id === id),
   },
@@ -18,6 +30,17 @@ export const useAuth = defineStore('auth', {
       this.user = data.user
       setLang(data.user.lang)
       await this.loadTeams()
+    },
+    // 班组公共账号：点自己的头像 + 个人密码
+    async pinLogin(userId, pin) {
+      const { data } = await api.post('/auth/pin', { user_id: userId, pin })
+      localStorage.setItem('token', data.access_token)
+      this.user = data.user
+      setLang(data.user.lang)
+      await this.loadTeams()
+    },
+    async refreshMe() {
+      this.user = (await api.get('/auth/me')).data
     },
     async restore() {
       if (this.user || !localStorage.getItem('token')) return !!this.user

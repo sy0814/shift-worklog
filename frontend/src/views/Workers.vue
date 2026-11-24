@@ -9,6 +9,7 @@ import { localName } from '../i18n'
 import { useAuth } from '../stores/auth'
 import WorkerAvatar from '../components/WorkerAvatar.vue'
 import WorkerScheduleDialog from '../components/WorkerScheduleDialog.vue'
+import AccountDialog from '../components/AccountDialog.vue'
 
 const { t, locale } = useI18n()
 const auth = useAuth()
@@ -30,7 +31,24 @@ onMounted(load)
 const timer = setInterval(() => { if (!editing.key && !draft.value) load() }, 30000)
 onUnmounted(() => clearInterval(timer))
 
-const shown = computed(() => rows.value.filter((w) => !teamFilter.value || w.team_id === teamFilter.value))
+// 班长（有「重设成员个人密码」权限）也能进来：只读，只看本班组，只能给班组账号的成员重设个人密码
+const readonly = computed(() => !auth.isAdmin)
+const shown = computed(() => rows.value.filter((w) => (!teamFilter.value || w.team_id === teamFilter.value)
+  && (!readonly.value || auth.inGroup(w.team_id))))
+// 角色
+const roles = ref([])
+api.get('/roles').then((r) => { roles.value = r.data }).catch(() => {})
+const memberRole = computed(() => roles.value.find((r) => r.code === 'member'))
+const roleOf = (w) => roles.value.find((r) => r.id === (w.role_id ?? memberRole.value?.id))
+const roleLabel = (w) => { const r = roleOf(w); return r ? r[`name_${locale.value}`] : '' }
+const canAccount = (w) => auth.isAdmin || (roleOf(w)?.login_mode === 'pin' && auth.teamOk('worker.pin', w.team_id))
+const accOpen = ref(false)
+const accWorker = ref(null)
+function openAccount(w) { accWorker.value = w; accOpen.value = true }
+async function setRole(w, roleId) {
+  Object.assign(w, (await api.patch(`/workers/${w.id}`, { role_id: roleId })).data)
+  flash(w.id, 'role_id')
+}
 const teamName = (id) => (id ? localName(auth.teamById(id)) : t('workers.noTeam'))
 
 // ---------------- 逐格编辑 ----------------
@@ -39,6 +57,7 @@ const editing = reactive({ id: null, key: null, value: null })
 const isEditing = (w, key) => editing.id === w.id && editing.key === key
 const valueOf = (w, key) => (key.startsWith('x') ? w.extra?.[key.slice(1)] ?? '' : w[key])
 async function startEdit(w, key) {
+  if (readonly.value) return
   if (isEditing(w, key)) return
   await commit()
   Object.assign(editing, { id: w.id, key, value: valueOf(w, key) ?? '' })
@@ -192,14 +211,16 @@ async function saveBulk() {
         <el-option v-for="tm in auth.teams" :key="tm.id" :label="localName(tm)" :value="tm.id" />
       </el-select>
       <el-checkbox v-model="showInactive" @change="load">{{ t('workers.showInactive') }}</el-checkbox>
-      <el-button @click="download('/workers/export.xlsx', { lang: locale }, 'workers.xlsx')">{{ t('workers.export') }}</el-button>
-      <el-tooltip :content="t('workers.importHint')" placement="bottom" :show-after="300">
-        <el-button @click="fileInput.click()">{{ t('workers.import') }}</el-button>
-      </el-tooltip>
-      <input ref="fileInput" type="file" accept=".xlsx" hidden @change="importFile" />
-      <el-button @click="bulk.team_id = teamFilter; bulkOpen = true">{{ t('workers.bulk') }}</el-button>
+      <template v-if="!readonly">
+        <el-button @click="download('/workers/export.xlsx', { lang: locale }, 'workers.xlsx')">{{ t('workers.export') }}</el-button>
+        <el-tooltip :content="t('workers.importHint')" placement="bottom" :show-after="300">
+          <el-button @click="fileInput.click()">{{ t('workers.import') }}</el-button>
+        </el-tooltip>
+        <input ref="fileInput" type="file" accept=".xlsx" hidden @change="importFile" />
+        <el-button @click="bulk.team_id = teamFilter; bulkOpen = true">{{ t('workers.bulk') }}</el-button>
+      </template>
     </div>
-    <div class="muted small">{{ t('workers.editHint') }}</div>
+    <div class="muted small">{{ readonly ? t('workers.leaderHint') : t('workers.editHint') }}</div>
 
     <div class="sheet-wrap">
       <table class="sheet">
@@ -209,8 +230,10 @@ async function saveBulk() {
             <th class="c-name">{{ t('workers.name') }}</th>
             <th>{{ t('workers.no') }}</th>
             <th>{{ t('workers.team') }}</th>
+            <th class="c-role">{{ t('workers.role') }}</th>
             <th class="c-act">{{ t('workers.active') }}</th>
-            <th class="c-ws">{{ t('schedule.cycleCol') }}</th>
+            <th class="c-ws">{{ t('acc.btn') }}</th>
+            <th v-if="!readonly" class="c-ws">{{ t('schedule.cycleCol') }}</th>
             <th v-for="f in fields" :key="f.id" class="xcol">
               <el-dropdown trigger="click" @command="(c) => colCommand(f, c)">
                 <span class="colhead">{{ f.label }} ▾</span>
@@ -222,13 +245,14 @@ async function saveBulk() {
                 </template>
               </el-dropdown>
             </th>
-            <th class="addcol"><el-button link type="primary" :icon="Plus" @click="addCol">{{ t('workers.addCol') }}</el-button></th>
+            <th v-if="!readonly" class="addcol"><el-button link type="primary" :icon="Plus" @click="addCol">{{ t('workers.addCol') }}</el-button></th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="w in shown" :key="w.id" :class="{ inactive: !w.is_active }">
             <td class="av">
-              <el-dropdown trigger="click" @command="(c) => avatarCommand(w, c)">
+              <WorkerAvatar v-if="!auth.teamOk('worker.avatar', w.team_id)" :worker="w" :size="30" />
+              <el-dropdown v-else trigger="click" @command="(c) => avatarCommand(w, c)">
                 <span class="avbtn"><WorkerAvatar :worker="w" :size="30" /></span>
                 <template #dropdown>
                   <el-dropdown-menu>
@@ -253,16 +277,23 @@ async function saveBulk() {
               </el-select>
               <span :class="{ muted: !w.team_id, ghost: isEditing(w, 'team_id') }">{{ teamName(w.team_id) }}</span>
             </td>
-            <td :class="['cell', 'c-act', { ok: flashed === `${w.id}|is_active` }]">
-              <el-switch :model-value="w.is_active" size="small" @change="(v) => { editing.id = w.id; editing.key = 'is_active'; editing.value = v; commit() }" />
+            <td :class="['c-role', { ok: flashed === `${w.id}|role_id` }]">
+              <span v-if="readonly">{{ roleLabel(w) }}</span>
+              <el-select v-else :model-value="w.role_id ?? memberRole?.id" size="small" class="rolesel" @change="(v) => setRole(w, v)">
+                <el-option v-for="r in roles" :key="r.id" :value="r.id" :label="r[`name_${locale}`]" />
+              </el-select>
             </td>
-            <td class="c-ws"><el-button link type="primary" size="small" @click="openSchedule(w)">{{ t('ws.btn') }}</el-button></td>
+            <td :class="['cell', 'c-act', { ok: flashed === `${w.id}|is_active` }]">
+              <el-switch :model-value="w.is_active" size="small" :disabled="readonly" @change="(v) => { editing.id = w.id; editing.key = 'is_active'; editing.value = v; commit() }" />
+            </td>
+            <td class="c-ws"><el-button v-if="canAccount(w)" link type="primary" size="small" @click="openAccount(w)">{{ t('acc.btn') }}</el-button></td>
+            <td v-if="!readonly" class="c-ws"><el-button link type="primary" size="small" @click="openSchedule(w)">{{ t('ws.btn') }}</el-button></td>
             <td v-for="f in fields" :key="f.id" :class="['cell', { on: isEditing(w, 'x' + f.id), ok: flashed === `${w.id}|x${f.id}` }]" @click="startEdit(w, 'x' + f.id)">
               <el-input v-if="isEditing(w, 'x' + f.id)" v-model="editing.value" size="small" class="cell-editor" maxlength="500"
                         @blur="commit" @keydown="onKey" />
               <span :class="{ ghost: isEditing(w, 'x' + f.id) }">{{ w.extra?.[String(f.id)] }}</span>
             </td>
-            <td />
+            <td v-if="!readonly" />
           </tr>
           <!-- 新增的一行 -->
           <tr v-if="draft" class="draft">
@@ -274,7 +305,7 @@ async function saveBulk() {
                 <el-option v-for="tm in auth.teams" :key="tm.id" :label="localName(tm)" :value="tm.id" />
               </el-select>
             </td>
-            <td :colspan="fields.length + 3">
+            <td :colspan="fields.length + 5">
               <el-button size="small" type="primary" :disabled="!draft.name.trim()" @click="saveDraft">{{ t('common.save') }}</el-button>
               <el-button size="small" @click="draft = null">{{ t('common.cancel') }}</el-button>
             </td>
@@ -282,8 +313,9 @@ async function saveBulk() {
         </tbody>
       </table>
     </div>
-    <el-button class="addrow" :icon="Plus" @click="addRow">{{ t('workers.addRow') }}</el-button>
+    <el-button v-if="!readonly" class="addrow" :icon="Plus" @click="addRow">{{ t('workers.addRow') }}</el-button>
 
+    <AccountDialog v-model="accOpen" :worker="accWorker" @saved="load" />
     <WorkerScheduleDialog v-model="wsOpen" :worker="wsWorker" @saved="load" />
     <input ref="avatarInput" type="file" accept="image/*,.heic,.heif" hidden @change="uploadAvatar" />
 
@@ -319,6 +351,9 @@ async function saveBulk() {
 .c-name { min-width: 130px; }
 .c-act { width: 60px; text-align: center !important; }
 .c-ws { width: 70px; text-align: center !important; }
+.c-role { width: 120px; transition: background .4s; }
+.c-role.ok { background: #e1f3d8; }
+.rolesel { width: 110px; }
 .xcol { min-width: 110px; }
 .colhead { cursor: pointer; color: #303133; }
 .colhead:hover { color: #409eff; }

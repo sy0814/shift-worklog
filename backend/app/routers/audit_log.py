@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..db import get_db
-from ..models import AiReport, AuditLog, GlossaryTerm, InspectionTemplate, Overtime, Task, Team, User, Worker
+from ..models import AiReport, AuditLog, GlossaryTerm, InspectionTemplate, Role, Overtime, Task, Team, User, Worker
 from ..schemas import AuditOut
 from ..security import require_admin
 
@@ -63,6 +63,8 @@ def _labels(db: Session, rows: list[AuditLog], lang: str) -> dict[int, str]:
         names[("glossary", str(g.id))] = f"{g.zh} / {g.sr} / {g.en}"
     for i in db.scalars(select(InspectionTemplate).where(InspectionTemplate.id.in_(ids("inspection")))):
         names[("inspection", str(i.id))] = i.name
+    for r in db.scalars(select(Role).where(Role.id.in_(ids("role")))):
+        names[("role", str(r.id))] = getattr(r, f"name_{lang}")
     for a in db.scalars(select(AiReport).where(AiReport.id.in_(ids("ai_report")))):
         names[("ai_report", str(a.id))] = f"{a.start} ~ {a.end}"
     team_names = {t.id: getattr(t, f"name_{lang}") for t in db.scalars(select(Team))} if "overtime" in want else {}

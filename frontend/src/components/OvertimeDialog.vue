@@ -30,7 +30,7 @@ watch(visible, async (v) => {
 })
 
 // 班长只能选本班组（管理员任何班组）；人员按班组分组、本班组在前
-const teams = computed(() => (auth.isAdmin ? auth.teams : auth.teams.filter((x) => x.id === auth.user?.team_id)))
+const teams = computed(() => auth.teams.filter((x) => auth.teamOk('overtime.edit', x.id)))
 const groups = computed(() => {
   const m = new Map()
   for (const w of workers.value) {

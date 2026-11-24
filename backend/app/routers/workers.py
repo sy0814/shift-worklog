@@ -1,7 +1,7 @@
 """员工名册：所有人可查看，管理员维护（网页上逐格修改、加行加列、Excel 导入导出）。"""
 
 import io
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
@@ -10,14 +10,14 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .. import audit, worker_history
+from .. import audit, permissions, worker_history
 from ..schedule_service import local_now
 from ..db import get_db
-from ..models import Team, User, Worker, WorkerField, WorkerSchedule
+from ..models import Role, Team, User, Worker, WorkerField, WorkerSchedule, utcnow
 from ..schemas import WorkerBulkCreate, WorkerCreate, WorkerOut, WorkerUpdate
 from ..config import get_settings
 from ..images import InvalidImage, process_avatar
-from ..security import get_current_user, require_admin, verify_avatar_token
+from ..security import get_current_user, hash_password, require_admin, verify_avatar_token
 
 router = APIRouter(prefix="/api/workers", tags=["workers"])
 
@@ -184,6 +184,8 @@ def update_worker(worker_id: int, body: WorkerUpdate, db: Session = Depends(get_
     if "name" in changes:
         changes["name"] = changes["name"].strip()
     extra = changes.pop("extra", None)
+    if "role_id" in changes and changes["role_id"] is not None and db.get(Role, changes["role_id"]) is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "role not found")
     _check(db, changes.get("team_id", w.team_id), changes.get("employee_no"), exclude_id=w.id)
     new_team = changes.pop("team_id", w.team_id)
     audit.log_changes(db, w, changes, user_id=admin.id, entity="worker", entity_id=w.id)
@@ -191,13 +193,106 @@ def update_worker(worker_id: int, body: WorkerUpdate, db: Session = Depends(get_
         worker_history.change_team(db, w, w.team_id, new_team, admin.id, local_now().date())
     if extra is not None:
         _set_extra(db, w, _clean_extra(db, extra, w.extra), admin.id)
+    worker_history.sync_account(db, w)
     db.commit()
     return w
 
 
+# ---------------- 登录账号（名册里的人）----------------
+class AccountOut(BaseModel):
+    user_id: int | None  # 还没开账号时为空
+    username: str | None
+    login_mode: str  # password（个人账号）/ pin（班组公共账号 + 个人密码），由角色决定
+    is_active: bool
+    locked: bool
+    last_login_at: datetime | None
+
+
+class AccountIn(BaseModel):
+    username: str | None = Field(default=None, min_length=2, max_length=50, pattern=r"^[A-Za-z0-9_.-]+$")
+    password: str | None = Field(default=None, min_length=4, max_length=100)  # 个人账号至少 6 位，班组账号至少 4 位
+    is_active: bool | None = None
+
+
+def _account_out(db: Session, w: Worker) -> AccountOut:
+    from .auth import login_mode
+
+    u = db.scalar(select(User).where(User.worker_id == w.id))
+    role = permissions.role_of(db, w)
+    mode = role.login_mode if role else "pin"
+    if u is None:
+        return AccountOut(user_id=None, username=None, login_mode=mode, is_active=False, locked=False, last_login_at=None)
+    lk = u.locked_until
+    if lk is not None and lk.tzinfo is None:
+        lk = lk.replace(tzinfo=timezone.utc)
+    return AccountOut(user_id=u.id, username=u.username if login_mode(db, u) == "password" else None, login_mode=mode,
+                      is_active=u.is_active, locked=bool(lk and lk > utcnow()), last_login_at=u.last_login_at)
+
+
+def _can_manage_account(db: Session, user: User, w: Worker) -> bool:
+    """管理员：任何人；有「重设成员个人密码」权限的班长：本班组用班组账号登录的人。"""
+    if user.role == "admin":
+        return True
+    role = permissions.role_of(db, w)
+    return (role is not None and role.login_mode == "pin"
+            and permissions.who(db, user).team_ok("worker.pin", w.team_id))
+
+
+@router.get("/{worker_id}/account", response_model=AccountOut)
+def get_account(worker_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    w = db.get(Worker, worker_id)
+    if w is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND)
+    permissions.require(_can_manage_account(db, user, w))
+    return _account_out(db, w)
+
+
+@router.put("/{worker_id}/account", response_model=AccountOut)
+def put_account(worker_id: int, body: AccountIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """开账号 / 改用户名 / 重设密码 / 停用。个人账号要用户名 + 密码（≥6 位）；班组账号只要个人密码（≥4 位）。"""
+    from .auth import check_secret
+
+    w = db.get(Worker, worker_id)
+    if w is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND)
+    permissions.require(_can_manage_account(db, user, w))
+    role = permissions.role_of(db, w)
+    mode = role.login_mode if role else "pin"
+    u = db.scalar(select(User).where(User.worker_id == w.id))
+    if mode == "password":
+        if body.username and body.username != (u.username if u else None):
+            if user.role != "admin":
+                raise HTTPException(status.HTTP_403_FORBIDDEN, "admin only")
+            if db.scalar(select(User).where(User.username == body.username)):
+                raise HTTPException(status.HTTP_409_CONFLICT, "username exists")
+        if u is None and not body.username:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "username required")
+    if u is None:
+        if not body.password:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "password required")
+        u = User(username=body.username if mode == "password" else f"w{w.id}", password_hash="!",
+                 full_name=w.name, role="staff", team_id=w.team_id, worker_id=w.id, lang=user.lang)
+        db.add(u)
+        db.flush()
+        audit.log(db, user_id=user.id, action="create", entity="user", entity_id=u.id,
+                  new={"worker": w.name, "username": u.username, "login_mode": mode})
+    elif mode == "password" and body.username and body.username != u.username:
+        audit.log_changes(db, u, {"username": body.username}, user_id=user.id, entity="user", entity_id=u.id)
+    if body.password:
+        check_secret(db, u, body.password)
+        u.password_hash = hash_password(body.password)
+        u.failed_logins, u.locked_until = 0, None
+        audit.log(db, user_id=user.id, action="reset_password", entity="user", entity_id=u.id)
+    if body.is_active is not None and body.is_active != u.is_active:
+        audit.log_changes(db, u, {"is_active": body.is_active and w.is_active}, user_id=user.id, entity="user",
+                          entity_id=u.id)
+    db.commit()
+    return _account_out(db, w)
+
+
 # ---------------- 头像 ----------------
-def _can_edit_avatar(user: User, w: Worker) -> bool:
-    return user.role == "admin" or (w.team_id is not None and w.team_id == user.team_id)
+def _can_edit_avatar(db: Session, user: User, w: Worker) -> bool:
+    return permissions.who(db, user).team_ok("worker.avatar", w.team_id)
 
 
 @router.post("/{worker_id}/avatar", response_model=WorkerOut)
@@ -207,7 +302,7 @@ async def upload_avatar(worker_id: int, file: UploadFile = File(...), db: Sessio
     w = db.get(Worker, worker_id)
     if w is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
-    if not _can_edit_avatar(user, w):
+    if not _can_edit_avatar(db, user, w):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "not your team's worker")
     data = await file.read(20 * 1024 * 1024 + 1)
     if len(data) > 20 * 1024 * 1024:
@@ -230,7 +325,7 @@ def delete_avatar(worker_id: int, db: Session = Depends(get_db), user: User = De
     w = db.get(Worker, worker_id)
     if w is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
-    if not _can_edit_avatar(user, w):
+    if not _can_edit_avatar(db, user, w):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "not your team's worker")
     if w.avatar_path:
         audit.log(db, user_id=user.id, action="update", entity="worker", entity_id=w.id, field="avatar",

@@ -90,8 +90,8 @@ function open(task) {
       <el-input v-model="filters.q" :placeholder="t('task.search')" clearable style="width: 180px"
                 @keyup.enter="load()" @clear="load()" />
       <span class="spacer" />
-      <el-button @click="exportOpen = true">{{ t('exp.title') }}</el-button>
-      <el-button class="new-btn" type="primary" :icon="Plus" @click="formOpen = true">{{ t('task.new') }}</el-button>
+      <el-button v-if="auth.can('export')" @click="exportOpen = true">{{ t('exp.title') }}</el-button>
+      <el-button v-if="auth.can('task.create')" class="new-btn" type="primary" :icon="Plus" @click="formOpen = true">{{ t('task.new') }}</el-button>
     </div>
 
     <div v-loading="loading" class="list">
@@ -100,7 +100,7 @@ function open(task) {
       <el-button v-if="items.length < total" class="more" text @click="load(true)">{{ t('task.loadMore') }} ({{ items.length }}/{{ total }})</el-button>
     </div>
 
-    <el-button class="fab" type="primary" circle :icon="Plus" size="large" @click="formOpen = true" />
+    <el-button v-if="auth.can('task.create')" class="fab" type="primary" circle :icon="Plus" size="large" @click="formOpen = true" />
     <TaskForm v-model="formOpen" @saved="load()" />
     <ExportDialog v-model="exportOpen" :team-id="filters.team_id" />
     <TaskDetail v-model="detailOpen" :task-id="detailId" @changed="load()" />

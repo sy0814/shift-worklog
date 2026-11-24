@@ -7,10 +7,10 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from .. import attendance_service as att
+from .. import attendance_service as att, permissions
 from ..config import get_settings
 from ..db import get_db
-from ..models import Task, User, Worker
+from ..models import Role, Task, User, Worker
 from ..overtime_service import expand as expand_overtime
 from ..schedule_service import load_schedule, local_now
 from ..schemas import Trilingual, WorkerOut
@@ -31,6 +31,8 @@ class DutyTask(BaseModel):
 
 class DutyWorker(BaseModel):
     worker: WorkerOut
+    team_id: int | None = None  # 这个班次在哪个班组上（支援的人是被支援的班组）
+    role_id: int | None = None
     status: str  # busy（手上有未完成的任务：未开始或进行中）/ idle（空闲）/ leave / sick / absent / off（本该上班但请假等）
     support: bool  # 是不是从其他班组来支援的
     tasks: list[DutyTask]
@@ -57,7 +59,8 @@ class DutyOut(BaseModel):
     start: datetime
     end: datetime
     main_team_id: int | None  # 卡片上显示的班组（倒班班组）
-    teams: list[DutyTeam]  # 这个班次所有在岗班组（含常白班）
+    top: list[DutyWorker] = []  # 「首页单独显示」的角色（班长、副班长……），单独列在上面
+    teams: list[DutyTeam]  # 这个班次所有在岗班组（含常白班），不含 top 里的人
     counts: DutyCounts
     can_add: bool  # 当前用户能不能在这里快捷添加任务
 
@@ -113,6 +116,10 @@ def duty(which: str = Query(default="current", pattern="^(current|next)$"), db: 
         for w in t.workers:
             by_worker.setdefault(w.id, []).append(t)
 
+    roles = {r.id: r for r in db.scalars(select(Role))}
+    member = next((r.id for r in roles.values() if r.code == "member"), None)
+    on_top = lambda w: roles.get(w.role_id or member) is not None and roles[w.role_id or member].show_on_top
+    top: list[DutyWorker] = []
     teams, counts = [], {"on_duty": 0, "busy": 0, "idle": 0, "absent": 0}
     order = [t.id for t in sorted(slot_teams, key=lambda t: not t.is_main)]
     order += [tid for tid in rows if tid not in order]
@@ -126,8 +133,8 @@ def duty(which: str = Query(default="current", pattern="^(current|next)$"), db: 
                 counts[st] += 1
             else:
                 counts["absent"] += 1
-            out.append(DutyWorker(
-                worker=WorkerOut.model_validate(w), status=st, support=support,
+            (top if on_top(w) else out).append(DutyWorker(
+                worker=WorkerOut.model_validate(w), status=st, support=support, team_id=tid, role_id=w.role_id or member,
                 overtime_until=ot[w.id][0].replace(tzinfo=get_settings().tz) if w.id in ot else None,
                 overtime_prev=ot.get(w.id, (None, False))[1],
                 tasks=[DutyTask(id=t.id, content=Trilingual(zh=t.content_zh, sr=t.content_sr, en=t.content_en),
@@ -139,6 +146,8 @@ def duty(which: str = Query(default="current", pattern="^(current|next)$"), db: 
     tz = get_settings().tz
     return DutyOut(
         which=which, shift_date=d, shift_kind=k, start=start.replace(tzinfo=tz), end=end.replace(tzinfo=tz),
-        main_team_id=main.id if main else None, teams=teams, counts=DutyCounts(**counts),
-        can_add=user.role == "admin" or (user.team_id in slot_ids),
+        main_team_id=main.id if main else None, teams=teams,
+        top=sorted(top, key=lambda r: (roles[r.role_id].sort_order if r.role_id in roles else 99, order.index(r.team_id)
+                                       if r.team_id in order else 99, r.worker.name)), counts=DutyCounts(**counts),
+        can_add=permissions.who(db, user).has("task.create") and (user.role == "admin" or user.team_id in slot_ids),
     )

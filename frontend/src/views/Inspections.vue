@@ -64,7 +64,7 @@ const form = reactive({})
 const blank = () => ({
   name: '', content: '', lang: locale.value, enabled: true, kind: 'daily', at_time: '08:00', every_n: 1,
   weekdays: [], month_days: [], year_dates: [], shift_kinds: [], start_date: dayjs().format('YYYY-MM-DD'),
-  ...(auth.isAdmin ? { assign: 'on_duty', team_id: null } : { assign: 'fixed', team_id: auth.user.team_id }), worker_ids: [],
+  ...(auth.scope('inspection.manage') === 'all' ? { assign: 'on_duty', team_id: null } : { assign: 'fixed', team_id: auth.user.team_id }), worker_ids: [],
 })
 function payloadOf(r) {
   const p = {}
@@ -146,9 +146,9 @@ const runType = { created: 'success', manual: 'primary', skipped: 'info', failed
   <div class="page">
     <div class="toolbar">
       <h1 class="page-title" style="margin: 0; flex: 1">{{ t('insp.title') }}</h1>
-      <el-button v-if="auth.isAdmin || auth.user?.team_id" type="primary" @click="openEdit(null)">{{ t('insp.add') }}</el-button>
+      <el-button v-if="auth.can('inspection.manage')" type="primary" @click="openEdit(null)">{{ t('insp.add') }}</el-button>
     </div>
-    <div v-if="!auth.isAdmin" class="muted small hint">{{ t('insp.leaderHint') }}</div>
+    <div v-if="auth.scope('inspection.manage') === 'team'" class="muted small hint">{{ t('insp.leaderHint') }}</div>
 
     <el-table :data="rows" size="small" border>
       <el-table-column :label="t('insp.enabled')" width="70" align="center">
@@ -236,14 +236,14 @@ const runType = { created: 'success', manual: 'primary', skipped: 'info', failed
           </el-form-item>
 
           <el-form-item :label="t('insp.assign')">
-            <el-radio-group v-model="form.assign" :disabled="!auth.isAdmin">
+            <el-radio-group v-model="form.assign" :disabled="auth.scope('inspection.manage') !== 'all'">
               <el-radio value="on_duty">{{ t('insp.onDuty') }}</el-radio>
               <el-radio value="fixed">{{ t('insp.fixed') }}</el-radio>
             </el-radio-group>
           </el-form-item>
           <template v-if="form.assign === 'fixed'">
             <el-form-item :label="t('insp.team')">
-              <el-select v-model="form.team_id" :disabled="!auth.isAdmin" style="width: 160px">
+              <el-select v-model="form.team_id" :disabled="auth.scope('inspection.manage') !== 'all'" style="width: 160px">
                 <el-option v-for="tm2 in auth.teams" :key="tm2.id" :label="localName(tm2)" :value="tm2.id" />
               </el-select>
               <div class="muted small">{{ t('insp.fixedHint') }}</div>

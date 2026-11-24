@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import attendance_service as att
+from .. import permissions
 from .. import audit
 from ..config import get_settings
 from ..db import get_db
@@ -98,14 +99,15 @@ def add_overtime(body: OvertimeIn, db: Session = Depends(get_db), user: User = D
     if (body.team_id is None) == (not body.worker_ids):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "give either team_id or worker_ids")
     sched = load_schedule(db)
-    admin = user.role == "admin"
+    who = permissions.who(db, user)
+    permissions.require(who.has("overtime.edit"))
     tz = get_settings().tz
     created = []
     if body.team_id is not None:
         team = next((t for t in sched.teams if t.id == body.team_id), None)
         if team is None or db.get(Team, body.team_id) is None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "team not found")
-        if not admin and body.team_id != user.team_id:
+        if not who.team_ok("overtime.edit", body.team_id):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "not your team")
         kind = body.shift_kind or sched.shift_of(team, body.day)
         if kind not in ("day", "middle", "night"):
@@ -120,7 +122,7 @@ def add_overtime(body: OvertimeIn, db: Session = Depends(get_db), user: User = D
         eff = att.effective(db, workers, body.day, body.day)
         for w in workers:
             a = eff[w.id][body.day]
-            if not admin and w.team_id != user.team_id and a.team_id != user.team_id:
+            if not (who.team_ok("overtime.edit", w.team_id) or who.team_ok("overtime.edit", a.team_id)):
                 raise HTTPException(status.HTTP_403_FORBIDDEN, f"{w.name} is not in your team")
             kind = body.shift_kind or (a.shift_kind if a.status == "present" else None)
             if kind is None:
@@ -144,10 +146,10 @@ def delete_overtime(oid: int, db: Session = Depends(get_db), user: User = Depend
     o = db.get(Overtime, oid)
     if o is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
-    if user.role != "admin":
-        w = db.get(Worker, o.worker_id) if o.worker_id else None
-        if (o.team_id or (w.team_id if w else None)) != user.team_id and o.created_by != user.id:
-            raise HTTPException(status.HTTP_403_FORBIDDEN, "not your team")
+    who = permissions.who(db, user)
+    w = db.get(Worker, o.worker_id) if o.worker_id else None
+    if not who.team_ok("overtime.edit", o.team_id or (w.team_id if w else None)) and o.created_by != user.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "not your team")
     audit.log(db, user_id=user.id, action="delete", entity="overtime", entity_id=o.id,
               old={"day": str(o.day), "shift": o.shift_kind, "team_id": o.team_id, "worker_id": o.worker_id,
                    "until": o.until.isoformat()})

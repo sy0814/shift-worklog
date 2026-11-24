@@ -65,7 +65,7 @@
   - 常白班：**3 个班长账号**
   - 权限：只能安排、修改本班组工作；本班组未完成的工作可「移交」或「废弃」（废弃需填原因）
 - **每条任务显示发布人**（哪个班长账号建的），也显示最后修改人；完整修改记录在留痕里查
-- **普通员工不开账号**（已确认）：员工只在 `workers` 名册里，由班长录入任务时选为参与人员
+- ~~普通员工不开账号~~（2026-11-24 起改为：**账号和员工名册合并**，名册里的人可以开账号，见第六轮修改；成员用班组公共账号 + 个人密码）
 
 ## 核心功能
 
@@ -267,6 +267,16 @@
   - 循环编辑器组件 `components/CycleEditor.vue`（班组、个人共用）：快速填（四班三倒 / 周一到周五 / 每周休一天）、点格子切换、7 的倍数时显示星期、接下来 14 天预览
   - 排班提醒加 `nomain`（只有合并班组上、没有主班组）
   - **点击跳动全面检查**（Playwright 脚本逐页点标签、对话框、抽屉、下拉、格子，记录内容位置和浏览器的 layout-shift）：修了名册点格子编辑（编辑框改为绝对定位盖在格子上）、排班页标签（`lazy` + 班组表固定列宽）、手机排班日历（表头不换行、列宽固定、等两帧列宽算好再显示）、出勤页（表格加载出来前不显示下面的加班记录）。剩下的只有切换班组时因为任务 / 人数不同、下面内容跟着变长变短
+- [x] 用户反馈第六轮修改 第 1 步（2026-11-24）：**账号和名册合并 + 角色权限 + 班组公共账号 + 首页按角色分块**
+  - **角色**（表 `roles`，迁移 0010；「管理 → 角色权限」`views/Roles.vue`、`/api/roles`）：内置班长、副班长、成员，可新增。每个角色一张权限表 {权限: 范围}，范围 none / self（自己是带队人或参与人员的任务、自己传的照片）/ team（本班组 + 合并显示的班组）/ all；还有登录方式（password 个人账号 / pin 班组账号）和「首页单独显示」。权限清单和内置角色默认值在 `app/permissions.py`（`PERMS`、`LEADER_PERMS`、`MEMBER_PERMS`）；**后端所有「谁能做什么」都走 `permissions.who(db, user)`**（`scope` / `has` / `team_ok` / `task_ok` / `visible_team_ids`），新加功能也要加到 PERMS 里，迁移里补默认值
+  - **账号以名册为准**：`workers.role_id`（空 = 成员）；`users.worker_id` 一对一关联名册里的人，`users.role` 只有 `admin`（系统管理员，不在名册里）和 `staff`；账号的姓名、班组、在职跟着名册同步（`worker_history.sync_account`）。迁移时原来的班长账号按姓名找名册里同名的人（优先同班组），找不到就新建一条名册记录（名字 = 账号姓名），用户名密码不变；「账号管理」页可「改关联」
+  - **登录**：个人账号 `POST /api/auth/login`；班组账号 `GET /api/auth/teams` → `GET /api/auth/teams/{id}/people`（头像 + 名字，不需要登录）→ `POST /api/auth/pin {user_id, pin}`。个人密码 ≥4 位、可以和别人相同；个人账号密码 ≥6 位。连续输错 5 次锁这一个人 10 分钟（返回 423），管理员可解锁。班组账号 30 分钟不操作自动退出，菜单里有「换人」
+  - 开账号：「员工名册 → 账号」（`components/AccountDialog.vue`，`/api/workers/{id}/account`）；有 `worker.pin` 权限的班长能进名册（只读、只看本班组），给用班组账号的成员重设个人密码
+  - **任务权限**：每条任务带 `perms`（edit / status / handover / discard / photo / correct），照片带 `can_delete`；改已完成的任务要 `task.edit_done`（默认只有管理员）；`task.view` 为 team 时任务列表、交接班、警示只看本班组（含合并的）和自己参与的
+  - **只能分配同一班次在岗的人**（`tasks.assignable_ids`、`GET /api/assignable`）：本班组 + 合并显示的班组 + 来支援的人，按出勤算；任务表单只列这些人。`task.create` 和 `task.edit` 都是 all（管理员）时不限
+  - **合并班组的权限**（`permissions.group_ids`）= 今天合并的班组 ∪ 首页交接班正在显示的那个班（当前或下一个）合并的班组 ∪ 昨天夜班合并的（凌晨）
+  - **首页人员状态**：`DutyOut.top` = 「首页单独显示」角色的人（班长、副班长……），单独列在上面（带角色、班组标签），下面按班组列其他人
+  - 确认框 / 输入框（ElMessageBox）打开时用 `el-message-box-parent--hidden`，和弹窗一样要取消 body 宽度补偿，否则页面左右跳
 - 工厂时区由 `APP_TIMEZONE` 配置，默认 `Europe/Belgrade`
 - 排班推算是纯函数，在 `backend/app/shifts.py`，测试在 `backend/tests/test_shifts.py`
 - 留痕：业务代码统一调用 `app/audit.py` 的 `log()` / `log_changes()`；数据库触发器禁止对 `audit_log` 做 UPDATE / DELETE（SQLite、PostgreSQL 都已验证）

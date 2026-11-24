@@ -18,7 +18,7 @@ const form = reactive({ range: null, team_id: null, worker_id: null, lang: 'zh' 
 watch(visible, async (v) => {
   if (!v) return
   form.range = [dayjs().startOf('month').format('YYYY-MM-DD'), dayjs().format('YYYY-MM-DD')]
-  form.team_id = auth.isAdmin ? props.teamId : auth.user.team_id
+  form.team_id = auth.scope('export') === 'all' ? props.teamId : auth.user.team_id
   form.worker_id = null
   form.lang = locale.value
   workers.value = (await api.get('/workers')).data
@@ -46,7 +46,7 @@ async function submit() {
         <el-date-picker v-model="form.range" type="daterange" value-format="YYYY-MM-DD" unlink-panels :clearable="false" style="width: 100%" />
       </el-form-item>
       <el-form-item :label="t('exp.team')">
-        <el-select v-model="form.team_id" :disabled="!auth.isAdmin" clearable :placeholder="t('exp.all')" @change="form.worker_id = null">
+        <el-select v-model="form.team_id" :disabled="auth.scope('export') !== 'all'" clearable :placeholder="t('exp.all')" @change="form.worker_id = null">
           <el-option v-for="tm in auth.teams" :key="tm.id" :label="localName(tm)" :value="tm.id" />
         </el-select>
       </el-form-item>

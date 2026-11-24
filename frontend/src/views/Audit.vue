@@ -63,11 +63,13 @@ function parse(v) {
 function fieldLabel(f) {
   const m = /^(content|leftover|discard_reason)_(zh|sr|en)$/.exec(f)
   if (m) return `${t('tr.fields.' + m[1])} (${m[2]})`
+  if (f?.startsWith('perm:')) return t('rp.perms.' + f.slice(5).replace('.', '_')) // 角色权限的某一项
   return te(`log.field.${f}`) ? t(`log.field.${f}`) : f
 }
 function fmtVal(f, v) {
   v = parse(v)
   if (v == null || v === '') return '∅'
+  if (f?.startsWith('perm:') && te(`rp.scopes.${v}`)) return t(`rp.scopes.${v}`)
   if (f === 'pattern' && Array.isArray(v)) return v.map((k) => t('cyc.short.' + k)).join(' ')
   if (f === 'schedule' && typeof v === 'object') { // 员工排班变更：从哪天起 · 班组 · 跟班组 / 个人循环
     const team = v.team_id ? localName(auth.teamById(v.team_id)) : t('ws.noTeam')
@@ -102,6 +104,7 @@ function verb(e) {
 }
 function target(e) {
   if (['login', 'change_password', 'seed', 'retry_failed', 'swap'].includes(e.action)) return ''
+  if (e.action === 'locked') return `${t('log.ent.user')} ${e.label || ''}`
   const noun = te(`log.ent.${e.entity}`) ? t(`log.ent.${e.entity}`) : e.entity
   const name = e.label ? `${Q.value[0]}${e.label}${Q.value[1]}` : ''
   const id = /^\d+$/.test(e.entity_id) && e.entity !== 'holiday' ? ` #${e.entity_id}` : (e.label ? '' : ` ${e.entity_id}`)

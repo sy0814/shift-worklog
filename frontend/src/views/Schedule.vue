@@ -47,8 +47,8 @@ watch(month, loadCalendar)
 const changes = computed(() => days.value.flatMap((d) => Object.entries(d.changed || {}).map(([tid, was]) => (
   { day: d.day, team_id: Number(tid), shift: d.shifts[tid], was }))))
 const tsOpen = ref(false)
-const canShift = (teamId) => auth.isAdmin || (!!auth.user?.team_id && teamId === auth.user.team_id)
-const canShiftAny = computed(() => auth.isAdmin || !!auth.user?.team_id)
+const canShift = (teamId) => auth.teamOk('schedule.team_shift', teamId)
+const canShiftAny = computed(() => auth.can('schedule.team_shift'))
 const ts = reactive({ mode: 'set', team_id: null, team_b: null, range: [], shift_kind: 'day', note: '' })
 function openTeamShift(teamId, day) {
   if (teamId != null && !canShift(teamId)) return
@@ -212,7 +212,7 @@ onMounted(async () => {
               </el-radio-group>
             </el-form-item>
             <el-form-item :label="t('task.team')">
-              <el-select v-model="ts.team_id" :disabled="!auth.isAdmin"><el-option v-for="tm2 in auth.teams" :key="tm2.id" :label="localName(tm2)" :value="tm2.id" /></el-select>
+              <el-select v-model="ts.team_id" :disabled="auth.scope('schedule.team_shift') !== 'all'"><el-option v-for="tm2 in auth.teams" :key="tm2.id" :label="localName(tm2)" :value="tm2.id" /></el-select>
             </el-form-item>
             <el-form-item v-if="ts.mode === 'swap'" :label="t('schedule.teamB')">
               <el-select v-model="ts.team_b"><el-option v-for="tm2 in auth.teams.filter((x) => x.id !== ts.team_id)" :key="tm2.id" :label="localName(tm2)" :value="tm2.id" /></el-select>

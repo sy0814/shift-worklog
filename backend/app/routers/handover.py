@@ -25,7 +25,8 @@ from ..schemas import (
 )
 from ..security import get_current_user, require_admin
 from ..shifts import TeamInfo
-from .tasks import LANGS, OPEN, _get_task, _require_edit, overdue_clause, tasks_out
+from .. import permissions
+from .tasks import LANGS, OPEN, _get_task, _require, overdue_clause, tasks_out
 
 router = APIRouter(prefix="/api", tags=["handover"])
 
@@ -57,7 +58,9 @@ def handover(body: HandoverRequest, db: Session = Depends(get_db),
 
     tasks = [_get_task(db, tid) for tid in dict.fromkeys(body.task_ids)]
     for t in tasks:
-        _require_edit(db, t, user)
+        if t.status not in OPEN:
+            raise HTTPException(status.HTTP_409_CONFLICT, f"task {t.id} is {t.status}")
+        _require(db, t, user, "handover")
         if t.status not in OPEN:
             raise HTTPException(status.HTTP_409_CONFLICT, f"task {t.id} is {t.status}")
 
@@ -133,7 +136,9 @@ def handover(body: HandoverRequest, db: Session = Depends(get_db),
 def discard(task_id: int, body: DiscardRequest, db: Session = Depends(get_db),
             user: User = Depends(get_current_user)):
     task = _get_task(db, task_id)
-    _require_edit(db, task, user)
+    if task.status not in OPEN:
+        raise HTTPException(status.HTTP_409_CONFLICT, f"task is {task.status}")
+    _require(db, task, user, "discard")
     if task.status not in OPEN:
         raise HTTPException(status.HTTP_409_CONFLICT, f"task is {task.status}")
     reason = body.reason.strip()
@@ -173,6 +178,10 @@ def board(team_id: int | None = None, db: Session = Depends(get_db), user: User 
         else:
             rot = sched.main_team_on(d, k)
             team_id = rot.id if rot else sched.teams[0].id
+    w = permissions.who(db, user)
+    vis = w.visible_team_ids()
+    if vis is not None and team_id not in vis:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "not your team")
     team = _team_info(sched, team_id)
     # 显示这个班组当前在上的班；不在班就显示它的下一个班。合并同一班次的其他班组
     try:
@@ -222,6 +231,9 @@ def overdue(db: Session = Depends(get_db), user: User = Depends(get_current_user
     """首页未闭环警示：所有班组的超时任务，本班组的排最前。"""
     rows = db.scalars(select(Task).options(selectinload(Task.workers), selectinload(Task.attachments))
                       .where(overdue_clause(db, utcnow())).order_by(Task.chain_started_at).limit(200)).all()
+    vis = permissions.who(db, user).visible_team_ids()
+    if vis is not None:  # 只能看本班组的，只显示本班组（和合并班组）的超时任务
+        rows = [t for t in rows if t.team_id in vis]
     rows = sorted(rows, key=lambda t: t.team_id != user.team_id)
     return tasks_out(db, rows, user)
 

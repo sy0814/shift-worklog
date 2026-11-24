@@ -28,26 +28,30 @@ def test_leader_cannot_manage_users(client, leader_h):
 
 
 def test_admin_creates_leader_and_audit(client, admin_h):
+    """班长账号在员工名册里开：名册里的人 → 角色设为班长 → 用户名 + 密码。"""
     teams = {t["code"]: t["id"] for t in client.get("/api/teams", headers=admin_h).json()}
-    r = client.post("/api/users", headers=admin_h, json={
-        "username": "t1_leader2", "password": "secret1", "full_name": "Marko",
-        "role": "leader", "team_id": teams["T1"]})
-    assert r.status_code == 201, r.text
-    uid = r.json()["id"]
-    r = client.patch(f"/api/users/{uid}", headers=admin_h, json={"full_name": "Marko P."})
-    assert r.json()["full_name"] == "Marko P."
-    logs = client.get("/api/audit", headers=admin_h,
-                      params={"entity": "user", "entity_id": str(uid)}).json()["items"]
-    assert {(l["action"], l["field"]) for l in logs} >= {("create", None), ("update", "full_name")}
-    upd = next(l for l in logs if l["field"] == "full_name")
-    assert (upd["old_value"], upd["new_value"]) == ("Marko", "Marko P.")
-    login(client, "t1_leader2", "secret1")
+    roles = {r["code"]: r["id"] for r in client.get("/api/roles", headers=admin_h).json()}
+    w = client.post("/api/workers", headers=admin_h, json={"name": "Marko", "team_id": teams["T1"]}).json()
+    client.patch(f"/api/workers/{w['id']}", headers=admin_h, json={"role_id": roles["leader"]})
+    r = client.put(f"/api/workers/{w['id']}/account", headers=admin_h, json={"username": "t1_leader2", "password": "secret1"})
+    assert r.status_code == 200, r.text
+    uid = r.json()["user_id"]
+    # 名字以名册为准：名册改名，账号跟着变
+    client.patch(f"/api/workers/{w['id']}", headers=admin_h, json={"name": "Marko P."})
+    u = next(x for x in client.get("/api/users", headers=admin_h).json() if x["id"] == uid)
+    assert u["full_name"] == "Marko P." and u["worker_id"] == w["id"] and u["team_id"] == teams["T1"]
+    logs = client.get("/api/audit", headers=admin_h, params={"entity": "user", "entity_id": str(uid)}).json()["items"]
+    assert {l["action"] for l in logs} >= {"create", "reset_password"}
+    me = client.get("/api/auth/me", headers=login(client, "t1_leader2", "secret1")).json()
+    assert me["role_info"]["code"] == "leader" and me["perms"]["task.edit"] == "team"
 
 
-def test_leader_requires_team(client, admin_h):
-    r = client.post("/api/users", headers=admin_h, json={
-        "username": "noteam", "password": "secret1", "full_name": "x", "role": "leader"})
-    assert r.status_code == 400
+def test_admin_account_and_password_rules(client, admin_h):
+    assert client.post("/api/users", headers=admin_h, json={
+        "username": "admin2", "password": "secret1", "full_name": "x", "role": "leader"}).status_code == 422
+    r = client.post("/api/users", headers=admin_h, json={"username": "admin2", "password": "secret1", "full_name": "Admin 2"})
+    assert r.status_code == 201 and r.json()["role"] == "admin"
+    assert client.get("/api/auth/me", headers=login(client, "admin2", "secret1")).json()["perms"]["export"] == "all"
 
 
 def test_admin_cannot_disable_self(client, admin_h):

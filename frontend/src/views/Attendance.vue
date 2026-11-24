@@ -69,7 +69,7 @@ function code(c) {
   if (!c || c.status == null) return ''
   return c.status === 'present' ? t(`att.code.${c.shift_kind}`) : t(`att.code.${c.status}`)
 }
-const canEdit = (w) => auth.isAdmin || w.team_id === auth.user?.team_id
+const canEdit = (w) => auth.teamOk('attendance.edit', w.team_id)
 const counts = computed(() => {
   if (!data.value) return {}
   const out = {}
@@ -183,9 +183,9 @@ const exportOpen = ref(false)
         <el-radio-button v-for="tm in auth.teams" :key="tm.id" :value="tm.id">{{ localName(tm) }}</el-radio-button>
       </el-radio-group>
       <span class="spacer" />
-      <el-button @click="openBatch">{{ t('att.batch') }}</el-button>
-      <el-button @click="openOvertime({ mode: 'team', team_id: teamId })">{{ t('ot.add') }}</el-button>
-      <el-button @click="exportOpen = true">{{ t('exp.title') }}</el-button>
+      <el-button v-if="auth.can('attendance.edit')" @click="openBatch">{{ t('att.batch') }}</el-button>
+      <el-button v-if="auth.can('overtime.edit')" @click="openOvertime({ mode: 'team', team_id: teamId })">{{ t('ot.add') }}</el-button>
+      <el-button v-if="auth.can('export')" @click="exportOpen = true">{{ t('exp.title') }}</el-button>
       <template v-if="auth.isAdmin">
         <el-button @click="download('/attendance/template', {}, 'attendance_template.xlsx')">{{ t('att.template') }}</el-button>
         <el-button type="primary" @click="fileInput.click()">{{ t('att.import') }}</el-button>
@@ -235,7 +235,7 @@ const exportOpen = ref(false)
       <el-table-column prop="note" :label="t('ot.note')" min-width="120" />
       <el-table-column prop="created_by_name" :label="t('task.publisher')" width="110" />
       <el-table-column width="80">
-        <template #default="{ row }"><el-button v-if="auth.isAdmin || row.team_id === auth.user?.team_id || !row.team_id" link type="danger" @click="delOvertime(row)">{{ t('common.delete') }}</el-button></template>
+        <template #default="{ row }"><el-button v-if="row.team_id ? auth.teamOk('overtime.edit', row.team_id) : auth.can('overtime.edit')" link type="danger" @click="delOvertime(row)">{{ t('common.delete') }}</el-button></template>
       </el-table-column>
     </el-table>
     <div v-else class="muted small">{{ t('ot.none') }}</div>
@@ -276,7 +276,7 @@ const exportOpen = ref(false)
           <el-button type="primary" @click="save()">{{ t('common.save') }}</el-button>
         </div>
 
-        <template v-if="canEdit(cur.worker) || auth.isAdmin">
+        <template v-if="canEdit(cur.worker)">
           <h4>{{ t('att.swapWith') }}</h4>
           <div class="btns left">
             <el-select v-model="swapWith" filterable clearable :placeholder="t('att.swapPick')" style="width: 220px">

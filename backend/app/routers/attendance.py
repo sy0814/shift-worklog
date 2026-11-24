@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from .. import attendance_service as att, worker_history
+from .. import attendance_service as att, permissions, worker_history
 from .. import audit
 from ..db import get_db
 from ..models import Attendance, Task, Team, User, Worker, utcnow
@@ -145,7 +145,7 @@ def set_attendance(body: AttendanceSet, db: Session = Depends(get_db), user: Use
     w = db.get(Worker, body.worker_id)
     if w is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
-    if user.role != "admin" and w.team_id != user.team_id:
+    if not permissions.who(db, user).team_ok("attendance.edit", w.team_id):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "not your team's worker")
     _validate(db, body.status, body.shift_kind, body.team_id)
     _apply(db, w, body.day, body.status, body.shift_kind, body.team_id, body.note, "manual", user.id)
@@ -175,10 +175,11 @@ def set_batch(body: AttendanceBatch, db: Session = Depends(get_db), user: User =
     workers = [db.get(Worker, i) for i in dict.fromkeys(body.worker_ids)]
     if any(w is None for w in workers):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "unknown worker")
-    if user.role != "admin":
-        helping_me = body.status == "present" and body.team_id == user.team_id
-        if not all(w.team_id == user.team_id or helping_me for w in workers):
-            raise HTTPException(status.HTTP_403_FORBIDDEN, "not your team's worker")
+    who = permissions.who(db, user)
+    # 本班组的人可以改；别的班组的人只能安排来「本班组」上班（顶班 / 支援）
+    helping_me = body.status == "present" and body.team_id is not None and who.team_ok("attendance.edit", body.team_id)
+    if not all(who.team_ok("attendance.edit", w.team_id) or helping_me for w in workers):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "not your team's worker")
     n = 0
     d = body.start
     while d <= body.end:
@@ -198,7 +199,8 @@ def swap(body: AttendanceSwap, db: Session = Depends(get_db), user: User = Depen
     a, b = db.get(Worker, body.worker_a), db.get(Worker, body.worker_b)
     if a is None or b is None or a.id == b.id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "need two different workers")
-    if user.role != "admin" and user.team_id not in (a.team_id, b.team_id):
+    who = permissions.who(db, user)
+    if not (who.team_ok("attendance.edit", a.team_id) or who.team_ok("attendance.edit", b.team_id)):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "neither worker is in your team")
     eff = att.effective(db, [a, b], body.day, body.day)
     ea, eb = eff[a.id][body.day], eff[b.id][body.day]
