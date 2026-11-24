@@ -218,7 +218,7 @@
   - **真实测试（2026-11-22，21 天、13 人、89 条任务）**：找出了预埋的全部问题（一人包揽、出勤无任务、2 班大量无人负责、超时、请假）；约 100 秒、1.5 万 token（大部分是模型思考）；修正了一次「声称达到移交 ≥3 次」的无据说法（加了 max_handover_count + 规则）
   - 表 `ai_reports`（迁移 0002）
 - [x] 第 8 步：定期巡查自动派活（2026-11-22）
-  - 「管理 → 定期巡查」（管理员维护，所有人可查看）；表 `inspection_templates`、`inspection_runs`，任务加 `inspection_id`（迁移 0003），任务卡片显示「巡查」标签
+  - 原「管理 → 定期巡查」（2026-11-24 起在「项目」页的「定期巡查」标签里）；表 `inspection_templates`、`inspection_runs`，任务加 `inspection_id`（迁移 0003），任务卡片显示「巡查」标签
   - **周期四选一**（`app/inspection_schedule.py`，纯函数）：每天 / 每隔 N 天（从起算日期起）；每周几（多选）；每月几号（多选，29~31 在小月取最后一天）；按班次（白/中/夜多选，每隔 N 个班，在班次开始时触发）
   - **派给谁二选一**：到时间正在上班的倒班班组；固定班组（它在休息就归到它的下一个班次；按班次时只数这个班组自己上的班；可预设参与人员）
   - APScheduler 每分钟检查一次（和翻译重试在同一个调度器里，`translation_service.start_scheduler`）；服务器停机错过多次时只派最近一次，其余记 skipped；`(巡查项, 触发时间)` 唯一，不会重复派；手动「立即派发」用精确时间，不和周期冲突
@@ -290,6 +290,11 @@
   - **可移交 / 不可移交**（项目上设置，可随时改）：不可移交的子项目不能移交（`perms.handover` 为 false，接口 409），一直留在原班组；可移交的：子项目所在班次结束 30 分钟后还没做完、那个班组不在班，定时任务（每分钟，`project_service.auto_handover_job`）自动移交给此刻在班的主班组，留痕操作人为空（系统自动），移交记录的操作人记为项目最后修改人
   - 移交逻辑抽成 `handover.perform_handover`（手动、自动共用）；移交时新任务带上 `project_id`、`inspection_id`
   - **完成**：只看每条链的最新一条（不算「已移交」的），全部「已完成」或「已废弃」才算完成，记 `closed_at`；之后再加子项目会重新打开
+- [x] 用户反馈第七轮修改（2026-11-24）
+  - **员工名册头像被压扁**：名册表格的头像列 class 叫 `.av`，和头像组件根元素同名，父组件的 scoped 样式（`width: 40px`）作用到了子组件根元素上。头像组件 class 改成 `worker-avatar` 并加 `aspect-ratio: 1`。**组件根元素的 class 名要起得独特，避免被父组件样式命中**
+  - **定期巡查并入「项目」页**（两个标签：项目 / 定期巡查；`/inspections` 跳到 `/projects?tab=inspections`；菜单里不再单独列定期巡查）。巡查项可以加**小项目**（`inspection_templates.sub_items` [{content, team_id?, worker_id?}]、`transferable`，迁移 0012）：有小项目时每次派发生成一个项目（`projects.inspection_id`，名称 = 巡查项名称，所属班组 = 这次派给的班组），每个小项目是一个子项目（没指定 = 派给的班组、同一班次；指定班组 / 人照项目的规则），任务带巡查标签；上一次已翻译好的名称和子项目内容直接复制译文。没有小项目时还是生成一个任务。`inspection_runs.project_id` 记录生成的项目，派发记录里可「查看项目」。班长给小项目指定班组 / 人也受「本班组」范围限制
+  - **名称自动翻译**：班组名、角色名、系统名称只填一种语言时，保存时用 DeepSeek 翻译空着的语言（`translation_service.fill_names`；没配翻译或失败就先用填了的那个）；三语输入组件 `components/TriNames.vue` 带「自动翻译」按钮（`POST /api/translate`，当场翻译给人看过再保存）。超长按词截断（`translation_service.fit`）；系统名称最长 100 字，顶栏放不下显示省略号
+  - 开发环境里测试真实翻译：用占位 Key 启动（`DEEPSEEK_API_KEY=sk-placeholder`），出站代理会换成真的
 - 工厂时区由 `APP_TIMEZONE` 配置，默认 `Europe/Belgrade`
 - 排班推算是纯函数，在 `backend/app/shifts.py`，测试在 `backend/tests/test_shifts.py`
 - 留痕：业务代码统一调用 `app/audit.py` 的 `log()` / `log_changes()`；数据库触发器禁止对 `audit_log` 做 UPDATE / DELETE（SQLite、PostgreSQL 都已验证）

@@ -194,6 +194,7 @@ class Project(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # 全部子项目结束的时间
+    inspection_id: Mapped[int | None] = mapped_column(ForeignKey("inspection_templates.id"), nullable=True, index=True)
 
 
 class WorkerSchedule(Base):
@@ -433,6 +434,10 @@ class InspectionTemplate(Base):
     assign: Mapped[str] = mapped_column(String(10), default="on_duty")  # on_duty / fixed
     team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"), nullable=True)
     worker_ids: Mapped[list] = mapped_column(JSON, default=list)  # 只在固定班组时使用
+    # 小项目：[{content, team_id?, worker_id?}]。有小项目时，每次派发生成一个「项目」（名称 = 巡查项名称），
+    # 每个小项目是一个子项目：分给指定的人 / 班组，没指定就给这次派给的班组
+    sub_items: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")
+    transferable: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())  # 生成的项目是否可移交
     next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
@@ -451,6 +456,7 @@ class InspectionRun(Base):
     template_id: Mapped[int] = mapped_column(ForeignKey("inspection_templates.id"), index=True)
     occurrence_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))  # 应触发的时间
     task_id: Mapped[int | None] = mapped_column(ForeignKey("tasks.id"), nullable=True)
+    project_id: Mapped[int | None] = mapped_column(ForeignKey("projects.id"), nullable=True)  # 有小项目时生成的项目
     team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"), nullable=True)
     status: Mapped[str] = mapped_column(String(10))  # created / skipped（补派时跳过的旧次数）/ manual / failed
     note: Mapped[str] = mapped_column(String(300), default="")

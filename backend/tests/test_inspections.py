@@ -156,3 +156,36 @@ def test_yearly(client, admin_h, teams):
     assert [o["at"][:10] for o in r][:3] == ["2027-02-28", "2029-02-28", "2031-02-28"]
     t = _mk(client, admin_h, kind="yearly", year_dates=["12-31"]).json()
     assert t["year_dates"] == ["12-31"] and t["next_run_at"].startswith("2026-12-31")
+
+
+def test_inspection_with_sub_items_creates_project(client, admin_h, leader_h, teams):
+    """有小项目的巡查：每次派发生成一个项目，小项目是子项目（没指定就给这次派给的班组）；第二次直接复制译文。"""
+    w = client.post("/api/workers", headers=admin_h, json={"name": "Insp Sub W", "team_id": teams["T2"]}).json()
+    body = {"name": "每周电气巡检", "content": "", "lang": "zh", "kind": "daily", "at_time": "08:00", "start_date": "2026-11-01",
+            "assign": "fixed", "team_id": teams["T1"], "transferable": False,
+            "sub_items": [{"content": "1# 变压器油温"}, {"content": "2# 配电柜", "team_id": teams["T3"]},
+                          {"content": "电缆沟", "worker_id": w["id"]}]}
+    assert _mk(client, admin_h, **(body | {"sub_items": []})).status_code == 400  # 没小项目时内容必填
+    # 班长：小项目不能指定别的班组
+    assert client.post("/api/inspections", headers=leader_h, json=body).status_code == 403
+    t = client.post("/api/inspections", headers=admin_h, json=body).json()
+    assert len(t["sub_items"]) == 3 and t["transferable"] is False
+    run = client.post(f"/api/inspections/{t['id']}/run-now", headers=admin_h).json()
+    assert run["project_id"] and run["task_id"] is None
+    p = client.get(f"/api/projects/{run['project_id']}", headers=admin_h).json()
+    assert p["name"]["zh"] == "每周电气巡检" and p["total"] == 3 and not p["transferable"] and p["team_id"] == teams["T1"]
+    by = {s["content"]["zh"]: s for s in p["subs"]}
+    assert by["1# 变压器油温"]["team_id"] == teams["T1"] and by["2# 配电柜"]["team_id"] == teams["T3"]
+    assert by["电缆沟"]["lead"]["id"] == w["id"] and by["电缆沟"]["team_id"] == teams["T2"]
+    assert all(s["inspection_id"] == t["id"] for s in p["subs"])
+    # 第二次派发：上一次已翻译好的直接复制
+    with SessionLocal() as db:
+        for x in db.scalars(select(Task).where(Task.project_id == run["project_id"])):
+            x.content_sr, x.content_en, x.translation_status = "SR " + x.content_zh, "EN " + x.content_zh, "done"
+        from app.models import Project
+        pr = db.get(Project, run["project_id"])
+        pr.name_sr, pr.name_en, pr.translation_status = "Nedeljni", "Weekly", "done"
+        db.commit()
+    run2 = client.post(f"/api/inspections/{t['id']}/run-now", headers=admin_h).json()
+    p2 = client.get(f"/api/projects/{run2['project_id']}", headers=admin_h).json()
+    assert p2["name"]["en"] == "Weekly" and all(s["translation_status"] == "done" and s["content"]["en"].startswith("EN ") for s in p2["subs"])

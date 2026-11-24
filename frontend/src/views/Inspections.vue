@@ -11,7 +11,12 @@ import { fmtFull, isNarrow } from '../format'
 import { useAuth } from '../stores/auth'
 import ShiftTag from '../components/ShiftTag.vue'
 import TaskDetail from '../components/TaskDetail.vue'
+import TargetPicker from '../components/TargetPicker.vue'
+import { Plus } from '@element-plus/icons-vue'
 
+// embedded：放在「项目」页的标签里时不显示页面标题
+const props = defineProps({ embedded: { type: Boolean, default: false } })
+const emit = defineEmits(['open-project'])
 const { t, tm, locale } = useI18n()
 const auth = useAuth()
 const rows = ref([])
@@ -52,7 +57,8 @@ function ymd(v) {
 const who = (r) => (r.assign === 'fixed' ? teamName(r.team_id) : t('insp.onDuty'))
 
 async function toggle(r, v) {
-  await api.put(`/inspections/${r.id}`, { ...payloadOf(r), enabled: v })
+  const { subs, ...rest } = payloadOf(r)
+  await api.put(`/inspections/${r.id}`, { ...rest, sub_items: r.sub_items || [], enabled: v })
   ElMessage.success(t('common.saved'))
   load()
 }
@@ -65,12 +71,32 @@ const blank = () => ({
   name: '', content: '', lang: locale.value, enabled: true, kind: 'daily', at_time: '08:00', every_n: 1,
   weekdays: [], month_days: [], year_dates: [], shift_kinds: [], start_date: dayjs().format('YYYY-MM-DD'),
   ...(auth.scope('inspection.manage') === 'all' ? { assign: 'on_duty', team_id: null } : { assign: 'fixed', team_id: auth.user.team_id }), worker_ids: [],
+  transferable: true, subs: [],
 })
+// 小项目：表单里用 { content, target: { mode: default / team / person, team_id, worker_id } }，提交时转成 sub_items
+const subOf = (it) => ({ content: it.content, target: { mode: it.worker_id ? 'person' : it.team_id ? 'team' : 'default',
+  team_id: it.team_id ?? null, worker_id: it.worker_id ?? null } })
+const itemOf = (s) => ({ content: s.content.trim(), team_id: s.target.mode === 'team' ? s.target.team_id : null,
+  worker_id: s.target.mode === 'person' ? s.target.worker_id : null })
+function body() {
+  const { subs, ...rest } = form
+  return { ...rest, sub_items: (subs || []).filter((x) => x.content.trim()).map(itemOf) }
+}
+const subsOk = computed(() => (form.subs || []).every((x) => x.content.trim()
+  && (x.target.mode === 'default' || (x.target.mode === 'team' ? x.target.team_id : x.target.worker_id))))
+const canSave = computed(() => form.name?.trim() && (form.content?.trim() || form.subs?.length) && subsOk.value)
+// 选人时显示每个人下一个班
+const slots = ref({})
+async function loadSlots() {
+  if (Object.keys(slots.value).length) return
+  try { slots.value = Object.fromEntries((await api.get('/projects/people')).data.map((x) => [x.worker_id, x])) } catch { /* 不影响编辑 */ }
+}
 function payloadOf(r) {
   const p = {}
   for (const k of Object.keys(blank())) p[k] = r[k]
   p.at_time = hhmm(r.at_time)
   p.year_dates = [...(r.year_dates || [])]
+  p.subs = (r.sub_items || []).map(subOf)
   return p
 }
 function openEdit(r) {
@@ -78,6 +104,7 @@ function openEdit(r) {
   Object.assign(form, r ? payloadOf(r) : blank())
   preview.value = []
   dlg.value = true
+  loadSlots()
 }
 // 每年：选月、日，加到列表里
 const ym = ref(1)
@@ -100,7 +127,7 @@ watch(form, () => {
   clearTimeout(pt)
   pt = setTimeout(async () => {
     try {
-      preview.value = (await api.post('/inspections/preview', { ...form, name: form.name || 'x', content: form.content || 'x' }, { silent: true })).data
+      preview.value = (await api.post('/inspections/preview', { ...body(), name: form.name || 'x', content: form.content || 'x', sub_items: [] }, { silent: true })).data
       previewErr.value = preview.value.length ? '' : t('insp.noRule')
     } catch {
       preview.value = []
@@ -110,8 +137,8 @@ watch(form, () => {
 }, { deep: true })
 
 async function save() {
-  if (editing.value) await api.put(`/inspections/${editing.value.id}`, { ...form })
-  else await api.post('/inspections', { ...form })
+  if (editing.value) await api.put(`/inspections/${editing.value.id}`, body())
+  else await api.post('/inspections', body())
   dlg.value = false
   ElMessage.success(t('common.saved'))
   load()
@@ -143,9 +170,10 @@ const runType = { created: 'success', manual: 'primary', skipped: 'info', failed
 </script>
 
 <template>
-  <div class="page">
+  <div :class="{ page: !embedded }">
     <div class="toolbar">
-      <h1 class="page-title" style="margin: 0; flex: 1">{{ t('insp.title') }}</h1>
+      <h1 v-if="!embedded" class="page-title" style="margin: 0; flex: 1">{{ t('insp.title') }}</h1>
+      <span v-else style="flex: 1" />
       <el-button v-if="auth.can('inspection.manage')" type="primary" @click="openEdit(null)">{{ t('insp.add') }}</el-button>
     </div>
     <div v-if="auth.scope('inspection.manage') === 'team'" class="muted small hint">{{ t('insp.leaderHint') }}</div>
@@ -154,7 +182,9 @@ const runType = { created: 'success', manual: 'primary', skipped: 'info', failed
       <el-table-column :label="t('insp.enabled')" width="70" align="center">
         <template #default="{ row }"><el-switch :model-value="row.enabled" size="small" :disabled="!row.can_edit" @change="(v) => toggle(row, v)" /></template>
       </el-table-column>
-      <el-table-column prop="name" :label="t('insp.name')" min-width="140" />
+      <el-table-column :label="t('insp.name')" min-width="140">
+        <template #default="{ row }">{{ row.name }} <el-tag v-if="row.sub_items?.length" size="small" effect="plain">📁 {{ t('insp.subsCount', { n: row.sub_items.length }) }}</el-tag></template>
+      </el-table-column>
       <el-table-column :label="t('insp.kind')" min-width="200"><template #default="{ row }">{{ summary(row) }}</template></el-table-column>
       <el-table-column :label="t('insp.assign')" width="160"><template #default="{ row }">{{ who(row) }}</template></el-table-column>
       <el-table-column :label="t('insp.nextRun')" width="140"><template #default="{ row }">{{ row.next_run_at ? fmtFull(row.next_run_at) : '—' }}</template></el-table-column>
@@ -177,7 +207,26 @@ const runType = { created: 'success', manual: 'primary', skipped: 'info', failed
         <el-form label-width="auto" class="f">
           <el-form-item :label="t('insp.name')"><el-input v-model="form.name" maxlength="100" /></el-form-item>
           <el-form-item :label="t('insp.content')">
-            <el-input v-model="form.content" type="textarea" :autosize="{ minRows: 2, maxRows: 6 }" maxlength="2000" :placeholder="t('task.contentPh')" />
+            <el-input v-model="form.content" type="textarea" :autosize="{ minRows: 2, maxRows: 6 }" maxlength="2000"
+                      :placeholder="form.subs?.length ? t('insp.contentOptional') : t('task.contentPh')" />
+          </el-form-item>
+          <el-form-item :label="t('insp.subs')">
+            <div class="subs">
+              <div class="muted small">{{ t('insp.subsHint') }}</div>
+              <div v-for="(x, i) in form.subs" :key="i" class="sub">
+                <span class="no">{{ i + 1 }}</span>
+                <div class="grow">
+                  <el-input v-model="x.content" type="textarea" :autosize="{ minRows: 1, maxRows: 4 }" maxlength="2000" :placeholder="t('proj.subPh')" />
+                  <TargetPicker v-model="x.target" :workers="workers" :slots="slots" allow-default perm="inspection.manage" class="mt4" />
+                </div>
+                <el-button link type="danger" @click="form.subs.splice(i, 1)">✕</el-button>
+              </div>
+              <el-button size="small" :icon="Plus" @click="form.subs.push({ content: '', target: { mode: 'default', team_id: null, worker_id: null } })">{{ t('proj.addSub') }}</el-button>
+              <div v-if="form.subs?.length" class="row">
+                <el-switch v-model="form.transferable" />
+                <small class="muted">{{ form.transferable ? t('proj.transferableHint') : t('proj.fixedHint') }}</small>
+              </div>
+            </div>
           </el-form-item>
           <el-form-item :label="t('insp.kind')">
             <el-radio-group v-model="form.kind">
@@ -268,7 +317,7 @@ const runType = { created: 'success', manual: 'primary', skipped: 'info', failed
       </div>
       <template #footer>
         <el-button @click="dlg = false">{{ t('common.cancel') }}</el-button>
-        <el-button type="primary" :disabled="!form.name?.trim() || !form.content?.trim() || !!previewErr" @click="save">{{ t('common.save') }}</el-button>
+        <el-button type="primary" :disabled="!canSave || !!previewErr" @click="save">{{ t('common.save') }}</el-button>
       </template>
     </el-dialog>
 
@@ -278,6 +327,7 @@ const runType = { created: 'success', manual: 'primary', skipped: 'info', failed
         <div class="small muted">
           {{ r.team_id ? teamName(r.team_id) : '' }}
           <el-button v-if="r.task_id" link type="primary" size="small" @click="detailId = r.task_id; detailOpen = true">#{{ r.task_id }}</el-button>
+          <el-button v-if="r.project_id" link type="primary" size="small" @click="hist = false; emit('open-project', r.project_id)">📁 {{ t('insp.openProject') }}</el-button>
           {{ r.note }}
         </div>
       </div>
@@ -299,4 +349,10 @@ const runType = { created: 'success', manual: 'primary', skipped: 'info', failed
 .ytags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; width: 100%; }
 .run { padding: 8px 0; border-bottom: 1px solid #f2f3f5; }
 .f :deep(.el-checkbox-button__inner) { padding: 6px 10px; }
+.subs { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.sub { display: flex; gap: 6px; align-items: flex-start; }
+.no { width: 18px; text-align: right; color: #909399; padding-top: 6px; }
+.grow { flex: 1; min-width: 0; }
+.mt4 { margin-top: 4px; }
+.row { display: flex; gap: 8px; align-items: center; }
 </style>

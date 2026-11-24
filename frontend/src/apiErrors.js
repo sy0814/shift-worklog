@@ -55,6 +55,7 @@ const T = {
   proj_team: ['不能把子项目分给这个班组（只能分给本班组和合并的班组）', 'Ne možete dodeliti toj ekipi', 'You cannot assign to that team'],
   pick_target: ['请选班组或具体的人', 'Izaberite ekipu ili osobu', 'Choose a team or a person'],
   no_team: ['这个人没有班组', 'Osoba nema ekipu', 'This person has no team'],
+  tr_off: ['没有配置翻译接口（管理员在「系统设置」里配置）', 'Prevod nije podešen', 'Translation is not configured'],
   self: ['不能降级或停用自己', 'Ne možete sebi oduzeti prava', 'You cannot demote or disable yourself'],
 }
 const RULES = [
@@ -92,6 +93,7 @@ const RULES = [
   [/^another analysis is running/, 'analysis_running'],
   [/^cannot demote or disable yourself/, 'self'],
   [/^team in use/, 'team_used'],
+  [/^translation not configured/, 'tr_off'],
   [/^project tasks cannot be handed over/, 'proj_fixed'],
   [/^cannot assign to that team/, 'proj_team'],
   [/^give either team_id or worker_id$/, 'pick_target'],

@@ -9,11 +9,13 @@ const model = defineModel({ type: Object, required: true }) // { mode: 'team' | 
 const props = defineProps({
   workers: { type: Array, default: () => [] },
   slots: { type: Object, default: () => ({}) }, // worker_id → { next_date, next_kind, on_now }
+  allowDefault: { type: Boolean, default: false }, // 定期巡查的小项目：可以不指定（跟巡查这次派给的班组）
+  perm: { type: String, default: 'project.manage' }, // 能分给哪些班组按这个权限算
 })
 const { t } = useI18n()
 const auth = useAuth()
 
-const teams = computed(() => auth.teams.filter((tm) => auth.teamOk('project.manage', tm.id)))
+const teams = computed(() => auth.teams.filter((tm) => auth.teamOk(props.perm, tm.id)))
 const groups = computed(() => teams.value.map((tm) => ({
   label: localName(tm), list: props.workers.filter((w) => w.team_id === tm.id),
 })).filter((g) => g.list.length))
@@ -29,10 +31,12 @@ const picked = computed(() => props.slots[model.value.worker_id])
 <template>
   <div class="tp">
     <el-radio-group v-model="model.mode" size="small">
+      <el-radio-button v-if="allowDefault" value="default">{{ t('proj.toDefault') }}</el-radio-button>
       <el-radio-button value="team">{{ t('proj.toTeam') }}</el-radio-button>
       <el-radio-button value="person">{{ t('proj.toPerson') }}</el-radio-button>
     </el-radio-group>
-    <el-select v-if="model.mode === 'team'" v-model="model.team_id" size="small" class="sel" :placeholder="t('proj.pickTeam')">
+    <template v-if="model.mode === 'default'" />
+    <el-select v-else-if="model.mode === 'team'" v-model="model.team_id" size="small" class="sel" :placeholder="t('proj.pickTeam')">
       <el-option v-for="tm in teams" :key="tm.id" :label="localName(tm)" :value="tm.id" />
     </el-select>
     <el-select v-else v-model="model.worker_id" size="small" filterable class="sel" :placeholder="t('proj.pickPerson')">
@@ -43,7 +47,7 @@ const picked = computed(() => props.slots[model.value.worker_id])
         </el-option>
       </el-option-group>
     </el-select>
-    <span v-if="model.mode === 'person' && model.worker_id && picked && !picked.on_now" class="warn">
+    <span v-if="model.mode === 'person' && model.worker_id && picked && !picked.on_now && !allowDefault" class="warn">
       ⚠ {{ t('proj.notNow', { s: slotText(model.worker_id) }) }}
     </span>
   </div>

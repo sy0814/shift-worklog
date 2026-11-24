@@ -4,6 +4,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api'
+import TriNames from '../components/TriNames.vue'
 import { LANGS, i18n } from '../i18n'
 import { branding, loadBranding } from '../branding'
 
@@ -105,8 +106,8 @@ onMounted(async () => {
     <el-card shadow="never" class="mb">
       <template #header><b>{{ t('sys.appName') }}</b></template>
       <el-form label-width="auto" style="max-width: 520px">
-        <el-form-item v-for="l in LANGS" :key="l.code" :label="l.label">
-          <el-input v-model="nameForm[l.code]" maxlength="40" clearable :placeholder="defaultName(l.code)" />
+        <el-form-item :label="t('sys.appName')">
+          <TriNames v-model="nameForm" prefix="" :maxlength="100" :placeholders="{ zh: defaultName('zh'), sr: defaultName('sr'), en: defaultName('en') }" />
         </el-form-item>
         <el-form-item><span class="muted">{{ t('sys.appNameHint', { def: defaultName($i18n.locale) }) }}</span></el-form-item>
         <el-form-item><el-button type="primary" @click="saveName">{{ t('common.save') }}</el-button></el-form-item>

@@ -9,6 +9,7 @@ import { isNarrow } from '../format'
 import { useAuth } from '../stores/auth'
 import ShiftTag from '../components/ShiftTag.vue'
 import CycleEditor from '../components/CycleEditor.vue'
+import TriNames from '../components/TriNames.vue'
 import { fullHours, shortEntry } from '../cycle'
 
 const { t, tm, locale } = useI18n()
@@ -267,12 +268,7 @@ onMounted(async () => {
         <el-dialog v-model="teamDlg" :title="teamEditing ? t('schedule.editTeam') : t('schedule.addTeam')" width="min(720px, 96vw)" :fullscreen="isNarrow()" append-to-body>
           <el-form label-width="auto">
             <el-form-item :label="t('schedule.teamName')">
-              <div class="names">
-                <el-input v-model="tf.name_zh" maxlength="50"><template #prepend>中</template></el-input>
-                <el-input v-model="tf.name_sr" maxlength="50"><template #prepend>SR</template></el-input>
-                <el-input v-model="tf.name_en" maxlength="50"><template #prepend>EN</template></el-input>
-                <small class="muted">{{ t('schedule.namesHint') }}</small>
-              </div>
+              <TriNames v-model="tf" />
             </el-form-item>
             <el-form-item :label="t('schedule.isMain')">
               <div class="names">

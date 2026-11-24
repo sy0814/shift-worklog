@@ -17,7 +17,7 @@ const routes = [
       { path: 'workers', name: 'workers', component: () => import('./views/Workers.vue'), meta: { perm: 'worker.pin' } },
       { path: 'roles', name: 'roles', component: () => import('./views/Roles.vue'), meta: { admin: true } },
       { path: 'glossary', name: 'glossary', component: () => import('./views/Glossary.vue'), meta: { admin: true } },
-      { path: 'inspections', name: 'inspections', component: () => import('./views/Inspections.vue') },
+      { path: 'inspections', redirect: { name: 'projects', query: { tab: 'inspections' } } }, // 定期巡查已并入「项目」页
       { path: 'analysis', name: 'analysis', component: () => import('./views/Analysis.vue'), meta: { admin: true } },
       { path: 'settings', name: 'settings', component: () => import('./views/Settings.vue'), meta: { admin: true } },
       { path: 'audit', name: 'audit', component: () => import('./views/Audit.vue'), meta: { admin: true } },

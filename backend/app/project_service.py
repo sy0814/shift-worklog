@@ -81,16 +81,15 @@ def next_slot_of_worker(db: Session, sched, worker: Worker, now_local: datetime,
 
 
 def create_sub(db: Session, project: Project, content: str, lang: str, user_id: int, *, team_id: int | None = None,
-               worker: Worker | None = None) -> Task:
+               worker: Worker | None = None, slot: tuple[date, str] | None = None, recorded_at: datetime | None = None,
+               inspection_id: int | None = None, log_user: int | None | bool = True) -> Task:
     """加一个子项目（不 commit）：分给班组（班长再安排人），或直接分给某个人（带队人 = 这个人）。"""
     sched = load_schedule(db)
     now_local = local_now()
     now = utcnow()
     if worker is not None:
         team_id = Timelines(db, [worker]).on(worker.id, now_local.date()).team_id or worker.team_id
-        slot = next_slot_of_worker(db, sched, worker, now_local)
-    else:
-        slot = None
+        slot = next_slot_of_worker(db, sched, worker, now_local) or slot
     team = sched.team(team_id)
     if slot is None:
         try:
@@ -99,9 +98,9 @@ def create_sub(db: Session, project: Project, content: str, lang: str, user_id: 
             slot = sched.shift_at(now_local)
     t = Task(
         client_id=str(uuid.uuid4()), source_lang=lang, team_id=team_id, origin_team_id=team_id,
-        project_id=project.id, status="not_started", shift_date=slot[0], shift_kind=slot[1],
-        created_by=user_id, updated_by=user_id, recorded_at=now, created_at=now, updated_at=now,
-        translation_status="pending", chain_started_at=now, handover_count=0, manual_fields=[],
+        project_id=project.id, inspection_id=inspection_id, status="not_started", shift_date=slot[0], shift_kind=slot[1],
+        created_by=user_id, updated_by=user_id, recorded_at=recorded_at or now, created_at=now, updated_at=now,
+        translation_status="pending", chain_started_at=recorded_at or now, handover_count=0, manual_fields=[],
     )
     setattr(t, f"content_{lang}", content.strip())
     if worker is not None:
@@ -109,7 +108,8 @@ def create_sub(db: Session, project: Project, content: str, lang: str, user_id: 
         t.lead_worker_id = worker.id
     db.add(t)
     db.flush()
-    audit.log(db, user_id=user_id, action="create", entity="task", entity_id=t.id, new={
+    audit.log(db, user_id=user_id if log_user is True else log_user, action="create" if log_user is not None else "auto_create",
+              entity="task", entity_id=t.id, new={
         "content": content.strip(), "lang": lang, "team_id": team_id, "project_id": project.id,
         "lead_worker_id": worker.id if worker else None, "shift": f"{slot[0]} {slot[1]}"})
     return t

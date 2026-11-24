@@ -163,6 +163,45 @@ _queued: set[int] = set()
 _threads: list[threading.Thread] = []
 
 
+# ---------------- 名称（班组、角色、系统名称……）----------------
+def translate_text(text: str) -> translator.Translation:
+    """当场翻译一小段文字（名称之类）。没配翻译或失败抛 TranslationError。"""
+    if not translator.is_configured():
+        raise translator.TranslationError("translation not configured")
+    with SessionLocal() as db:
+        glossary = load_glossary(db)
+    with client_factory() as client:
+        return translator.translate(text, glossary, client=client)
+
+
+def fit(text: str, n: int) -> str:
+    """限制长度：超出时在词边界截断（不在单词中间断开）。"""
+    text = text.strip()
+    if len(text) <= n:
+        return text
+    cut = text[:n]
+    sp = cut.rfind(" ")
+    return (cut[:sp] if sp > n // 2 else cut).rstrip(" ,.;:-(")
+
+
+def fill_names(names: dict[str, str]) -> dict[str, str]:
+    """{zh, sr, en} 只填了一部分时，空的用翻译补上；没配翻译或翻译失败，就用填了的那个（以后可以手动改）。"""
+    names = {l: (names.get(l) or "").strip() for l in LANGS}
+    filled = [l for l in LANGS if names[l]]
+    if not filled or len(filled) == len(LANGS):
+        return names
+    src = names[filled[0]]
+    try:
+        tr = translate_text(src)
+    except translator.TranslationError as e:
+        log.info("name translation skipped: %s", e)
+        tr = None
+    for l in LANGS:
+        if not names[l]:
+            names[l] = (tr.get(l) if tr else "") or src
+    return names
+
+
 # ---------------- 项目名称 ----------------
 def translate_project(project_id: int) -> str:
     """翻译项目名称缺的语言（和任务一样：原文原样保留，原文语言以模型判断为准）。"""

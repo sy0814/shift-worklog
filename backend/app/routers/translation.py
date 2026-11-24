@@ -3,6 +3,7 @@
 import csv
 import io
 
+from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import Response
 from sqlalchemy import func, select
@@ -199,3 +200,25 @@ def export_glossary(db: Session = Depends(get_db), _: User = Depends(get_current
         w.writerow([t.zh, t.sr, t.en, t.category, t.note])
     return Response("﻿" + buf.getvalue(), media_type="text/csv; charset=utf-8",
                     headers={"Content-Disposition": 'attachment; filename="glossary.csv"'})
+
+
+class TranslateIn(BaseModel):
+    text: str = Field(min_length=1, max_length=500)
+
+
+class TranslateOut(BaseModel):
+    source_lang: str
+    zh: str
+    sr: str
+    en: str
+
+
+@router.post("/translate", response_model=TranslateOut)
+def translate_now(body: TranslateIn, user: User = Depends(get_current_user)):
+    """对话框里「自动翻译」按钮：当场把一段文字（名称之类）翻成三种语言，给用户看过再保存。"""
+    try:
+        r = translation_service.translate_text(body.text.strip())
+    except translator.TranslationError as e:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(e) or "translation failed")
+    return TranslateOut(source_lang=r.source_lang, zh=r.zh, sr=r.sr, en=r.en)
+

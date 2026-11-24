@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .. import audit, permissions
+from .. import audit, permissions, translation_service
 from ..db import get_db
 from ..db import Base
 from ..models import Holiday, ShiftConfig, Team, TeamShiftOverride, User, utcnow
@@ -274,7 +274,9 @@ def _team_fields(db: Session, body: TeamIn) -> dict:
     first = next((v for v in names.values() if v), "")
     if not first:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "team name required")
-    names = {k: v or first for k, v in names.items()}  # 没填的语言先用填了的那个
+    # 没填的语言自动翻译（没配翻译就先用填了的那个）
+    filled = translation_service.fill_names({k[5:]: v for k, v in names.items()})
+    names = {f"name_{l}": translation_service.fit(filled[l], 50) for l in ("zh", "sr", "en")}
     if body.active_from and body.active_to and body.active_to < body.active_from:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "active_to before active_from")
     if body.kind == "cycle":

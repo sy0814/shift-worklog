@@ -10,13 +10,13 @@ const color = computed(() => COLORS[[...(props.worker.name || '')].reduce((a, c)
 </script>
 
 <template>
-  <span class="av" :style="{ width: size + 'px', height: size + 'px', fontSize: size * 0.42 + 'px', background: worker.avatar_url ? '#eee' : color }">
+  <span class="worker-avatar" :style="{ width: size + 'px', height: size + 'px', fontSize: size * 0.42 + 'px', background: worker.avatar_url ? '#eee' : color }">
     <img v-if="worker.avatar_url" :src="worker.avatar_url" :alt="worker.name" loading="lazy" />
     <span v-else>{{ initial }}</span>
   </span>
 </template>
 
 <style scoped>
-.av { display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; overflow: hidden; color: #fff; font-weight: 600; flex: none; }
-.av img { width: 100%; height: 100%; object-fit: cover; }
+.worker-avatar { display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; overflow: hidden; color: #fff; font-weight: 600; flex: none; aspect-ratio: 1; }
+.worker-avatar img { width: 100%; height: 100%; object-fit: cover; }
 </style>

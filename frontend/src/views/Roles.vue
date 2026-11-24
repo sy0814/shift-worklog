@@ -5,6 +5,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api'
+import TriNames from '../components/TriNames.vue'
 import { useAuth } from '../stores/auth'
 
 const { t, locale } = useI18n()
@@ -66,11 +67,7 @@ const rows = computed(() => defs.value.map((d) => ({ ...d })))
                 <el-tag v-if="r.is_builtin" size="small" effect="plain">{{ t('rp.builtin') }}</el-tag>
                 <span class="muted small">{{ t('rp.people', { n: r.people }) }}</span>
               </div>
-              <div class="names">
-                <el-input v-model="r.name_zh" size="small" @input="mark(r)"><template #prepend>中</template></el-input>
-                <el-input v-model="r.name_sr" size="small" @input="mark(r)"><template #prepend>SR</template></el-input>
-                <el-input v-model="r.name_en" size="small" @input="mark(r)"><template #prepend>EN</template></el-input>
-              </div>
+              <div class="names" @input="mark(r)"><TriNames :model-value="r" size="small" @change="mark(r)" /></div>
               <el-select v-model="r.login_mode" size="small" class="w" @change="mark(r)">
                 <el-option value="password" :label="t('rp.modes.password')" />
                 <el-option value="pin" :label="t('rp.modes.pin')" />

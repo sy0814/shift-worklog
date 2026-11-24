@@ -78,6 +78,9 @@ def create_task(db: Session, t: InspectionTemplate, occ_local: datetime, run_sta
         run.status, run.note = "failed", "no team on duty / team not found"
         db.add(run)
         return run
+    if t.sub_items:  # 有小项目：生成一个项目，每个小项目一个子项目
+        _create_project(db, t, run, team, (shift_date, shift_kind), occ_utc, occ_local, user_id)
+        return run
     now = utcnow()
     task = Task(
         client_id=str(uuid.uuid4()), source_lang=t.lang, team_id=team.id, origin_team_id=team.id,
@@ -98,6 +101,51 @@ def create_task(db: Session, t: InspectionTemplate, occ_local: datetime, run_sta
               entity_id=task.id, new={"inspection_id": t.id, "inspection": t.name, "occurrence": occ_local.isoformat(),
                                        "team_id": team.id, "shift": f"{shift_date} {shift_kind}"})
     return run
+
+
+def _create_project(db: Session, t: InspectionTemplate, run: InspectionRun, team, slot, occ_utc, occ_local,
+                    user_id: int | None) -> None:
+    """有小项目的巡查：生成项目（名称 = 巡查项名称）+ 子项目。上一次的译文一样就直接复制，不用再翻译。"""
+    from . import project_service
+    from .models import Project
+
+    actor = user_id or t.updated_by
+    now = utcnow()
+    prev = db.scalar(select(Project).where(Project.inspection_id == t.id).order_by(Project.id.desc()).limit(1))
+    p = Project(source_lang=t.lang, translation_status="pending", transferable=t.transferable, team_id=team.id,
+                inspection_id=t.id, created_by=actor, updated_by=actor, created_at=now, updated_at=now)
+    if prev is not None and prev.translation_status == "done" and t.name.strip() in {prev.name_zh, prev.name_sr, prev.name_en}:
+        p.name_zh, p.name_sr, p.name_en, p.source_lang, p.translation_status = (
+            prev.name_zh, prev.name_sr, prev.name_en, prev.source_lang, "done")
+    else:
+        setattr(p, f"name_{t.lang}", t.name.strip())
+    db.add(p)
+    db.flush()
+    # 上一次生成的子项目里已经翻译好的：按内容复制译文
+    done_before = {}
+    if prev is not None:
+        for old in db.scalars(select(Task).where(Task.project_id == prev.id, Task.translation_status == "done")):
+            for l in LANGS:
+                if getattr(old, f"content_{l}"):
+                    done_before.setdefault(getattr(old, f"content_{l}"), old)
+    for item in t.sub_items:
+        worker = db.get(Worker, item["worker_id"]) if item.get("worker_id") else None
+        if worker is not None and not worker.is_active:
+            worker = None
+        team_id = item.get("team_id") or team.id
+        sub = project_service.create_sub(db, p, item["content"], t.lang, actor, team_id=team_id, worker=worker,
+                                         slot=slot if team_id == team.id and worker is None else None,
+                                         recorded_at=occ_utc, inspection_id=t.id, log_user=user_id)
+        old = done_before.get(item["content"].strip())
+        if old is not None:
+            for l in LANGS:
+                setattr(sub, f"content_{l}", getattr(old, f"content_{l}"))
+            sub.source_lang, sub.translation_status = old.source_lang, "done"
+    run.project_id = p.id
+    db.add(run)
+    audit.log(db, user_id=user_id, action="auto_create" if user_id is None else "create", entity="project",
+              entity_id=p.id, new={"inspection_id": t.id, "inspection": t.name, "occurrence": occ_local.isoformat(),
+                                    "team_id": team.id, "subs": len(t.sub_items)})
 
 
 def process_template(db: Session, t: InspectionTemplate, now_local: datetime) -> list[InspectionRun]:
@@ -129,6 +177,7 @@ def run_due() -> int:
             InspectionTemplate.enabled.is_(True), InspectionTemplate.next_run_at <= now_utc)).all()
     created = 0
     new_tasks: list[int] = []
+    new_projects: list[int] = []
     for tid in ids:
         with SessionLocal() as db:
             t = db.get(InspectionTemplate, tid)
@@ -152,6 +201,25 @@ def run_due() -> int:
                 if r.task_id:
                     created += 1
                     new_tasks.append(r.task_id)
+                if r.project_id:
+                    created += 1
+                    new_projects.append(r.project_id)
     for task_id in new_tasks:
         translation_service.enqueue(task_id)
+    for pid in new_projects:
+        enqueue_project_translations(pid)
     return created
+
+
+def enqueue_project_translations(project_id: int) -> None:
+    """项目名称和还没翻译的子项目放进翻译队列。"""
+    from .models import Project
+
+    with SessionLocal() as db:
+        p = db.get(Project, project_id)
+        pending = p is not None and p.translation_status == "pending"
+        ids = db.scalars(select(Task.id).where(Task.project_id == project_id, Task.translation_status == "pending")).all()
+    if pending:
+        translation_service.enqueue_project(project_id)
+    for tid in ids:
+        translation_service.enqueue(tid)

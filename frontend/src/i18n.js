@@ -90,7 +90,7 @@ const messages = {
     },
     exp: { title: '导出 Excel', range: '时间段', team: '班组', worker: '人员', lang: '表格语言', download: '下载', all: '全部', note: '包含任务明细、人员工作量、出勤三张表' },
     sys: {
-      appName: '系统名称', appNameHint: '显示在顶栏、登录页和浏览器标签上。可只填一种语言，没填的语言用默认名称：{def}', appNameDefault: '默认',
+      appName: '系统名称', appNameHint: '显示在顶栏、登录页和浏览器标签上。三种都不填 = 用默认名称：{def}', appNameDefault: '默认',
       title: '系统设置', ai: 'AI 接口', provider: '接口类型', deepseek: 'DeepSeek（默认）', other: '其他 OpenAI 兼容接口', baseUrl: '接口地址',
       apiKey: 'API Key', keySet: '已设置（{hint}），留空表示不修改', keyEnv: '使用服务器 .env 里的 Key（{hint}）', keyNone: '未设置',
       keyRequired: '换了接口地址，需要填写新的 API Key', translateModel: '翻译模型', analysisModel: 'AI 分析模型', fetchModels: '获取模型列表',
@@ -110,7 +110,7 @@ const messages = {
       note: '工时按「完成 − 开始」计算，多人参与的任务每人都计全部工时；出勤默认按排班。报告由 AI 根据统计数据撰写，仅供参考。',
     },
     insp: {
-      title: '定期巡查', add: '新建巡查项', name: '名称', content: '巡查内容（生成任务的工作内容）', enabled: '启用', kind: '周期',
+      subs: '小项目', subsHint: '可以不加。加了小项目，每次派发会生成一个项目（名称 = 巡查项名称），每个小项目是一个子项目：可以指定班组或具体的人，「跟派给的班组」= 给这次派给的班组。', contentOptional: '有小项目时可以不填', openProject: '查看项目', subsCount: '{n} 个小项目', title: '定期巡查', add: '新建巡查项', name: '名称', content: '巡查内容（生成任务的工作内容）', enabled: '启用', kind: '周期',
       kinds: { daily: '每天 / 每隔几天', weekly: '每周', monthly: '每月', yearly: '每年', shift: '按班次' },
       yearDates: '哪几天', yearPick: '选日期（可多选）', everyYears: '每隔几年', yearHint: '选 2 月 29 日时，平年按 2 月 28 日', leaderHint: '班长只能管理固定派给本班组的巡查项', readonly: '只读',
       everyDays: '每隔几天', atTime: '时间', startDate: '起算日期', weekdays: '周几', monthDays: '几号', monthHint: '选 29~31 号时，没有这一天的月份按最后一天',
@@ -137,7 +137,7 @@ const messages = {
       pwHint: '登录时：用户名 + 密码（至少 6 位）。', newSecret: '新密码（不改就留空）', pin: '个人密码', locked: '已锁定（连续输错）',
       disabled: '已停用', active: '正常', unlock: '解锁', disable: '停用账号', enable: '启用账号', open: '开账号', teamLogin: '班组账号' },
     assign: { onDuty: '本班在岗', current: '已在任务里', hint: '只能选这个班次（{d} {s}）在岗的人；其他人请先在「出勤」里安排来本班' },
-    proj: { title: '项目', open: '进行中', closed: '已完成', all: '全部', add: '新建项目', none: '没有项目',
+    proj: { toDefault: '跟派给的班组', title: '项目', open: '进行中', closed: '已完成', all: '全部', add: '新建项目', none: '没有项目',
       hint: '一个项目下面有多个子项目，子项目会出现在对应班组的交接班里。子项目可以分给班组（班长再安排人），也可以直接分给某个人。所有子项目都完成（或废弃）项目才算完成。',
       fixed: '不可移交', closedTag: '已完成', late: '已超期', deadline: '截止', counts: '已完成 {done}/{total}，还剩 {open} 个', discarded: '其中废弃 {n} 个',
       name: '项目名称', team: '所属班组', transferable: '可移交', subs: '子项目', subPh: '子项目内容（任意语言，会自动翻译）', addSub: '加子项目',
@@ -145,6 +145,7 @@ const messages = {
       reassign: '改派', reassignHint: '改派给班组：清掉原来的人，由那个班组的班长重新安排；改派给某个人：任务归到这个人所在的班组，带队人就是他。',
       toTeam: '分给班组', toPerson: '分给个人', pickTeam: '选班组', pickPerson: '选人', noShift: '近期没有班', onNow: '正在上班',
       notNow: '这个人现在不在班，下一个班：{s}' },
+    names: { translate: '自动翻译', hint: '只填一种语言也行：点「自动翻译」先看看，或者直接保存，空着的语言保存时自动翻译', failed: '现在翻译不了（没配置翻译接口或网络不通），可以手动填写' },
     lead: { title: '带队人员', none: '未指定', members: '参与人员', pick: '选择带队人（可不选）' },
     duty: {
       onDuty: '在岗 {n} 人', offHours: '不在上班时间 {n}', busy: '忙碌 {n}', idle: '空闲 {n}', absent: '请假/缺勤 {n}', title: '{shift} 人员状态', support: '支援',
@@ -248,7 +249,7 @@ const messages = {
     },
     exp: { title: 'Izvoz u Excel', range: 'Period', team: 'Ekipa', worker: 'Radnik', lang: 'Jezik tabele', download: 'Preuzmi', all: 'Svi', note: 'Sadrži zadatke, opterećenje po radniku i prisustvo' },
     sys: {
-      appName: 'Naziv sistema', appNameHint: 'Prikazuje se u zaglavlju, na prijavi i na kartici pregledača. Prazno polje = podrazumevani naziv: {def}', appNameDefault: 'Podrazumevano',
+      appName: 'Naziv sistema', appNameHint: 'Prikazuje se u zaglavlju, na prijavi i na kartici pregledača. Sva polja prazna = podrazumevani naziv: {def}', appNameDefault: 'Podrazumevano',
       title: 'Podešavanja', ai: 'AI servis', provider: 'Vrsta servisa', deepseek: 'DeepSeek (podrazumevano)', other: 'Drugi OpenAI-kompatibilan servis', baseUrl: 'Adresa servisa',
       apiKey: 'API ključ', keySet: 'Podešen ({hint}); ostavite prazno da se ne menja', keyEnv: 'Koristi ključ iz .env na serveru ({hint})', keyNone: 'Nije podešen',
       keyRequired: 'Adresa je promenjena – unesite novi API ključ', translateModel: 'Model za prevod', analysisModel: 'Model za AI analizu', fetchModels: 'Učitaj modele',
@@ -268,7 +269,7 @@ const messages = {
       note: 'Sati = završetak − početak; kod zadataka sa više učesnika svakom se računaju svi sati; prisustvo po rasporedu. Izveštaj piše AI na osnovu statistike – samo kao pomoć.',
     },
     insp: {
-      title: 'Periodični obilasci', add: 'Novi obilazak', name: 'Naziv', content: 'Sadržaj (opis posla za zadatak)', enabled: 'Aktivno', kind: 'Učestalost',
+      subs: 'Stavke', subsHint: 'Opciono. Sa stavkama svaki obilazak pravi projekat (naziv = naziv obilaska), a svaka stavka je podzadatak: određena ekipa ili osoba, ili „Ekipi obilaska”.', contentOptional: 'Nije obavezno kada postoje stavke', openProject: 'Projekat', subsCount: '{n} stavki', title: 'Periodični obilasci', add: 'Novi obilazak', name: 'Naziv', content: 'Sadržaj (opis posla za zadatak)', enabled: 'Aktivno', kind: 'Učestalost',
       kinds: { daily: 'Dnevno / na N dana', weekly: 'Nedeljno', monthly: 'Mesečno', yearly: 'Godišnje', shift: 'Po smenama' },
       yearDates: 'Datumi', yearPick: 'Izaberite datume (više)', everyYears: 'Na koliko godina', yearHint: '29. februar: u neprestupnim godinama 28. februar', leaderHint: 'Šef smene upravlja samo obilascima dodeljenim svojoj ekipi', readonly: 'Samo pregled',
       everyDays: 'Na koliko dana', atTime: 'Vreme', startDate: 'Od datuma', weekdays: 'Dani', monthDays: 'Datumi', monthHint: 'Za 29–31: u kraćim mesecima poslednji dan meseca',
@@ -295,7 +296,7 @@ const messages = {
       pwHint: 'Prijava: korisničko ime + lozinka (najmanje 6 znakova).', newSecret: 'Nova lozinka (prazno = bez promene)', pin: 'Lična lozinka', locked: 'Zaključan (pogrešne lozinke)',
       disabled: 'Isključen', active: 'Aktivan', unlock: 'Otključaj', disable: 'Isključi nalog', enable: 'Uključi nalog', open: 'Otvori nalog', teamLogin: 'nalog ekipe' },
     assign: { onDuty: 'Na smeni', current: 'Već u zadatku', hint: 'Mogu se izabrati samo ljudi na ovoj smeni ({d} {s}); ostale prvo rasporedite u „Prisustvu”' },
-    proj: { title: 'Projekti', open: 'U toku', closed: 'Završeni', all: 'Svi', add: 'Novi projekat', none: 'Nema projekata',
+    proj: { toDefault: 'Ekipi obilaska', title: 'Projekti', open: 'U toku', closed: 'Završeni', all: 'Svi', add: 'Novi projekat', none: 'Nema projekata',
       hint: 'Projekat ima više podzadataka koji se pojavljuju u primopredaji odgovarajuće ekipe. Podzadatak se dodeljuje ekipi (šef raspoređuje ljude) ili direktno osobi. Projekat je završen kada su svi podzadaci završeni (ili odbačeni).',
       fixed: 'bez predaje', closedTag: 'Završen', late: 'Kasni', deadline: 'Rok', counts: 'Završeno {done}/{total}, ostalo {open}', discarded: 'odbačeno {n}',
       name: 'Naziv projekta', team: 'Ekipa', transferable: 'Može se predati', subs: 'Podzadaci', subPh: 'Sadržaj podzadatka (bilo koji jezik, prevodi se automatski)', addSub: 'Dodaj podzadatak',
@@ -303,6 +304,7 @@ const messages = {
       reassign: 'Dodeli drugačije', reassignHint: 'Ekipi: ljudi se brišu, šef te ekipe ih ponovo raspoređuje; osobi: zadatak ide u ekipu te osobe, a ona je vođa.',
       toTeam: 'Ekipi', toPerson: 'Osobi', pickTeam: 'Izaberite ekipu', pickPerson: 'Izaberite osobu', noShift: 'nema smene uskoro', onNow: 'sada radi',
       notNow: 'Ova osoba sada ne radi; sledeća smena: {s}' },
+    names: { translate: 'Prevedi', hint: 'Dovoljan je jedan jezik: kliknite „Prevedi” da proverite, ili samo sačuvajte — prazni jezici se prevode pri čuvanju', failed: 'Prevod trenutno nije dostupan; popunite ručno' },
     lead: { title: 'Vođa ekipe', none: 'Nije određen', members: 'Učesnici', pick: 'Izaberite vođu (opciono)' },
     duty: {
       onDuty: 'Na smeni {n}', offHours: 'Van radnog vremena {n}', busy: 'Zauzeto {n}', idle: 'Slobodno {n}', absent: 'Odsutno {n}', title: '{shift} – stanje radnika', support: 'Pomoć',
@@ -406,7 +408,7 @@ const messages = {
     },
     exp: { title: 'Export to Excel', range: 'Period', team: 'Team', worker: 'Worker', lang: 'Sheet language', download: 'Download', all: 'All', note: 'Contains tasks, workload per person and attendance' },
     sys: {
-      appName: 'System name', appNameHint: 'Shown in the top bar, on the login page and in the browser tab. Empty = default name: {def}', appNameDefault: 'Default',
+      appName: 'System name', appNameHint: 'Shown in the top bar, on the login page and in the browser tab. All empty = default name: {def}', appNameDefault: 'Default',
       title: 'Settings', ai: 'AI API', provider: 'Provider', deepseek: 'DeepSeek (default)', other: 'Other OpenAI-compatible API', baseUrl: 'Base URL',
       apiKey: 'API key', keySet: 'Set ({hint}); leave empty to keep', keyEnv: 'Using the key from the server .env ({hint})', keyNone: 'Not set',
       keyRequired: 'The address changed – enter a new API key', translateModel: 'Translation model', analysisModel: 'AI analysis model', fetchModels: 'Load models',
@@ -426,7 +428,7 @@ const messages = {
       note: 'Hours = finish − start; tasks with several workers count full hours for each; attendance follows the schedule. The report is written by AI from these statistics and is for guidance only.',
     },
     insp: {
-      title: 'Scheduled inspections', add: 'New inspection', name: 'Name', content: 'Content (work text of the generated task)', enabled: 'Enabled', kind: 'Schedule',
+      subs: 'Sub-items', subsHint: 'Optional. With sub-items every run creates a project (named after the inspection) and each sub-item becomes a sub-task: for a given team or person, or “Inspection’s team”.', contentOptional: 'Optional when there are sub-items', openProject: 'Open project', subsCount: '{n} sub-items', title: 'Scheduled inspections', add: 'New inspection', name: 'Name', content: 'Content (work text of the generated task)', enabled: 'Enabled', kind: 'Schedule',
       kinds: { daily: 'Daily / every N days', weekly: 'Weekly', monthly: 'Monthly', yearly: 'Yearly', shift: 'By shift' },
       yearDates: 'Dates', yearPick: 'Pick dates (multiple)', everyYears: 'Every N years', yearHint: 'Feb 29: Feb 28 in non-leap years', leaderHint: 'Leaders can only manage inspections fixed to their own team', readonly: 'Read only',
       everyDays: 'Every N days', atTime: 'Time', startDate: 'Starting', weekdays: 'Weekdays', monthDays: 'Days of month', monthHint: '29–31: shorter months use their last day',
@@ -453,7 +455,7 @@ const messages = {
       pwHint: 'Sign in: username + password (at least 6 characters).', newSecret: 'New password (leave empty to keep)', pin: 'Personal password', locked: 'Locked (wrong passwords)',
       disabled: 'Disabled', active: 'Active', unlock: 'Unlock', disable: 'Disable account', enable: 'Enable account', open: 'Open account', teamLogin: 'team account' },
     assign: { onDuty: 'On this shift', current: 'Already in the task', hint: 'Only people on this shift ({d} {s}) can be chosen; arrange others in “Attendance” first' },
-    proj: { title: 'Projects', open: 'Open', closed: 'Finished', all: 'All', add: 'New project', none: 'No projects',
+    proj: { toDefault: 'Inspection’s team', title: 'Projects', open: 'Open', closed: 'Finished', all: 'All', add: 'New project', none: 'No projects',
       hint: 'A project has several sub-tasks; they appear in the handover of the team they belong to. A sub-task goes to a team (the leader assigns people) or directly to a person. The project is finished when every sub-task is done (or discarded).',
       fixed: 'no handover', closedTag: 'Finished', late: 'Overdue', deadline: 'Due', counts: 'Done {done}/{total}, {open} left', discarded: '{n} discarded',
       name: 'Project name', team: 'Team', transferable: 'Can be handed over', subs: 'Sub-tasks', subPh: 'Sub-task text (any language, translated automatically)', addSub: 'Add sub-task',
@@ -461,6 +463,7 @@ const messages = {
       reassign: 'Reassign', reassignHint: 'To a team: people are cleared and that team’s leader assigns them; to a person: the task moves to that person’s team with them as lead.',
       toTeam: 'To a team', toPerson: 'To a person', pickTeam: 'Choose team', pickPerson: 'Choose person', noShift: 'no shift soon', onNow: 'working now',
       notNow: 'Not working now; next shift: {s}' },
+    names: { translate: 'Translate', hint: 'One language is enough: click “Translate” to check, or just save — empty languages are translated when saving', failed: 'Translation is not available right now; fill it in by hand' },
     lead: { title: 'Lead', none: 'Not set', members: 'Workers', pick: 'Choose a lead (optional)' },
     duty: {
       onDuty: '{n} on shift', offHours: '{n} outside hours', busy: '{n} busy', idle: '{n} free', absent: '{n} absent', title: '{shift} – people', support: 'Support',

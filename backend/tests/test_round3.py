@@ -26,7 +26,7 @@ def test_branding(client, admin_h, leader_h):
     assert client.get("/api/branding").json() == {"zh": "", "sr": "", "en": ""}  # 登录前也能读
     assert client.put("/api/branding", headers=leader_h, json={"zh": "x"}).status_code == 403
     r = client.put("/api/branding", headers=admin_h, json={"zh": " 选矿厂交接班 ", "en": "Plant log"})
-    assert r.json() == {"zh": "选矿厂交接班", "sr": "", "en": "Plant log"}
+    assert r.json() == {"zh": "选矿厂交接班", "sr": "选矿厂交接班", "en": "Plant log"}  # 空着的语言：没配翻译时先用填了的
     assert client.get("/api/branding").json()["en"] == "Plant log"
     client.put("/api/branding", headers=admin_h, json={})
 

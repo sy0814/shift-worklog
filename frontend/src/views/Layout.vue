@@ -31,12 +31,11 @@ const main = computed(() => [
   { name: 'attendance', label: t('att.title'), icon: Calendar },
   { name: 'schedule', label: t('nav.schedule'), icon: Clock },
   { name: 'projects', label: t('proj.title'), icon: Folder },
-  ...(!auth.isAdmin && auth.can('inspection.manage') ? [{ name: 'inspections', label: t('insp.title') }] : []), // 管理员的在「管理」里
   ...(!auth.isAdmin && auth.can('worker.pin') ? [{ name: 'workers', label: t('nav2.workers') }] : []), // 班长：给成员重设个人密码
 ])
 const admin = computed(() => auth.isAdmin ? [
   { name: 'workers', label: t('nav2.workers') }, { name: 'glossary', label: t('nav2.glossary') },
-  { name: 'inspections', label: t('insp.title') }, { name: 'analysis', label: t('ai.title') }, { name: 'roles', label: t('rp.title') }, { name: 'users', label: t('nav.users') }, { name: 'audit', label: t('nav.audit') }, { name: 'settings', label: t('sys.title') },
+  { name: 'analysis', label: t('ai.title') }, { name: 'roles', label: t('rp.title') }, { name: 'users', label: t('nav.users') }, { name: 'audit', label: t('nav.audit') }, { name: 'settings', label: t('sys.title') },
 ] : [])
 const tabs = computed(() => main.value.slice(0, 4)) // 手机底部标签栏
 const adminActive = computed(() => admin.value.some((m) => m.name === route.name))
@@ -170,7 +169,7 @@ async function changePassword() {
   padding: 8px 16px; padding-top: calc(8px + env(safe-area-inset-top));
   position: sticky; top: 0; z-index: 20;
 }
-.brand { font-weight: 600; font-size: 16px; white-space: nowrap; }
+.brand { font-weight: 600; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex-shrink: 1; }
 .nav { display: flex; gap: 4px; flex: 1; flex-wrap: wrap; align-items: center; }
 .nav-link { color: #cfd8e3; text-decoration: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; gap: 2px; font-size: 14px; }
 .nav-link.router-link-exact-active, .nav-link.active { background: #2f4a66; color: #fff; }

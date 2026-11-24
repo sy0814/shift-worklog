@@ -1,10 +1,10 @@
-"""系统名称（三种语言，可只填一种；不填的语言用默认名称）。读取不需要登录（登录页要显示），修改仅管理员。"""
+"""系统名称（三种语言，可只填一种，其他语言自动翻译；全部留空 = 默认名称）。读取不需要登录（登录页要显示），修改仅管理员。"""
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from .. import audit
+from .. import audit, translation_service
 from ..db import get_db
 from ..models import AppSetting, User
 from ..security import require_admin
@@ -14,9 +14,9 @@ KEY = "app_name"
 
 
 class Branding(BaseModel):
-    zh: str = Field(default="", max_length=40)
-    sr: str = Field(default="", max_length=40)
-    en: str = Field(default="", max_length=40)
+    zh: str = Field(default="", max_length=100)
+    sr: str = Field(default="", max_length=100)
+    en: str = Field(default="", max_length=100)
 
 
 def _get(db: Session) -> Branding:
@@ -33,6 +33,8 @@ def get_branding(db: Session = Depends(get_db)):
 def put_branding(body: Branding, db: Session = Depends(get_db), admin: User = Depends(require_admin)):
     old = _get(db)
     new = Branding(**{k: v.strip() for k, v in body.model_dump().items()})
+    if any(new.model_dump().values()):  # 只填了一种语言：其他语言自动翻译（全部留空 = 用默认名称）
+        new = Branding(**{k: translation_service.fit(v, 100) for k, v in translation_service.fill_names(new.model_dump()).items()})
     if new != old:
         row = db.get(AppSetting, KEY)
         if row is None:

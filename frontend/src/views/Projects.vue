@@ -13,9 +13,16 @@ import { useAuth } from '../stores/auth'
 import TaskCard from '../components/TaskCard.vue'
 import TaskDetail from '../components/TaskDetail.vue'
 import TargetPicker from '../components/TargetPicker.vue'
+import Inspections from './Inspections.vue'
+import { useRoute, useRouter } from 'vue-router'
 
 const { t, locale } = useI18n()
 const auth = useAuth()
+// 两个标签：项目 / 定期巡查（定期巡查有小项目时，每次派发生成一个项目）
+const route = useRoute()
+const router = useRouter()
+const tab = ref(route.query.tab === 'inspections' ? 'inspections' : 'projects')
+watch(tab, (v) => router.replace({ query: v === 'inspections' ? { tab: v } : {} }))
 const state = ref('open')
 const rows = ref([])
 const loading = ref(false)
@@ -115,8 +122,14 @@ const open = (s) => ['not_started', 'in_progress'].includes(s.status)
 
 <template>
   <div class="page">
+    <el-tabs v-model="tab">
+      <el-tab-pane :label="t('proj.title')" name="projects" />
+      <el-tab-pane :label="t('insp.title')" name="inspections" lazy />
+    </el-tabs>
+    <Inspections v-if="tab === 'inspections'" embedded @open-project="openDetail" />
+    <template v-else>
     <div class="toolbar">
-      <h1 class="page-title" style="margin: 0; flex: 1">{{ t('proj.title') }}</h1>
+      <span style="flex: 1" />
       <el-radio-group v-model="state" size="small">
         <el-radio-button value="open">{{ t('proj.open') }}</el-radio-button>
         <el-radio-button value="closed">{{ t('proj.closed') }}</el-radio-button>
@@ -142,6 +155,7 @@ const open = (s) => ['not_started', 'in_progress'].includes(s.status)
         <div class="muted small">{{ t('proj.counts', { done: p.done, total: p.total, open: p.open }) }}<template v-if="p.discarded"> · {{ t('proj.discarded', { n: p.discarded }) }}</template> · {{ p.created_by_name }}</div>
       </div>
     </div>
+    </template>
 
     <!-- 新建项目 -->
     <el-dialog v-model="formOpen" :title="t('proj.add')" width="min(760px, 96vw)" :fullscreen="isNarrow()" append-to-body :close-on-click-modal="false">

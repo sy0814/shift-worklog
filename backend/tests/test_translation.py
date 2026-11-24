@@ -304,3 +304,29 @@ def test_queue_under_burst(client, leader_h, fake, monkeypatch):
         assert peak[0] <= translation_service.WORKERS
     finally:
         translation_service.stop_workers()
+
+
+def test_names_are_translated(client, admin_h, fake):
+    """班组名、角色名、系统名称：只填一种语言，其他语言自动翻译；填了的不动。"""
+    t = client.post("/api/teams", headers=admin_h, json={"name_zh": "检修班", "kind": "manual"}).json()
+    assert (t["name_zh"], t["name_sr"], t["name_en"]) == ("检修班", "[sr]检修班", "[en]检修班")
+    t2 = client.post("/api/teams", headers=admin_h, json={"name_zh": "电工班", "name_en": "Electricians", "kind": "manual"}).json()
+    assert t2["name_en"] == "Electricians" and t2["name_sr"] == "[sr]电工班"
+    r = client.post("/api/roles", headers=admin_h, json={"name_zh": "安全员"}).json()
+    assert r["name_sr"] == "[sr]安全员"
+    b = client.put("/api/branding", headers=admin_h, json={"zh": "选矿厂交接班"}).json()
+    assert b == {"zh": "选矿厂交接班", "sr": "[sr]选矿厂交接班", "en": "[en]选矿厂交接班"}
+    assert client.put("/api/branding", headers=admin_h, json={}).json() == {"zh": "", "sr": "", "en": ""}  # 全空 = 默认
+    # 「自动翻译」按钮
+    tr = client.post("/api/translate", headers=admin_h, json={"text": "破碎班"}).json()
+    assert tr["source_lang"] == "zh" and tr["zh"] == "破碎班" and tr["sr"] == "[sr]破碎班"
+    for x in (t, t2):
+        client.delete(f"/api/teams/{x['id']}", headers=admin_h)
+    client.delete(f"/api/roles/{r['id']}", headers=admin_h)
+
+
+def test_names_without_translation_fall_back(client, admin_h):
+    t = client.post("/api/teams", headers=admin_h, json={"name_zh": "临时组", "kind": "manual"}).json()
+    assert t["name_sr"] == t["name_en"] == "临时组"  # 没配翻译：先用填了的
+    assert client.post("/api/translate", headers=admin_h, json={"text": "x"}).status_code == 503
+    client.delete(f"/api/teams/{t['id']}", headers=admin_h)

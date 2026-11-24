@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .. import audit
+from .. import audit, translation_service
 from ..db import get_db
 from ..models import Role, User, Worker
 from ..permissions import PERMS, normalize
@@ -69,7 +69,8 @@ def _fields(body: RoleIn) -> dict:
     first = next((v for v in names.values() if v), "")
     if not first:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "role name required")
-    names = {k: v or first for k, v in names.items()}
+    filled = translation_service.fill_names({k[5:]: v for k, v in names.items()})  # 没填的语言自动翻译
+    names = {f"name_{l}": translation_service.fit(filled[l], 50) for l in ("zh", "sr", "en")}
     return {**names, "permissions": normalize(body.permissions), "login_mode": body.login_mode,
             "show_on_top": body.show_on_top}
 
