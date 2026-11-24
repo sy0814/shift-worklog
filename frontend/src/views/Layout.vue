@@ -1,4 +1,5 @@
 <script setup>
+import { appTitle } from '../branding'
 // 布局：电脑 = 顶部导航（管理类页面收进「管理」下拉）；手机 = 精简顶栏 + 底部标签栏 + 抽屉菜单
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -60,7 +61,7 @@ async function changePassword() {
 <template>
   <div :class="['layout', { narrow }]">
     <header class="topbar">
-      <div class="brand">{{ t('app.title') }}</div>
+      <div class="brand">{{ appTitle(locale) }}</div>
       <nav v-if="!narrow" class="nav">
         <router-link v-for="m in main" :key="m.name" :to="{ name: m.name }" class="nav-link">{{ m.label }}</router-link>
         <el-dropdown v-if="admin.length" trigger="click" @command="go">

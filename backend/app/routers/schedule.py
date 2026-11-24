@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from .. import audit
 from ..db import get_db
-from ..models import Holiday, ShiftConfig, Team, User
+from ..models import Holiday, ShiftConfig, Team, TeamShiftOverride, User, utcnow
 from ..schedule_service import load_schedule, local_now, slot
 from ..schemas import (
     CalendarDay,
@@ -18,6 +18,8 @@ from ..schemas import (
     ShiftNow,
     TeamOut,
 )
+from pydantic import BaseModel, Field
+
 from ..security import get_current_user, require_admin
 from ..shifts import CYCLE
 
@@ -48,7 +50,9 @@ def shifts_calendar(start: date, end: date, db: Session = Depends(get_db),
     d = start
     while d <= end:
         out.append(CalendarDay(day=d, workday=sched.is_workday(d),
-                               shifts={t.id: sched.shift_of(t, d) for t in sched.teams}))
+                               shifts={t.id: sched.shift_of(t, d) for t in sched.teams},
+                               changed={t.id: sched.planned_shift_of(t, d) for t in sched.teams
+                                        if (t.id, d) in sched.overrides}))
         d += timedelta(days=1)
     return out
 
@@ -115,4 +119,87 @@ def delete_holiday(day: date, db: Session = Depends(get_db), admin: User = Depen
         raise HTTPException(status.HTTP_404_NOT_FOUND)
     audit.log(db, user_id=admin.id, action="delete", entity="holiday", entity_id=day, old=h.name)
     db.delete(h)
+    db.commit()
+
+
+# ---------------- 班组整体调班 ----------------
+class TeamShiftIn(BaseModel):
+    team_id: int
+    start: date
+    end: date
+    shift_kind: str = Field(pattern="^(day|middle|night|off)$")
+    note: str = Field(default="", max_length=200)
+
+
+class TeamShiftOut(BaseModel):
+    team_id: int
+    day: date
+    shift_kind: str
+    planned: str  # 原本按排班该上的班
+    note: str
+
+
+def _ts_out(sched, o: TeamShiftOverride) -> TeamShiftOut:
+    team = next(t for t in sched.teams if t.id == o.team_id)
+    return TeamShiftOut(team_id=o.team_id, day=o.day, shift_kind=o.shift_kind,
+                        planned=sched.planned_shift_of(team, o.day), note=o.note)
+
+
+def _range(start: date, end: date) -> list[date]:
+    if end < start or (end - start).days > 30:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "range must be 1..31 days")
+    return [start + timedelta(days=i) for i in range((end - start).days + 1)]
+
+
+@router.get("/team-shifts", response_model=list[TeamShiftOut])
+def list_team_shifts(start: date, end: date, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+    sched = load_schedule(db)
+    rows = db.scalars(select(TeamShiftOverride).where(TeamShiftOverride.day >= start, TeamShiftOverride.day <= end)
+                      .order_by(TeamShiftOverride.day, TeamShiftOverride.team_id)).all()
+    return [_ts_out(sched, o) for o in rows]
+
+
+@router.put("/team-shifts", response_model=list[TeamShiftOut])
+def set_team_shift(body: TeamShiftIn, db: Session = Depends(get_db), admin: User = Depends(require_admin)):
+    """某个班组在某几天整体改上某个班（或休息）。和原排班相同的日子不记录（等于恢复）。"""
+    team = db.get(Team, body.team_id)
+    if team is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "team not found")
+    sched = load_schedule(db)
+    info = next(t for t in sched.teams if t.id == team.id)
+    for d in _range(body.start, body.end):
+        row = db.scalar(select(TeamShiftOverride).where(TeamShiftOverride.team_id == team.id,
+                                                        TeamShiftOverride.day == d))
+        old = row.shift_kind if row else sched.planned_shift_of(info, d)
+        if body.shift_kind == sched.planned_shift_of(info, d):
+            if row:
+                db.delete(row)
+        elif row:
+            row.shift_kind, row.note = body.shift_kind, body.note.strip()
+        else:
+            db.add(TeamShiftOverride(team_id=team.id, day=d, shift_kind=body.shift_kind, note=body.note.strip(),
+                                     created_by=admin.id, created_at=utcnow()))
+        if old != body.shift_kind:
+            audit.log(db, user_id=admin.id, action="update", entity="team", entity_id=team.id,
+                      field="team_shift", old=f"{d} {old}", new=f"{d} {body.shift_kind}",
+                      extra={"day": str(d), "note": body.note})
+    db.commit()
+    return list_team_shifts(body.start, body.end, db, admin)
+
+
+@router.delete("/team-shifts", status_code=204)
+def clear_team_shift(team_id: int, start: date, end: date, db: Session = Depends(get_db),
+                     admin: User = Depends(require_admin)):
+    """恢复按排班。"""
+    sched = load_schedule(db)
+    info = next((t for t in sched.teams if t.id == team_id), None)
+    if info is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "team not found")
+    days = _range(start, end)
+    for row in db.scalars(select(TeamShiftOverride).where(TeamShiftOverride.team_id == team_id,
+                                                          TeamShiftOverride.day.in_(days))).all():
+        audit.log(db, user_id=admin.id, action="update", entity="team", entity_id=team_id, field="team_shift",
+                  old=f"{row.day} {row.shift_kind}", new=f"{row.day} {sched.planned_shift_of(info, row.day)}",
+                  extra={"day": str(row.day), "restore": True})
+        db.delete(row)
     db.commit()

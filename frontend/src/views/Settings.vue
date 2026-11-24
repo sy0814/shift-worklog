@@ -1,9 +1,11 @@
 <script setup>
-// 系统设置（管理员）：AI 接口、未闭环警示
+// 系统设置（管理员）：系统名称、AI 接口、未闭环警示
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api'
+import { LANGS, i18n } from '../i18n'
+import { branding, loadBranding } from '../branding'
 
 const { t } = useI18n()
 
@@ -74,6 +76,14 @@ async function reset() {
   ElMessage.success(t('common.saved'))
 }
 
+// ---------------- 系统名称 ----------------
+const nameForm = reactive({ zh: '', sr: '', en: '' })
+const defaultName = (l) => i18n.global.t('app.title', {}, { locale: l })
+async function saveName() {
+  Object.assign(branding, (await api.put('/branding', nameForm)).data)
+  ElMessage.success(t('common.saved'))
+}
+
 // ---------------- 未闭环警示 ----------------
 const alertCfg = reactive({ overdue_hours: 24, overdue_handovers: 3 })
 async function saveAlert() {
@@ -82,6 +92,8 @@ async function saveAlert() {
 }
 
 onMounted(async () => {
+  await loadBranding()
+  Object.assign(nameForm, branding)
   await loadLLM()
   Object.assign(alertCfg, (await api.get('/settings')).data)
 })
@@ -90,6 +102,16 @@ onMounted(async () => {
 <template>
   <div class="page">
     <h1 class="page-title">{{ t('sys.title') }}</h1>
+    <el-card shadow="never" class="mb">
+      <template #header><b>{{ t('sys.appName') }}</b></template>
+      <el-form label-width="auto" style="max-width: 520px">
+        <el-form-item v-for="l in LANGS" :key="l.code" :label="l.label">
+          <el-input v-model="nameForm[l.code]" maxlength="40" clearable :placeholder="defaultName(l.code)" />
+        </el-form-item>
+        <el-form-item><span class="muted">{{ t('sys.appNameHint', { def: defaultName($i18n.locale) }) }}</span></el-form-item>
+        <el-form-item><el-button type="primary" @click="saveName">{{ t('common.save') }}</el-button></el-form-item>
+      </el-form>
+    </el-card>
 
     <el-card v-if="cur" shadow="never" class="mb">
       <template #header>

@@ -16,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from . import attendance_service as att
-from . import app_settings, llm_config, translation_service
+from . import app_settings, llm_config, overtime_service, translation_service
 from .config import get_settings
 from .db import SessionLocal
 from .models import AiReport, Task, TaskHandover, Team, Worker, utcnow
@@ -67,6 +67,7 @@ def build_stats(db: Session, start: date, end: date, team_id: int | None, lang: 
     eff = att.effective(db, list(workers.values()), start, end)
     sched = load_schedule(db)
     days = [start + timedelta(days=i) for i in range((end - start).days + 1)]
+    ot_hours = overtime_service.hours_by_worker(db, start, end, list(workers.values()))
 
     def overdue(t: Task) -> bool:
         if t.status not in OPEN:
@@ -97,6 +98,7 @@ def build_stats(db: Session, start: date, end: date, team_id: int | None, lang: 
             "handed_over": sum(1 for t in mine if t.status == "handed_over"),
             "discarded": sum(1 for t in mine if t.status == "discarded"),
             "task_hours": hours,
+            "overtime_hours": ot_hours.get(w.id, 0),  # 登记的加班时长（班次结束后）
             "hours_per_present_shift": round(hours / present, 2) if present else None,
             "open_overdue": sum(1 for t in mine if overdue(t)),
             "sample_tasks": [_text(t, lang) for t in sorted(mine, key=lambda t: t.created_at)[:SAMPLES_PER_PERSON]],
@@ -156,6 +158,7 @@ Rules:
 - The numbers are already computed; do not recalculate them differently. Respect the counting rules given in "rules".
 - Judge the arrangement of work (balance between people and teams, handovers, overdue items, unassigned tasks, attendance), not people's character. Be constructive and specific.
 - When the data is too thin to conclude (few tasks, many tasks without times, short period), say so explicitly instead of guessing.
+- "overtime_hours" is registered overtime after the end of the person's shift (hours).
 - "lead_tasks" counts tasks where the person was the designated team lead (they are also counted in "tasks").
 - Task hours are counted in full for every participant, so a high number can mean many joint tasks rather than overload; take that into account.
 - Never say a threshold or condition was reached (e.g. the overdue rules) unless the statistics show it; "max_handover_count" gives the highest handover count per team.

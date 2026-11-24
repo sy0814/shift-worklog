@@ -8,10 +8,12 @@ import { isNarrow } from '../format'
 import { useAuth } from '../stores/auth'
 import ShiftTag from './ShiftTag.vue'
 import WorkerAvatar from './WorkerAvatar.vue'
+import OvertimeDialog from './OvertimeDialog.vue'
+import dayjs from 'dayjs'
 
 const props = defineProps({ which: { type: String, default: 'current' } })
 const visible = defineModel({ type: Boolean })
-const emit = defineEmits(['add', 'open-task'])
+const emit = defineEmits(['add', 'open-task', 'loaded'])
 const { t } = useI18n()
 const auth = useAuth()
 const data = ref(null)
@@ -22,6 +24,7 @@ async function load() {
   loading.value = true
   try {
     data.value = (await api.get('/duty', { params: { which: props.which } })).data
+    emit('loaded', props.which, data.value) // 首页卡片上的人数跟着更新
   } finally {
     loading.value = false
   }
@@ -37,6 +40,15 @@ function toggle(id, v) {
 }
 const title = computed(() => data.value
   ? t('duty.title', { shift: `${data.value.shift_date.slice(5)} ${t('shift.' + data.value.shift_kind)}` }) : '')
+
+// 给勾选的人设置加班（这个班次）
+const otOpen = ref(false)
+const otPreset = ref(null)
+function addOvertime() {
+  otPreset.value = { mode: 'people', day: data.value.shift_date, shift_kind: data.value.shift_kind, worker_ids: [...picked.value] }
+  otOpen.value = true
+}
+const hm = (iso) => dayjs(iso.slice(0, 16)).format('HH:mm') // 服务器给的是工厂本地时间
 
 function addTask() {
   // 管理员默认派给这个班次的倒班班组；班长派给自己的班组
@@ -71,6 +83,7 @@ function addTask() {
                 <b>{{ r.worker.name }}</b>
                 <el-tag :type="ST_TYPE[r.status]" size="small" effect="dark">{{ t('duty.st.' + r.status) }}</el-tag>
                 <el-tag v-if="r.support" size="small" effect="plain">{{ t('duty.support') }} · {{ teamName(r.worker.team_id) }}</el-tag>
+                <el-tag v-if="r.overtime_until" size="small" type="warning" effect="plain">⏱ {{ t(r.overtime_prev ? 'ot.prevTag' : 'ot.untilTag', { t: hm(r.overtime_until) }) }}</el-tag>
               </div>
               <div v-for="task in r.tasks" :key="task.id" class="task" @click="emit('open-task', task.id)">
                 <span :class="['dot', task.status]" />
@@ -83,12 +96,18 @@ function addTask() {
       </template>
     </div>
     <template v-if="data?.can_add" #footer>
-      <el-button type="primary" :disabled="!picked.length" style="width: 100%" @click="addTask">{{ t('duty.addTask', { n: picked.length }) }}</el-button>
+      <div class="foot">
+        <el-button :disabled="!picked.length" @click="addOvertime">{{ t('ot.add') }}</el-button>
+        <el-button type="primary" :disabled="!picked.length" class="grow" @click="addTask">{{ t('duty.addTask', { n: picked.length }) }}</el-button>
+      </div>
     </template>
+    <OvertimeDialog v-model="otOpen" :preset="otPreset" @saved="load" />
   </el-drawer>
 </template>
 
 <style scoped>
+.foot { display: flex; gap: 8px; }
+.foot .grow { flex: 1; }
 .counts { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
 .muted { color: #909399; }
 .small { font-size: 12px; margin-bottom: 8px; }

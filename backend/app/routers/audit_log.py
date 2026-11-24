@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..db import get_db
-from ..models import AiReport, AuditLog, GlossaryTerm, InspectionTemplate, Task, Team, User, Worker
+from ..models import AiReport, AuditLog, GlossaryTerm, InspectionTemplate, Overtime, Task, Team, User, Worker
 from ..schemas import AuditOut
 from ..security import require_admin
 
@@ -53,7 +53,7 @@ def _labels(db: Session, rows: list[AuditLog], lang: str) -> dict[int, str]:
         names[("task", str(t.id))] = _short(text)
     for u in db.scalars(select(User).where(User.id.in_(ids("user")))):
         names[("user", str(u.id))] = f"{u.full_name}（{u.username}）" if u.full_name != u.username else u.username
-    workers = dict(db.execute(select(Worker.id, Worker.name)).all()) if ("worker" in want or "attendance" in want) else {}
+    workers = dict(db.execute(select(Worker.id, Worker.name)).all()) if want.keys() & {"worker", "attendance", "overtime"} else {}
     for i in ids("worker"):
         if i in workers:
             names[("worker", str(i))] = workers[i]
@@ -65,6 +65,10 @@ def _labels(db: Session, rows: list[AuditLog], lang: str) -> dict[int, str]:
         names[("inspection", str(i.id))] = i.name
     for a in db.scalars(select(AiReport).where(AiReport.id.in_(ids("ai_report")))):
         names[("ai_report", str(a.id))] = f"{a.start} ~ {a.end}"
+    team_names = {t.id: getattr(t, f"name_{lang}") for t in db.scalars(select(Team))} if "overtime" in want else {}
+    for o in db.scalars(select(Overtime).where(Overtime.id.in_(ids("overtime")))):
+        who = workers.get(o.worker_id) if o.worker_id else team_names.get(o.team_id)
+        names[("overtime", str(o.id))] = f"{who} {o.day}"
     for eid in want.get("attendance", ()):  # "员工id:日期"
         parts = str(eid).split(":")
         if len(parts) == 2 and parts[0].isdigit():

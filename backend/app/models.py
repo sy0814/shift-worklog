@@ -78,6 +78,37 @@ class Holiday(Base):
     kind: Mapped[str] = mapped_column(String(10), default="holiday")
 
 
+class TeamShiftOverride(Base):
+    """班组整体调班：某个班组某一天改上别的班（或休息），覆盖排班推算。"""
+
+    __tablename__ = "team_shift_overrides"
+    __table_args__ = (UniqueConstraint("team_id", "day"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"), index=True)
+    day: Mapped[date] = mapped_column(Date, index=True)  # 班次日（夜班归属开始的那天）
+    shift_kind: Mapped[str] = mapped_column(String(10))  # day / middle / night / off
+    note: Mapped[str] = mapped_column(String(200), default="")
+    created_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class Overtime(Base):
+    """加班：某人（worker_id）或整个班组（team_id，当天在这个班上班的人都算）某个班次加班到 until。"""
+
+    __tablename__ = "overtime"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    day: Mapped[date] = mapped_column(Date, index=True)  # 班次日
+    shift_kind: Mapped[str] = mapped_column(String(10))  # 在哪个班次后面加班
+    worker_id: Mapped[int | None] = mapped_column(ForeignKey("workers.id"), nullable=True, index=True)
+    team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"), nullable=True)
+    until: Mapped[datetime] = mapped_column(DateTime(timezone=True))  # 加班到几点
+    note: Mapped[str] = mapped_column(String(200), default="")
+    created_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class AuditLog(Base):
     """只能追加的操作留痕。数据库层用触发器禁止 UPDATE / DELETE（见 audit.py）。"""
 
@@ -107,6 +138,18 @@ class Worker(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     avatar_path: Mapped[str | None] = mapped_column(String(255), nullable=True)  # 头像（上传目录下的相对路径）
+    extra: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")  # 自定义列的值 {列 id: 文字}
+
+
+class WorkerField(Base):
+    """员工名册的自定义列（管理员在网页上加，或导入 Excel 时自动加）。"""
+
+    __tablename__ = "worker_fields"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    label: Mapped[str] = mapped_column(String(50), unique=True)  # 列名（按录入的原样显示）
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 TASK_STATUSES = ("not_started", "in_progress", "done", "handed_over", "discarded")

@@ -11,6 +11,8 @@ import { useAuth } from '../stores/auth'
 import TaskCard from '../components/TaskCard.vue'
 import TaskDetail from '../components/TaskDetail.vue'
 import ExportDialog from '../components/ExportDialog.vue'
+import OvertimeDialog from '../components/OvertimeDialog.vue'
+import { fmtFull } from '../format'
 
 const { t } = useI18n()
 const auth = useAuth()
@@ -24,14 +26,43 @@ async function load() {
   loading.value = true
   try {
     const m = dayjs(month.value + '-01')
-    data.value = (await api.get('/attendance', { params: {
-      team_id: teamId.value, start: m.format('YYYY-MM-DD'), end: m.endOf('month').format('YYYY-MM-DD'),
-    } })).data
+    const params = { team_id: teamId.value, start: m.format('YYYY-MM-DD'), end: m.endOf('month').format('YYYY-MM-DD') }
+    const [a, op, ol] = await Promise.all([api.get('/attendance', { params }), api.get('/overtime/people', { params }),
+      api.get('/overtime', { params })])
+    data.value = a.data
+    otPeople.value = op.data
+    otList.value = ol.data
   } finally {
     loading.value = false
   }
 }
 watch([month, teamId], load)
+
+// ---- 加班 ----
+const otPeople = ref([]) // 展开到每个人的
+const otList = ref([]) // 原始记录（整个班组的算一条）
+const otCell = computed(() => {
+  const m = {}
+  for (const p of otPeople.value) m[`${p.worker_id}|${p.day}`] = (m[`${p.worker_id}|${p.day}`] || 0) + p.hours
+  return m
+})
+const otSum = computed(() => {
+  const m = {}
+  for (const p of otPeople.value) m[p.worker_id] = Math.round(((m[p.worker_id] || 0) + p.hours) * 100) / 100
+  return m
+})
+const otOpen = ref(false)
+const otPreset = ref(null)
+function openOvertime(preset) {
+  otPreset.value = preset
+  otOpen.value = true
+}
+async function delOvertime(o) {
+  await ElMessageBox.confirm(t('ot.del'), t('ot.title'), { type: 'warning' })
+  await api.delete(`/overtime/${o.id}`)
+  load()
+}
+const fmtH = (h) => (Number.isInteger(h) ? h : h.toFixed(1))
 onMounted(load)
 
 function code(c) {
@@ -153,6 +184,7 @@ const exportOpen = ref(false)
       </el-radio-group>
       <span class="spacer" />
       <el-button @click="openBatch">{{ t('att.batch') }}</el-button>
+      <el-button @click="openOvertime({ mode: 'team', team_id: teamId })">{{ t('ot.add') }}</el-button>
       <el-button @click="exportOpen = true">{{ t('exp.title') }}</el-button>
       <template v-if="auth.isAdmin">
         <el-button @click="download('/attendance/template', {}, 'attendance_template.xlsx')">{{ t('att.template') }}</el-button>
@@ -169,6 +201,7 @@ const exportOpen = ref(false)
             <th class="name">{{ t('workers.name') }}</th>
             <th v-for="d in data.days" :key="d" :class="{ today: d === todayStr }">{{ d.slice(8) }}</th>
             <th>Σ</th>
+            <th class="otc">{{ t('ot.sum') }}</th>
           </tr>
         </thead>
         <tbody>
@@ -176,13 +209,35 @@ const exportOpen = ref(false)
             <td class="name">{{ w.name }}<el-tag v-if="isGuest(w)" size="small" type="warning" class="gtag">{{ t('att.guest') }} · {{ localName(auth.teamById(w.team_id)) }}</el-tag></td>
             <td v-for="d in data.days" :key="d"
                 :class="['c', `s-${data.cells[w.id][d].status}`, { ex: data.cells[w.id][d].source !== 'default', today: d === todayStr }]"
-                @click="openCell(w, d)">{{ code(data.cells[w.id][d]) }}</td>
+                @click="openCell(w, d)">{{ code(data.cells[w.id][d]) }}<sup v-if="otCell[`${w.id}|${d}`]" class="ot">+{{ fmtH(otCell[`${w.id}|${d}`]) }}</sup></td>
             <td class="sum">{{ counts[w.id] }}</td>
+            <td class="sum otc">{{ otSum[w.id] ? fmtH(otSum[w.id]) : '' }}</td>
           </tr>
         </tbody>
       </table>
       <el-empty v-if="data && !data.workers.length" />
     </div>
+
+    <h4>{{ t('ot.list') }}</h4>
+    <el-table v-if="otList.length" :data="otList" size="small" class="otlist">
+      <el-table-column prop="day" :label="t('ot.day')" width="110" />
+      <el-table-column :label="t('ot.target')" min-width="160">
+        <template #default="{ row }">
+          <template v-if="row.team_id">{{ localName(auth.teamById(row.team_id)) }} · {{ t('ot.wholeTeam', { n: row.people }) }}</template>
+          <template v-else>{{ row.worker_name }}</template>
+        </template>
+      </el-table-column>
+      <el-table-column :label="t('ot.until')" min-width="170">
+        <template #default="{ row }">{{ t('shift.' + row.shift_kind) }} → {{ fmtFull(row.until) }} <span class="muted">({{ t('ot.hours', { n: fmtH(row.hours) }) }})</span></template>
+      </el-table-column>
+      <el-table-column prop="note" :label="t('ot.note')" min-width="120" />
+      <el-table-column prop="created_by_name" :label="t('task.publisher')" width="110" />
+      <el-table-column width="80">
+        <template #default="{ row }"><el-button v-if="auth.isAdmin || row.team_id === auth.user?.team_id || !row.team_id" link type="danger" @click="delOvertime(row)">{{ t('common.delete') }}</el-button></template>
+      </el-table-column>
+    </el-table>
+    <div v-else class="muted small">{{ t('ot.none') }}</div>
+    <OvertimeDialog v-model="otOpen" :preset="otPreset" @saved="load" />
 
     <el-dialog v-model="dlg" :title="cur.worker ? `${cur.worker.name} · ${cur.day}` : ''" width="min(560px, 96vw)" :fullscreen="isNarrow()" append-to-body>
       <template v-if="cur.worker">
@@ -213,6 +268,7 @@ const exportOpen = ref(false)
           </el-form-item>
         </el-form>
         <div v-if="canEdit(cur.worker)" class="btns">
+          <el-button v-if="cur.cell.status === 'present'" @click="dlg = false; openOvertime({ mode: 'people', day: cur.day, worker_ids: [cur.worker.id], team_id: cur.worker.team_id })">{{ t('ot.add') }}</el-button>
           <el-button v-if="cur.cell.source !== 'default'" @click="save('default')">{{ t('att.reset') }}</el-button>
           <el-button type="primary" @click="save()">{{ t('common.save') }}</el-button>
         </div>
@@ -300,6 +356,9 @@ const exportOpen = ref(false)
 .ex { font-weight: 700; font-style: italic; }
 .today { box-shadow: inset 0 0 0 2px #409eff; }
 .sum { font-weight: 600; background: #f5f7fa; }
+.ot { color: #e6a23c; font-size: 10px; font-weight: 600; margin-left: 1px; }
+.otc { color: #b88230; min-width: 40px !important; }
+.otlist { max-width: 900px; }
 .btns { display: flex; justify-content: flex-end; gap: 8px; }
 .btns.left { justify-content: flex-start; }
 .gtag { margin-left: 6px; }

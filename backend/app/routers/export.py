@@ -17,7 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from .. import attendance_service as att
-from .. import audit
+from .. import audit, overtime_service
 from ..config import get_settings
 from ..db import get_db
 from ..models import Task, TaskHandover, Team, User, Worker
@@ -32,7 +32,7 @@ L = {
         "tasks": ["编号", "班次日期", "班次", "班组", "状态", "工作内容", "原文", "遗留问题", "带队人员", "参与人员", "开始时间",
                   "完成时间", "工时(小时)", "发布人", "最后修改人", "完成确认人", "移交", "废弃原因", "图片数", "已移交次数"],
         "load": ["姓名", "工号", "班组", "排班班次", "实际出勤", "请假", "病假", "缺勤", "参与任务", "已完成", "未完成",
-                 "任务工时合计(小时)"],
+                 "任务工时合计(小时)", "加班(小时)"],
         "att": ["姓名", "工号", "班组"],
         "status": {"not_started": "未开始", "in_progress": "进行中", "done": "已完成", "handed_over": "已移交", "discarded": "已废弃"},
         "shift": {"day": "白班", "middle": "中班", "night": "夜班", "off": "休息"},
@@ -46,7 +46,7 @@ L = {
                   "Vođa ekipe", "Učesnici", "Početak", "Završetak", "Sati", "Uneo", "Poslednja izmena", "Potvrdio", "Predaja",
                   "Razlog odbacivanja", "Slike", "Broj predaja"],
         "load": ["Ime", "Matični br.", "Ekipa", "Smene po rasporedu", "Prisutan", "Odsustvo", "Bolovanje", "Izostanak",
-                 "Zadaci", "Završeno", "Nezavršeno", "Ukupno sati"],
+                 "Zadaci", "Završeno", "Nezavršeno", "Ukupno sati", "Prekovremeno (h)"],
         "att": ["Ime", "Matični br.", "Ekipa"],
         "status": {"not_started": "Nije započeto", "in_progress": "U toku", "done": "Završeno", "handed_over": "Predato", "discarded": "Odbačeno"},
         "shift": {"day": "Prva", "middle": "Druga", "night": "Treća", "off": "Slobodno"},
@@ -60,7 +60,7 @@ L = {
                   "Finish", "Hours", "Posted by", "Last edited by", "Confirmed by", "Handover", "Discard reason", "Photos",
                   "Handovers"],
         "load": ["Name", "Employee no.", "Team", "Scheduled shifts", "Present", "Leave", "Sick", "Absent", "Tasks",
-                 "Done", "Open", "Task hours"],
+                 "Done", "Open", "Task hours", "Overtime (h)"],
         "att": ["Name", "Employee no.", "Team"],
         "status": {"not_started": "Not started", "in_progress": "In progress", "done": "Done", "handed_over": "Handed over", "discarded": "Discarded"},
         "shift": {"day": "Day", "middle": "Middle", "night": "Night", "off": "Off"},
@@ -175,6 +175,7 @@ def build_workbook(db: Session, start: date, end: date, team_id: int | None, wor
     eff = att.effective(db, workers, start, end)
     sched = load_schedule(db)
     days = [start + timedelta(days=i) for i in range((end - start).days + 1)]
+    ot_hours = overtime_service.hours_by_worker(db, start, end, workers)
 
     # ---- 人员工作量 ----
     ws2 = wb.create_sheet(T["sheet_load"])
@@ -191,8 +192,9 @@ def build_workbook(db: Session, start: date, end: date, team_id: int | None, wor
             sum(1 for a in eff[w.id].values() if a.status == "absent"),
             len(mine), sum(1 for t in mine if t.status == "done"),
             sum(1 for t in mine if t.status in ("not_started", "in_progress")), round(hours, 2),
+            ot_hours.get(w.id, 0),
         ])
-    for i, wdt in enumerate([20, 12, 10, 10, 10, 8, 8, 8, 9, 9, 9, 14], start=1):
+    for i, wdt in enumerate([20, 12, 10, 10, 10, 8, 8, 8, 9, 9, 9, 14, 12], start=1):
         ws2.column_dimensions[get_column_letter(i)].width = wdt
     ws2.append([])
     ws2.append([T["note_hours"]])

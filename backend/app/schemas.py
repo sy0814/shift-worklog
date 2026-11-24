@@ -117,6 +117,7 @@ class CalendarDay(BaseModel):
     day: date
     workday: bool
     shifts: dict[int, str]  # team_id -> day/middle/night/off
+    changed: dict[int, str] = {}  # 整体调班的班组：team_id -> 原本的班次
 
 
 class AuditOut(ORM):
@@ -139,6 +140,7 @@ class WorkerOut(ORM):
     team_id: int | None
     is_active: bool
     avatar_url: str | None = None  # 没有头像时为空，前端显示名字
+    extra: dict[str, str] = {}  # 自定义列 {列 id: 值}
 
     @model_validator(mode="before")
     @classmethod
@@ -147,7 +149,7 @@ class WorkerOut(ORM):
             from .security import avatar_url
 
             return {"id": v.id, "name": v.name, "employee_no": v.employee_no, "team_id": v.team_id,
-                    "is_active": v.is_active,
+                    "is_active": v.is_active, "extra": {str(k): str(x) for k, x in (v.extra or {}).items()},
                     "avatar_url": avatar_url(v.id, v.avatar_path) if v.avatar_path else None}
         return v
 
@@ -156,6 +158,7 @@ class WorkerCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     employee_no: str | None = Field(default=None, max_length=50)
     team_id: int | None = None
+    extra: dict[str, str] = {}
 
 
 class WorkerBulkCreate(BaseModel):
@@ -168,6 +171,7 @@ class WorkerUpdate(BaseModel):
     employee_no: str | None = Field(default=None, max_length=50)
     team_id: int | None = None
     is_active: bool | None = None
+    extra: dict[str, str] | None = None  # 只改给出的列；值为空字符串 = 清空
 
 
 # ---------------- 任务 ----------------

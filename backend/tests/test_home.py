@@ -113,15 +113,17 @@ def test_duty(client, admin_h, teams):
     if main is None:
         return
     code = next(c for c, i in teams.items() if i == main)
-    ws = client.post("/api/workers/bulk", headers=admin_h, json={"names": ["Duty Busy", "Duty Idle", "Duty Leave"], "team_id": main}).json()
-    busy, idle, leave = ws
+    ws = client.post("/api/workers/bulk", headers=admin_h, json={"names": ["Duty Busy", "Duty Idle", "Duty Leave", "Duty Assigned"], "team_id": main}).json()
+    busy, idle, leave, assigned = ws
     client.put("/api/attendance", headers=admin_h, json={"worker_id": leave["id"], "day": d["shift_date"], "status": "leave"})
     new_task(client, h(client, code), content="Busy work", worker_ids=[busy["id"]], status="in_progress")
+    new_task(client, h(client, code), content="Later", lead_worker_id=assigned["id"])  # 未开始也算忙碌
     d = client.get("/api/duty", headers=h(client, code)).json()
     team = next(x for x in d["teams"] if x["team_id"] == main)
     st = {x["worker"]["name"]: x for x in team["workers"]}
     assert st["Duty Busy"]["status"] == "busy" and st["Duty Busy"]["tasks"][0]["content"]["en"] == "Busy work"
     assert st["Duty Idle"]["status"] == "idle" and st["Duty Leave"]["status"] == "leave"
+    assert st["Duty Assigned"]["status"] == "busy" and st["Duty Assigned"]["tasks"][0]["is_lead"]
     assert d["counts"]["busy"] >= 1 and d["counts"]["absent"] >= 1 and d["can_add"] is True
     # 不在这个班次的班长不能快捷添加
     other = next(c for c in ("T1", "T2", "T3", "T4") if teams[c] not in [x["team_id"] for x in d["teams"]])

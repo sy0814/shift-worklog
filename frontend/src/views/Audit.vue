@@ -39,7 +39,7 @@ async function load(append = false) {
 watch(() => [filters.user, filters.entity, filters.dates, locale.value], () => load())
 onMounted(() => { loadUsers(); load() })
 
-const ENTITIES = ['task', 'user', 'worker', 'attendance', 'inspection', 'glossary', 'holiday', 'shift_config', 'team', 'setting', 'ai_report', 'export', 'system']
+const ENTITIES = ['task', 'user', 'worker', 'attendance', 'overtime', 'inspection', 'glossary', 'holiday', 'shift_config', 'team', 'setting', 'ai_report', 'export', 'system']
 
 // ---- 把同一次操作（同一人、同一对象、同一动作、2 秒内）的多条字段改动合成一句 ----
 const entries = computed(() => {
@@ -70,6 +70,10 @@ function fmtVal(f, v) {
   if (v == null || v === '') return '∅'
   if (Array.isArray(v)) return v.join('、') || '∅'
   if (typeof v === 'boolean') return v ? t('common.yes') : t('common.no')
+  if (f === 'team_shift' && /^\d{4}-\d{2}-\d{2} \w+$/.test(String(v))) {
+    const [d, k] = String(v).split(' ')
+    return `${d} ${te('shift.' + k) ? t('shift.' + k) : k}`
+  }
   if (f === 'team_id' || f === 'to_team') return localName(auth.teamById(Number(v))) || String(v)
   if (f === 'status' && te(`status.${v}`)) return t(`status.${v}`)
   if (f === 'status' && te(`att.st.${v}`)) return t(`att.st.${v}`)

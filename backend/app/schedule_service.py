@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .config import get_settings
-from .models import Holiday, ShiftConfig, Team
+from .models import Holiday, ShiftConfig, Team, TeamShiftOverride
 from .schemas import ShiftSlot
 from .shifts import Schedule, TeamInfo
 
@@ -25,6 +25,9 @@ def load_schedule(db: Session) -> Schedule:
         night_start=cfg.night_start,
         holidays=holidays,
         extra_workdays=workdays,
+        overrides={(o.team_id, o.day): o.shift_kind
+                   for o in db.execute(select(TeamShiftOverride.team_id, TeamShiftOverride.day,
+                                              TeamShiftOverride.shift_kind)).all()},
     )
 
 

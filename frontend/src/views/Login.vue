@@ -1,4 +1,5 @@
 <script setup>
+import { appTitle } from '../branding'
 import { reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
@@ -6,7 +7,7 @@ import { ElMessage } from 'element-plus'
 import { useAuth } from '../stores/auth'
 import LangSwitch from '../components/LangSwitch.vue'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const auth = useAuth()
 const router = useRouter()
 const route = useRoute()
@@ -32,7 +33,7 @@ async function submit() {
   <div class="login-wrap">
     <el-card class="login-card">
       <div class="login-head">
-        <h2>{{ t('app.title') }}</h2>
+        <h2>{{ appTitle(locale) }}</h2>
         <LangSwitch />
       </div>
       <el-form label-position="top" @submit.prevent="submit">

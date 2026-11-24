@@ -32,6 +32,11 @@ async function load() {
 watch(teamId, () => { selected.value = []; load() })
 onMounted(load)
 defineExpose({ load })
+const emit = defineEmits(['changed'])
+function changed() { // 任务有变化：自己刷新，并通知首页刷新在岗人数
+  load()
+  emit('changed')
+}
 
 // 有任务还在后台翻译时，每 4 秒刷新一次（最多 1 分钟）
 let trTimer = null
@@ -116,8 +121,8 @@ const sections = computed(() => board.value && [
       </template>
     </div>
 
-    <TaskDetail v-model="detailOpen" :task-id="detailId" @changed="load" />
-    <HandoverDialog v-if="board" v-model="hoOpen" :task-ids="selected" :team-id="board.team_id" @done="() => { selected = []; load() }" />
+    <TaskDetail v-model="detailOpen" :task-id="detailId" @changed="changed" />
+    <HandoverDialog v-if="board" v-model="hoOpen" :task-ids="selected" :team-id="board.team_id" @done="() => { selected = []; changed() }" />
   </section>
 </template>
 

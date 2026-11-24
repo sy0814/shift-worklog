@@ -9,7 +9,7 @@ from . import audit  # noqa: F401  注册 audit_log 的 after_create 触发器
 from .db import SessionLocal, engine
 from . import migrate, translation_service
 from .config import get_settings
-from .routers import analysis as analysis_router, attendance, duty, inspections, audit_log, auth, export, handover, llm_settings, schedule, tasks, translation, users, workers
+from .routers import analysis as analysis_router, attendance, branding, duty, overtime, inspections, audit_log, auth, export, handover, llm_settings, schedule, tasks, translation, users, workers
 from .seed import seed, seed_glossary
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"  # 前端构建产物
@@ -32,6 +32,8 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="工作记录系统", lifespan=lifespan)
 app.include_router(auth.router)
+app.include_router(branding.router)
+app.include_router(overtime.router)
 app.include_router(users.router)
 app.include_router(schedule.router)
 app.include_router(audit_log.router)

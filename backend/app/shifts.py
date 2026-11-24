@@ -7,7 +7,7 @@
 交接顺序：夜班 → 白班 → 中班 → 夜班。
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 
 DAY, MIDDLE, NIGHT, OFF = "day", "middle", "night", "off"
@@ -31,6 +31,8 @@ class Schedule:
     night_start: time = time(23)
     holidays: frozenset[date] = frozenset()
     extra_workdays: frozenset[date] = frozenset()  # 调休上班的周末
+    # 班组整体调班：(班组 id, 日期) → 当天改上的班（day / middle / night / off），优先于循环推算
+    overrides: dict = field(default_factory=dict, hash=False, compare=False)
 
     # ---- 单个班组 ----
     def cycle_pos(self, team: TeamInfo, d: date) -> int:
@@ -43,6 +45,13 @@ class Schedule:
         return d.weekday() < 5 and d not in self.holidays
 
     def shift_of(self, team: TeamInfo, d: date) -> str:
+        o = self.overrides.get((team.id, d))
+        if o is not None:
+            return o
+        return self.planned_shift_of(team, d)
+
+    def planned_shift_of(self, team: TeamInfo, d: date) -> str:
+        """不考虑整体调班时，按循环 / 工作日推算的班次。"""
         if team.kind == "rotating":
             return CYCLE[self.cycle_pos(team, d)]
         return DAY if self.is_workday(d) else OFF
@@ -133,7 +142,7 @@ class Schedule:
     def paired_teams(self, team: TeamInfo, d: date) -> list[TeamInfo]:
         """当天和本班组搭班的班组：常白班上班的日子，常白班 ↔ 当天上白班的倒班班组。"""
         day_team = next((t for t in self.teams if t.kind == "day"), None)
-        if day_team is None or not self.is_workday(d):
+        if day_team is None or self.shift_of(day_team, d) != DAY:
             return []
         rot = self.rotating_team_on(d, DAY)
         if rot is None:

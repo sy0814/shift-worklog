@@ -66,10 +66,14 @@ function quickAdd(p) {
   preset.value = p
   formOpen.value = true
 }
-function afterAdd() {
+const drawerRef = ref()
+// 任务有变化（新建、改状态、移交……）：卡片人数、交接班、打开着的人员状态都刷新
+function refreshAll() {
   load()
   boardRef.value?.load()
+  if (dutyOpen.value) drawerRef.value?.load()
 }
+const afterAdd = refreshAll
 
 const detailOpen = ref(false)
 const detailId = ref(null)
@@ -100,15 +104,15 @@ function open(id) {
         <div class="meta"><ShiftTag :kind="c.s.kind" /> {{ fmt(c.s.start) }} – {{ fmt(c.s.end) }}</div>
         <div v-if="c.d" class="counts">
           <span class="cnt">👷 {{ t('duty.onDuty', { n: c.d.counts.on_duty }) }}</span>
-          <span v-if="c.key === 'current'" class="cnt busy">{{ t('duty.busy', { n: c.d.counts.busy }) }}</span>
-          <span v-if="c.key === 'current'" class="cnt idle">{{ t('duty.idle', { n: c.d.counts.idle }) }}</span>
+          <span class="cnt busy">{{ t('duty.busy', { n: c.d.counts.busy }) }}</span>
+          <span class="cnt idle">{{ t('duty.idle', { n: c.d.counts.idle }) }}</span>
           <span v-if="c.d.counts.absent" class="cnt absent">{{ t('duty.absent', { n: c.d.counts.absent }) }}</span>
           <span class="hint">{{ t('duty.clickHint') }} ›</span>
         </div>
       </el-card>
     </div>
 
-    <HandoverBoard ref="boardRef" />
+    <HandoverBoard ref="boardRef" @changed="load" />
 
     <el-card v-if="today" shadow="never" class="today">
       <template #header>{{ t('home.today') }} · {{ today.day }}</template>
@@ -120,9 +124,10 @@ function open(id) {
       </div>
     </el-card>
 
-    <DutyDrawer v-model="dutyOpen" :which="dutyWhich" @add="quickAdd" @open-task="open" />
+    <DutyDrawer ref="drawerRef" v-model="dutyOpen" :which="dutyWhich" @add="quickAdd" @open-task="open"
+                @loaded="(w, d) => (duty[w] = d)" />
     <TaskForm v-model="formOpen" :preset="preset" @saved="afterAdd" />
-    <TaskDetail v-model="detailOpen" :task-id="detailId" @changed="load" />
+    <TaskDetail v-model="detailOpen" :task-id="detailId" @changed="refreshAll" />
   </div>
 </template>
 

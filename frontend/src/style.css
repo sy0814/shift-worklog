@@ -7,6 +7,9 @@
 html, body, #app { margin: 0; height: 100%; }
 /* 始终给滚动条留位置：页面内容变短、滚动条消失时，整个页面不会左右跳 */
 html { scrollbar-gutter: stable; }
+/* 弹窗 / 抽屉打开时 Element Plus 会把 body 宽度减去滚动条宽度来补偿，但上面已经一直留着滚动条位置，
+   再减一次就会让页面往左跳，所以取消它的补偿（所有弹窗、抽屉、确认框都适用） */
+body.el-popup-parent--hidden { width: 100% !important; }
 body { font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background: #f4f5f7; }
 .page { padding: 16px; max-width: 1200px; margin: 0 auto; box-sizing: border-box; }
 .page-title { font-size: 18px; font-weight: 600; margin: 0 0 12px; }

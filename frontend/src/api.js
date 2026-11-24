@@ -3,6 +3,7 @@ import { ElMessage } from 'element-plus'
 import router from './router'
 import { i18n } from './i18n'
 import { net, noteResponse } from './net'
+import { translateError } from './apiErrors'
 
 const api = axios.create({ baseURL: '/api', timeout: 20000 })
 
@@ -30,7 +31,8 @@ api.interceptors.response.use(
       router.push({ name: 'login' })
     } else if (!err.config?.silent) {
       const detail = err.response?.data?.detail
-      ElMessage.error(typeof detail === 'string' ? detail : i18n.global.t('common.requestFailed'))
+      ElMessage.error(typeof detail === 'string'
+        ? translateError(detail, i18n.global.locale.value, i18n.global.t) : i18n.global.t('common.requestFailed'))
     }
     return Promise.reject(err)
   },
