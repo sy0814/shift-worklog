@@ -9,6 +9,7 @@ import { isNarrow } from '../format'
 import { useAuth } from '../stores/auth'
 import ShiftTag from '../components/ShiftTag.vue'
 import CycleEditor from '../components/CycleEditor.vue'
+import { fullHours, shortEntry } from '../cycle'
 
 const { t, tm, locale } = useI18n()
 const auth = useAuth()
@@ -103,7 +104,7 @@ const teamEditing = ref(null)
 const tf = reactive({})
 // 循环的简短写法：「白白中中夜夜休休（8 天）」
 const cycleText = (team) => (team.kind === 'cycle' && team.pattern
-  ? `${team.pattern.map((k) => t('cyc.short.' + k)).join(' ')}（${team.pattern.length}）` : t('schedule.kindShort.manual'))
+  ? `${team.pattern.map((k) => shortEntry(k, t)).join(' ')}（${team.pattern.length}）` : t('schedule.kindShort.manual'))
 function openTeam(team) {
   teamEditing.value = team || null
   Object.assign(tf, team
@@ -185,6 +186,7 @@ onMounted(async () => {
               <span :class="['cell', { admin: canShift(team.id), changed: row.changed?.[team.id] }]" @click="openTeamShift(team.id, row.day)">
                 <ShiftTag v-if="teamActive(team, row.day)" :kind="row.shifts[team.id]" />
                 <small v-else class="muted">{{ t('schedule.inactive') }}</small>
+                <small v-if="row.hours?.[team.id]" class="hrs" :title="fullHours(row.hours[team.id])">{{ shortEntry(row.hours[team.id], t) }}</small>
                 <small v-if="row.changed?.[team.id]" class="was">{{ t('schedule.changedFrom', { s: t('shift.' + row.changed[team.id]) }) }}</small>
               </span>
             </template>
@@ -350,6 +352,7 @@ onMounted(async () => {
 .cell.admin { cursor: pointer; }
 .cell.changed :deep(.el-tag) { outline: 2px dashed #e6a23c; outline-offset: 1px; }
 .was { color: #e6a23c; font-size: 11px; }
+.hrs { color: #1d7a66; font-size: 11px; white-space: nowrap; }
 .muted { color: #909399; font-size: 13px; }
 :deep(.is-today) td { background: #ecf5ff !important; font-weight: 600; }
 :deep(.is-gap) td:first-child { box-shadow: inset 3px 0 0 #e6a23c; }

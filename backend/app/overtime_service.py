@@ -57,9 +57,15 @@ def expand(db: Session, start: date, end: date, workers: list[Worker] | None = N
                    if (a := eff[w.id][o.day]).status == "present" and a.shift_kind == o.shift_kind
                    and (a.team_id or w.team_id) == o.team_id]
         for wid in ids:
+            # 有自定义上班时间的人（例如 07:00-12:00,14:00-17:00）：加班从他实际下班的时间算
+            a = eff[wid][o.day] if wid in eff else None
+            end_w = shift_end
+            if a is not None and a.hours and a.shift_kind == o.shift_kind:
+                end_w = sched.entry_hours(a.hours, o.day)[-1][1]
+            hours_w = round(max(0.0, (until - end_w).total_seconds() / 3600), 2)
             key = (wid, o.day, o.shift_kind)
             if key not in best or best[key].until_local < until:
-                best[key] = WorkerOvertime(o.id, wid, o.day, o.shift_kind, shift_end, until, hours, o.note,
+                best[key] = WorkerOvertime(o.id, wid, o.day, o.shift_kind, end_w, until, hours_w, o.note,
                                            o.worker_id is None)
     return list(best.values())
 

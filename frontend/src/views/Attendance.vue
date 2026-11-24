@@ -12,6 +12,7 @@ import TaskCard from '../components/TaskCard.vue'
 import TaskDetail from '../components/TaskDetail.vue'
 import ExportDialog from '../components/ExportDialog.vue'
 import OvertimeDialog from '../components/OvertimeDialog.vue'
+import { fullHours } from '../cycle'
 import { fmtFull } from '../format'
 
 const { t } = useI18n()
@@ -209,7 +210,8 @@ const exportOpen = ref(false)
             <td class="name">{{ w.name }}<el-tag v-if="isGuest(w)" size="small" type="warning" class="gtag">{{ t('att.guest') }} · {{ localName(auth.teamById(w.team_id)) }}</el-tag></td>
             <td v-for="d in data.days" :key="d"
                 :class="['c', `s-${data.cells[w.id][d].status}`, { ex: data.cells[w.id][d].source !== 'default', today: d === todayStr }]"
-                @click="openCell(w, d)">{{ code(data.cells[w.id][d]) }}<sup v-if="otCell[`${w.id}|${d}`]" class="ot">+{{ fmtH(otCell[`${w.id}|${d}`]) }}</sup></td>
+                :title="data.cells[w.id][d].hours ? fullHours(data.cells[w.id][d].hours) : ''"
+                @click="openCell(w, d)">{{ code(data.cells[w.id][d]) }}<i v-if="data.cells[w.id][d].hours" class="hmark">⏱</i><sup v-if="otCell[`${w.id}|${d}`]" class="ot">+{{ fmtH(otCell[`${w.id}|${d}`]) }}</sup></td>
             <td class="sum">{{ counts[w.id] }}</td>
             <td class="sum otc">{{ otSum[w.id] ? fmtH(otSum[w.id]) : '' }}</td>
           </tr>
@@ -368,5 +370,6 @@ const exportOpen = ref(false)
 tr.guest .name { background: #fdf6ec; }
 h4 { margin: 16px 0 8px; }
 .tasks { display: flex; flex-direction: column; gap: 8px; min-height: 40px; }
+.hmark { font-style: normal; font-size: 9px; vertical-align: super; opacity: .7; }
 .grid-wrap.first { min-height: 240px; }
 </style>

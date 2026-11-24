@@ -22,7 +22,7 @@ from ..schemas import (
 from pydantic import BaseModel, Field
 
 from ..security import get_current_user, require_admin
-from ..shifts import KINDS, MAX_CYCLE, OFF, coverage_problems
+from ..shifts import KINDS, MAX_CYCLE, OFF, check_hours, coverage_problems, parse_hours
 
 router = APIRouter(prefix="/api", tags=["schedule"])
 
@@ -52,6 +52,7 @@ def shifts_calendar(start: date, end: date, db: Session = Depends(get_db),
     while d <= end:
         out.append(CalendarDay(day=d, workday=sched.is_workday(d),
                                shifts={t.id: sched.shift_of(t, d) for t in sched.teams},
+                               hours={t.id: e for t in sched.teams if parse_hours(e := sched.team_entry(t, d))},
                                changed={t.id: sched.planned_shift_of(t, d) for t in sched.teams
                                         if (t.id, d) in sched.overrides}))
         d += timedelta(days=1)
@@ -255,11 +256,17 @@ def check_cycle(pattern: list[str] | None, start: date | None) -> list[str]:
     """校验循环设置（班组和个人排班共用）。"""
     if not pattern or start is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "cycle pattern and start date required")
-    if not 1 <= len(pattern) <= MAX_CYCLE or any(k not in KINDS for k in pattern):
+    if not 1 <= len(pattern) <= MAX_CYCLE:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"pattern must be 1..{MAX_CYCLE} days of day/middle/night/off")
-    if all(k == OFF for k in pattern):
+    out = []
+    for k in pattern:  # 班次，或自定义上班时间段（例如 07:00-12:00,14:00-17:00）
+        try:
+            out.append(k if k in KINDS else check_hours(str(k)))
+        except ValueError as e:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"bad hours {k!r}: {e}")
+    if all(k == OFF for k in out):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "pattern has no working day")
-    return list(pattern)
+    return out
 
 
 def _team_fields(db: Session, body: TeamIn) -> dict:

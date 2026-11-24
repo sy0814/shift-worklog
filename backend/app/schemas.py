@@ -138,6 +138,7 @@ class CalendarDay(BaseModel):
     workday: bool
     shifts: dict[int, str]  # team_id -> day/middle/night/off
     changed: dict[int, str] = {}  # 整体调班的班组：team_id -> 原本的班次
+    hours: dict[int, str] = {}  # 自定义上班时间的班组：team_id -> "07:00-12:00,14:00-17:00"（shifts 里是它算作的班）
 
 
 class AuditOut(ORM):

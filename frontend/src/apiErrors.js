@@ -50,6 +50,7 @@ const T = {
   need_username: ['请填写用户名', 'Unesite korisničko ime', 'Enter a username'],
   need_password: ['请填写密码', 'Unesite lozinku', 'Enter a password'],
   pw_short: ['密码至少 {x} 位', 'Lozinka mora imati bar {x} znakova', 'The password needs at least {x} characters'],
+  bad_hours: ['上班时间写得不对：{x}（每段「开始–结束」，按先后顺序、不能重叠，最多 4 段、一天最多 16 小时）', 'Neispravno radno vreme: {x}', 'Invalid working hours: {x}'],
   self: ['不能降级或停用自己', 'Ne možete sebi oduzeti prava', 'You cannot demote or disable yourself'],
 }
 const RULES = [
@@ -87,6 +88,7 @@ const RULES = [
   [/^another analysis is running/, 'analysis_running'],
   [/^cannot demote or disable yourself/, 'self'],
   [/^team in use/, 'team_used'],
+  [/^bad hours '([^']*)'/, 'bad_hours'],
   [/^(.+) is not on duty in this shift/, 'not_on_duty'],
   [/^permission denied/, 'perm_denied'],
   [/^role in use/, 'role_in_use'],

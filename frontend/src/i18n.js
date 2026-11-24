@@ -122,7 +122,7 @@ const messages = {
       noRule: '规则不完整，算不出时间', confirmDelete: '删除这个巡查项？', noDelete: '已经派发过的巡查项不能删除，请改为停用', tag: '巡查',
     },
     cyc: { presets: '快速填：', rot8: '四班三倒（8 天）', week5: '周一到周五白班', week6: '每周休一天', len: '几天一循环', start: '循环第 1 天',
-      clickHint: '点格子切换：白 → 中 → 夜 → 休', nth: '第{n}天', short: { day: '白', middle: '中', night: '夜', off: '休' },
+      clickHint: '点格子切换：白 → 中 → 夜 → 休；点右上角 ⏱ 可以设具体上班时间（例如 7–12、14–17）', setHours: '设置上班时间', hoursTitle: '第 {n} 天的上班时间', hoursHint: '可以分几段（最多 4 段）；最后一段可以跨过午夜。首页「在不在上班」、加班从几点算，都按这里的时间；交接班按和白 / 中 / 夜哪个班重叠最多来算。', addRange: '再加一段', applyAll: '所有上班的天都用这个时间', nth: '第{n}天', short: { day: '白', middle: '中', night: '夜', off: '休' },
       holidayOff: '节假日休息（调休上班的日子按主要班次上班）', preview: '接下来 14 天（不含节假日和临时调班）' },
     ws: { btn: '排班', title: '{n} · 班组与排班', from: '从哪天起', team: '所属班组', follow: '跟班组排班', personal: '个人循环', add: '添加一次变更',
       since: '一直以来', hint: '从这天起生效，以前的出勤和工时不变；提前登记的变更到那天自动生效。', noTeam: '无班组',
@@ -139,8 +139,8 @@ const messages = {
     assign: { onDuty: '本班在岗', current: '已在任务里', hint: '只能选这个班次（{d} {s}）在岗的人；其他人请先在「出勤」里安排来本班' },
     lead: { title: '带队人员', none: '未指定', members: '参与人员', pick: '选择带队人（可不选）' },
     duty: {
-      onDuty: '在岗 {n} 人', busy: '忙碌 {n}', idle: '空闲 {n}', absent: '请假/缺勤 {n}', title: '{shift} 人员状态', support: '支援',
-      st: { busy: '忙碌', idle: '空闲', leave: '请假', sick: '病假', absent: '缺勤', off: '调休' },
+      onDuty: '在岗 {n} 人', offHours: '不在上班时间 {n}', busy: '忙碌 {n}', idle: '空闲 {n}', absent: '请假/缺勤 {n}', title: '{shift} 人员状态', support: '支援',
+      st: { off_hours: '不在上班时间', busy: '忙碌', idle: '空闲', leave: '请假', sick: '病假', absent: '缺勤', off: '调休' },
       none: '这个班次没有安排人员', select: '勾选人员后可快捷添加任务', addTask: '给选中的人添加任务（{n}）', noTask: '没有未完成的任务', clickHint: '点击查看人员',
     },
     ot: {
@@ -272,7 +272,7 @@ const messages = {
       noRule: 'Pravilo nije potpuno', confirmDelete: 'Obrisati ovaj obilazak?', noDelete: 'Već je slat – isključite ga umesto brisanja', tag: 'Obilazak',
     },
     cyc: { presets: 'Brzo:', rot8: 'Četiri ekipe (8 dana)', week5: 'Pon–pet prva smena', week6: 'Jedan slobodan dan nedeljno', len: 'Dužina ciklusa (dana)', start: 'Prvi dan ciklusa',
-      clickHint: 'Kliknite za promenu: I → II → III → S', nth: '{n}. dan', short: { day: 'I', middle: 'II', night: 'III', off: 'S' },
+      clickHint: 'Kliknite za promenu: I → II → III → S; ⏱ u uglu postavlja tačno radno vreme (npr. 7–12, 14–17)', setHours: 'Radno vreme', hoursTitle: 'Radno vreme za {n}. dan', hoursHint: 'Može više delova (najviše 4); poslednji može preći ponoć. Početna („na poslu”) i prekovremeni rad koriste ovo vreme; primopredaja ide po smeni (I / II / III) sa kojom se najviše preklapa.', addRange: 'Još jedan deo', applyAll: 'Isto vreme za sve radne dane', nth: '{n}. dan', short: { day: 'I', middle: 'II', night: 'III', off: 'S' },
       holidayOff: 'Praznicima slobodno (radne subote po glavnoj smeni)', preview: 'Sledećih 14 dana (bez praznika i privremenih promena)' },
     ws: { btn: 'Raspored', title: '{n} · ekipa i raspored', from: 'Od datuma', team: 'Ekipa', follow: 'Po rasporedu ekipe', personal: 'Lični ciklus', add: 'Dodaj promenu',
       since: 'oduvek', hint: 'Važi od tog dana; ranije prisustvo i sati se ne menjaju. Buduće promene stupaju na snagu same.', noTeam: 'bez ekipe',
@@ -289,8 +289,8 @@ const messages = {
     assign: { onDuty: 'Na smeni', current: 'Već u zadatku', hint: 'Mogu se izabrati samo ljudi na ovoj smeni ({d} {s}); ostale prvo rasporedite u „Prisustvu”' },
     lead: { title: 'Vođa ekipe', none: 'Nije određen', members: 'Učesnici', pick: 'Izaberite vođu (opciono)' },
     duty: {
-      onDuty: 'Na smeni {n}', busy: 'Zauzeto {n}', idle: 'Slobodno {n}', absent: 'Odsutno {n}', title: '{shift} – stanje radnika', support: 'Pomoć',
-      st: { busy: 'Zauzet', idle: 'Slobodan', leave: 'Odsustvo', sick: 'Bolovanje', absent: 'Izostanak', off: 'Slobodan dan' },
+      onDuty: 'Na smeni {n}', offHours: 'Van radnog vremena {n}', busy: 'Zauzeto {n}', idle: 'Slobodno {n}', absent: 'Odsutno {n}', title: '{shift} – stanje radnika', support: 'Pomoć',
+      st: { off_hours: 'Van radnog vremena', busy: 'Zauzet', idle: 'Slobodan', leave: 'Odsustvo', sick: 'Bolovanje', absent: 'Izostanak', off: 'Slobodan dan' },
       none: 'Za ovu smenu nema raspoređenih radnika', select: 'Označite radnike da biste brzo dodali zadatak', addTask: 'Dodaj zadatak izabranima ({n})', noTask: 'Nema otvorenih zadataka', clickHint: 'Kliknite za radnike',
     },
     ot: {
@@ -422,7 +422,7 @@ const messages = {
       noRule: 'Rule incomplete', confirmDelete: 'Delete this inspection?', noDelete: 'Already dispatched – disable it instead', tag: 'Inspection',
     },
     cyc: { presets: 'Quick fill:', rot8: 'Four-team rotation (8 days)', week5: 'Mon–Fri day shift', week6: 'One day off per week', len: 'Cycle length (days)', start: 'First day of cycle',
-      clickHint: 'Click to change: D → M → N → off', nth: 'Day {n}', short: { day: 'D', middle: 'M', night: 'N', off: '–' },
+      clickHint: 'Click to change: D → M → N → off; ⏱ in the corner sets exact working hours (e.g. 7–12, 14–17)', setHours: 'Working hours', hoursTitle: 'Working hours for day {n}', hoursHint: 'Several ranges are allowed (up to 4); the last may cross midnight. The home page (“at work now”) and overtime use these hours; handover uses the shift (D / M / N) they overlap most.', addRange: 'Add a range', applyAll: 'Same hours for all working days', nth: 'Day {n}', short: { day: 'D', middle: 'M', night: 'N', off: '–' },
       holidayOff: 'Off on holidays (working weekends use the main shift)', preview: 'Next 14 days (without holidays and temporary changes)' },
     ws: { btn: 'Schedule', title: '{n} · team & schedule', from: 'From', team: 'Team', follow: 'Team schedule', personal: 'Personal cycle', add: 'Add a change',
       since: 'always', hint: 'Applies from that day; earlier attendance and hours stay as they were. Future changes take effect automatically.', noTeam: 'no team',
@@ -439,8 +439,8 @@ const messages = {
     assign: { onDuty: 'On this shift', current: 'Already in the task', hint: 'Only people on this shift ({d} {s}) can be chosen; arrange others in “Attendance” first' },
     lead: { title: 'Lead', none: 'Not set', members: 'Workers', pick: 'Choose a lead (optional)' },
     duty: {
-      onDuty: '{n} on shift', busy: '{n} busy', idle: '{n} free', absent: '{n} absent', title: '{shift} – people', support: 'Support',
-      st: { busy: 'Busy', idle: 'Free', leave: 'Leave', sick: 'Sick', absent: 'Absent', off: 'Day off' },
+      onDuty: '{n} on shift', offHours: '{n} outside hours', busy: '{n} busy', idle: '{n} free', absent: '{n} absent', title: '{shift} – people', support: 'Support',
+      st: { off_hours: 'Outside working hours', busy: 'Busy', idle: 'Free', leave: 'Leave', sick: 'Sick', absent: 'Absent', off: 'Day off' },
       none: 'Nobody is scheduled for this shift', select: 'Tick people to add a task quickly', addTask: 'Add a task for selected ({n})', noTask: 'No open tasks', clickHint: 'Click to see people',
     },
     ot: {

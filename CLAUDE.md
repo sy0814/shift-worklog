@@ -277,6 +277,12 @@
   - **合并班组的权限**（`permissions.group_ids`）= 今天合并的班组 ∪ 首页交接班正在显示的那个班（当前或下一个）合并的班组 ∪ 昨天夜班合并的（凌晨）
   - **首页人员状态**：`DutyOut.top` = 「首页单独显示」角色的人（班长、副班长……），单独列在上面（带角色、班组标签），下面按班组列其他人
   - 确认框 / 输入框（ElMessageBox）打开时用 `el-message-box-parent--hidden`，和弹窗一样要取消 body 宽度补偿，否则页面左右跳
+- [x] 用户反馈第六轮修改 第 2 步（2026-11-24）：**自定义上班时间**
+  - 循环（班组的、个人的）里某一天除了 day / middle / night / off，还可以写时间段，例如 `07:00-12:00,14:00-17:00`（最多 4 段，按先后、不重叠，最后一段可以跨午夜，一天最多 16 小时；`shifts.check_hours` 校验并规范写法）。循环编辑器每天右上角 ⏱ 设置，可「所有上班的天都用这个时间」
+  - **算作哪个班**（`Schedule.entry_kind`）：和白 / 中 / 夜哪个班重叠最多就算哪个（凌晨开始的段算前一个班次日的夜班）。分组、合并显示、交接、任务归属班次、排班提醒都按这个班算；`shift_of` 仍然只返回班次
+  - **实际时间**（`Schedule.entry_hours`、`team_entry` / `worker_entry`）用在：出勤格子 `hours`（出勤页有 ⏱ 标记，悬停看时间）；排班日历 `CalendarDay.hours`；首页人员状态——在这个班但现在不在时间段里（午休、还没到点）显示「不在上班时间」（`off_hours`，不算在岗）；时间段跨过班次分界（例如 14:00-17:00 在 16:00）仍算在岗；加班从他实际下班的时间算（`overtime_service.expand`）
+  - 班组整体调班仍然只能改成白 / 中 / 夜 / 休（会覆盖自定义时间）
+  - 前端显示用 `frontend/src/cycle.js`（`shortEntry` 显示成「7-12 14-17」）
 - 工厂时区由 `APP_TIMEZONE` 配置，默认 `Europe/Belgrade`
 - 排班推算是纯函数，在 `backend/app/shifts.py`，测试在 `backend/tests/test_shifts.py`
 - 留痕：业务代码统一调用 `app/audit.py` 的 `log()` / `log_changes()`；数据库触发器禁止对 `audit_log` 做 UPDATE / DELETE（SQLite、PostgreSQL 都已验证）

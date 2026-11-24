@@ -11,6 +11,7 @@
 交接顺序：夜班 → 白班 → 中班 → 夜班。
 """
 
+import re
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
@@ -22,6 +23,52 @@ WEEKDAYS = (DAY, DAY, DAY, DAY, DAY, OFF, OFF)  # 周一到周五白班（从周
 ORDER = (DAY, MIDDLE, NIGHT)  # 一个「班次日」内的先后顺序
 MAX_CYCLE = 62
 
+# 自定义上班时间：循环里某一天不写 day / middle / night / off，而写时间段，例如 "07:00-12:00,14:00-17:00"
+# （最多 4 段，按时间先后；最后一段可以跨过午夜，例如 "22:00-06:00"）。
+# 分组、交接、任务归属班次时，按和白 / 中 / 夜哪个班重叠最多来算（见 Schedule.entry_kind）；
+# 首页「现在在不在上班」、加班从几点算起，用实际的时间段（见 Schedule.entry_hours）。
+_HOURS_RE = re.compile(r"^(\d{2}):(\d{2})-(\d{2}):(\d{2})$")
+
+
+def parse_hours(entry: str) -> list[tuple[time, time]] | None:
+    """"07:00-12:00,14:00-17:00" → [(07:00, 12:00), (14:00, 17:00)]；不是时间段（day / off ……）返回 None；格式不对抛 ValueError。"""
+    if entry in KINDS:
+        return None
+    out = []
+    for part in entry.split(","):
+        m = _HOURS_RE.match(part.strip())
+        if not m:
+            raise ValueError(f"bad hours {entry!r}")
+        h1, m1, h2, m2 = map(int, m.groups())
+        if h1 > 23 or h2 > 24 or m1 > 59 or m2 > 59 or (h2 == 24 and m2):
+            raise ValueError(f"bad hours {entry!r}")
+        out.append((time(h1, m1), time(0, 0) if h2 == 24 else time(h2, m2)))
+    return out
+
+
+def check_hours(entry: str) -> str:
+    """校验并规范化时间段写法；返回规范写法。"""
+    iv = parse_hours(entry)
+    if iv is None:
+        return entry
+    if not 1 <= len(iv) <= 4:
+        raise ValueError("1..4 time ranges")
+    total = 0
+    prev_end = None
+    for i, (a, b) in enumerate(iv):
+        mins_a, mins_b = a.hour * 60 + a.minute, b.hour * 60 + b.minute
+        if mins_b <= mins_a:  # 跨午夜：只允许最后一段
+            if i != len(iv) - 1:
+                raise ValueError("only the last range may cross midnight")
+            mins_b += 24 * 60
+        if prev_end is not None and mins_a < prev_end:
+            raise ValueError("ranges must be in order and not overlap")
+        prev_end = mins_b
+        total += mins_b - mins_a
+    if total > 16 * 60:
+        raise ValueError("at most 16 hours a day")
+    return ",".join(f"{a:%H:%M}-{b:%H:%M}" if b != time(0, 0) else f"{a:%H:%M}-24:00" for a, b in iv)
+
 
 @dataclass(frozen=True)
 class Cycle:
@@ -31,11 +78,15 @@ class Cycle:
 
     @property
     def work_shift(self) -> str:
-        """主要班次：循环里出现最多的班（调休上班日用）。"""
+        """主要班次：循环里出现最多的班（可以是自定义时间段），调休上班日用。"""
         c = Counter(k for k in self.pattern if k != OFF)
-        return max(ORDER, key=lambda k: (c[k], -ORDER.index(k))) if c else DAY
+        if not c:
+            return DAY
+        rank = {k: i for i, k in enumerate(ORDER)}
+        return max(c, key=lambda k: (c[k], -rank.get(k, 9)))
 
     def planned(self, d: date, holidays=frozenset(), workdays=frozenset()) -> str:
+        """这一天循环里写的内容：day / middle / night / off，或自定义时间段（原样返回）。"""
         k = self.pattern[(d - self.start).days % len(self.pattern)]
         if self.holiday_off:
             if d in holidays:
@@ -92,8 +143,57 @@ class Schedule:
             return True
         return d.weekday() < 5 and d not in self.holidays
 
-    def cycle_shift(self, cycle: Cycle, d: date) -> str:
+    def cycle_entry(self, cycle: Cycle, d: date) -> str:
+        """循环里这一天写的内容（含节假日处理）：班次，或自定义时间段。"""
         return cycle.planned(d, self.holidays, self.extra_workdays)
+
+    def cycle_shift(self, cycle: Cycle, d: date) -> str:
+        """这一天算哪个班（自定义时间段按重叠最多的班算）。"""
+        return self.entry_kind(self.cycle_entry(cycle, d))
+
+    def _slot_minutes(self) -> list[tuple[str, int, int]]:
+        """三个班次在一个班次日里的起止（分钟，夜班跨到第二天 = +1440）。"""
+        m = lambda t: t.hour * 60 + t.minute
+        d, mid, n = m(self.day_start), m(self.middle_start), m(self.night_start)
+        return [(DAY, d, mid), (MIDDLE, mid, n), (NIGHT, n, d + 24 * 60)]
+
+    def entry_kind(self, entry: str) -> str:
+        """班次写法原样返回；自定义时间段 → 和白 / 中 / 夜哪个班重叠最多就算哪个班（一样多取前面的）。"""
+        iv = parse_hours(entry)
+        if iv is None:
+            return entry
+        mins = []
+        for a, b in iv:
+            x, y = a.hour * 60 + a.minute, b.hour * 60 + b.minute
+            if y <= x:
+                y += 24 * 60
+            if x < self.day_start.hour * 60 + self.day_start.minute:  # 凌晨开始的算前一个班次日的夜班部分
+                x, y = x + 24 * 60, y + 24 * 60
+            mins.append((x, y))
+        best, best_overlap = DAY, -1
+        for kind, s0, e0 in self._slot_minutes():
+            ov = sum(max(0, min(y, e0) - max(x, s0)) for x, y in mins)
+            if ov > best_overlap:
+                best, best_overlap = kind, ov
+        return best
+
+    def entry_hours(self, entry: str, d: date) -> list[tuple[datetime, datetime]]:
+        """这一天实际上班的时间段（本地时间）：自定义时间段按写的；白 / 中 / 夜按班次起止；休息为空。"""
+        if entry == OFF:
+            return []
+        iv = parse_hours(entry)
+        if iv is None:
+            return [self.shift_window(d, entry)]
+        out = []
+        for a, b in iv:
+            start = datetime.combine(d, a)
+            if a < self.day_start:  # 凌晨开始的段，属于这个班次日的「夜里」，日期是第二天
+                start += timedelta(days=1)
+            end = datetime.combine(start.date(), b)
+            if end <= start:
+                end += timedelta(days=1)
+            out.append((start, end))
+        return out
 
     def shift_of(self, team: TeamInfo, d: date) -> str:
         if not team.active_on(d):
@@ -108,6 +208,21 @@ class Schedule:
         if not team.active_on(d) or team.cycle is None:
             return OFF
         return self.cycle_shift(team.cycle, d)
+
+    def team_entry(self, team: TeamInfo, d: date) -> str:
+        """班组这一天的安排：整体调班优先（只有班次）；否则循环里写的（可能是自定义时间段）。"""
+        if not team.active_on(d):
+            return OFF
+        o = self.overrides.get((team.id, d))
+        if o is not None:
+            return o
+        return self.cycle_entry(team.cycle, d) if team.cycle else OFF
+
+    def worker_entry(self, team: TeamInfo | None, personal: Cycle | None, d: date) -> str:
+        """员工这一天的安排：有个人循环按个人的，否则跟班组。"""
+        if personal is not None:
+            return self.cycle_entry(personal, d)
+        return self.team_entry(team, d) if team else OFF
 
     # ---- 某天 / 某时刻 ----
     def main_team_on(self, d: date, kind: str) -> TeamInfo | None:

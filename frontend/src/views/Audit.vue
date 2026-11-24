@@ -6,6 +6,7 @@ import dayjs from 'dayjs'
 import api from '../api'
 import { localName } from '../i18n'
 import { fmtFull } from '../format'
+import { shortEntry } from '../cycle'
 import { useAuth } from '../stores/auth'
 import TaskDetail from '../components/TaskDetail.vue'
 
@@ -70,10 +71,10 @@ function fmtVal(f, v) {
   v = parse(v)
   if (v == null || v === '') return '∅'
   if (f?.startsWith('perm:') && te(`rp.scopes.${v}`)) return t(`rp.scopes.${v}`)
-  if (f === 'pattern' && Array.isArray(v)) return v.map((k) => t('cyc.short.' + k)).join(' ')
+  if (f === 'pattern' && Array.isArray(v)) return v.map((k) => shortEntry(k, t)).join(' ')
   if (f === 'schedule' && typeof v === 'object') { // 员工排班变更：从哪天起 · 班组 · 跟班组 / 个人循环
     const team = v.team_id ? localName(auth.teamById(v.team_id)) : t('ws.noTeam')
-    const how = v.pattern ? `${t('ws.personal')} ${v.pattern.map((k) => t('cyc.short.' + k)).join(' ')}` : t('ws.follow')
+    const how = v.pattern ? `${t('ws.personal')} ${v.pattern.map((k) => shortEntry(k, t)).join(' ')}` : t('ws.follow')
     return `${v.from <= '2000-01-01' ? t('ws.since') : v.from} · ${team} · ${how}`
   }
   if (Array.isArray(v)) return v.join('、') || '∅'

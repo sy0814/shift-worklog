@@ -10,6 +10,7 @@ import { localName } from '../i18n'
 import { isNarrow } from '../format'
 import { useAuth } from '../stores/auth'
 import CycleEditor from './CycleEditor.vue'
+import { shortEntry } from '../cycle'
 
 const props = defineProps({ worker: { type: Object, default: null } })
 const visible = defineModel({ type: Boolean })
@@ -38,7 +39,7 @@ watch(visible, (v) => v && props.worker && load())
 const currentRow = computed(() => [...rows.value].reverse().find((r) => r.effective_from <= today) || rows.value[0])
 const teamName = (id) => (id ? localName(auth.teamById(id)) : t('ws.noTeam'))
 const summary = (r) => (r.pattern
-  ? `${t('ws.sumPersonal', { n: r.pattern.length })}：${r.pattern.map((k) => t('cyc.short.' + k)).join(' ')}`
+  ? `${t('ws.sumPersonal', { n: r.pattern.length })}：${r.pattern.map((k) => shortEntry(k, t)).join(' ')}`
   : t('ws.sumFollow', { team: teamName(r.team_id) }))
 
 async function save() {

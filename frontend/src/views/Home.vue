@@ -107,6 +107,7 @@ function open(id) {
           <span class="cnt busy">{{ t('duty.busy', { n: c.d.counts.busy }) }}</span>
           <span class="cnt idle">{{ t('duty.idle', { n: c.d.counts.idle }) }}</span>
           <span v-if="c.d.counts.absent" class="cnt absent">{{ t('duty.absent', { n: c.d.counts.absent }) }}</span>
+          <span v-if="c.d.counts.off_hours" class="cnt absent">{{ t('duty.offHours', { n: c.d.counts.off_hours }) }}</span>
           <span class="hint">{{ t('duty.clickHint') }} ›</span>
         </div>
       </el-card>

@@ -31,6 +31,7 @@ class Cell(BaseModel):
     team_id: int | None
     source: str
     note: str = ""
+    hours: str | None = None  # 自定义上班时间
 
 
 class AttendanceGrid(BaseModel):

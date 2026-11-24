@@ -9,6 +9,7 @@ import { useAuth } from '../stores/auth'
 import ShiftTag from './ShiftTag.vue'
 import WorkerAvatar from './WorkerAvatar.vue'
 import OvertimeDialog from './OvertimeDialog.vue'
+import { fullHours } from '../cycle'
 import dayjs from 'dayjs'
 
 const props = defineProps({ which: { type: String, default: 'current' } })
@@ -39,7 +40,7 @@ watch(visible, (v) => { if (v) { picked.value = []; load() } })
 defineExpose({ load })
 
 const teamName = (id) => localName(auth.teamById(id))
-const ST_TYPE = { busy: 'warning', idle: 'success', leave: 'info', sick: 'info', absent: 'danger', off: 'info' }
+const ST_TYPE = { busy: 'warning', idle: 'success', leave: 'info', sick: 'info', absent: 'danger', off: 'info', off_hours: 'info' }
 const canPick = (r) => data.value?.can_add && (r.status === 'busy' || r.status === 'idle')
 function toggle(id, v) {
   picked.value = v ? [...picked.value, id] : picked.value.filter((x) => x !== id)
@@ -74,6 +75,7 @@ function addTask() {
           <el-tag type="warning">{{ t('duty.busy', { n: data.counts.busy }) }}</el-tag>
           <el-tag type="success">{{ t('duty.idle', { n: data.counts.idle }) }}</el-tag>
           <el-tag v-if="data.counts.absent" type="info">{{ t('duty.absent', { n: data.counts.absent }) }}</el-tag>
+          <el-tag v-if="data.counts.off_hours" type="info" effect="plain">{{ t('duty.offHours', { n: data.counts.off_hours }) }}</el-tag>
         </div>
         <div v-if="data.can_add" class="muted small">{{ t('duty.select') }}</div>
         <div v-if="!data.teams.some((x) => x.workers.length) && !data.top.length" class="muted">{{ t('duty.none') }}</div>
@@ -91,6 +93,7 @@ function addTask() {
                 <el-tag size="small" type="primary" effect="plain">{{ roleName(r.role_id) }}</el-tag>
                 <el-tag size="small" effect="plain" type="info">{{ teamName(r.team_id) }}</el-tag>
                 <el-tag :type="ST_TYPE[r.status]" size="small" effect="dark">{{ t('duty.st.' + r.status) }}</el-tag>
+                <el-tag v-if="r.hours" size="small" effect="plain" class="hrs">⏱ {{ fullHours(r.hours) }}</el-tag>
                 <el-tag v-if="r.overtime_until" size="small" type="warning" effect="plain">⏱ {{ t(r.overtime_prev ? 'ot.prevTag' : 'ot.untilTag', { t: hm(r.overtime_until) }) }}</el-tag>
               </div>
               <div v-for="task in r.tasks" :key="task.id" class="task" @click="emit('open-task', task.id)">
@@ -112,6 +115,7 @@ function addTask() {
               <div class="name">
                 <b>{{ r.worker.name }}</b>
                 <el-tag :type="ST_TYPE[r.status]" size="small" effect="dark">{{ t('duty.st.' + r.status) }}</el-tag>
+                <el-tag v-if="r.hours" size="small" effect="plain" class="hrs">⏱ {{ fullHours(r.hours) }}</el-tag>
                 <el-tag v-if="r.support" size="small" effect="plain">{{ t('duty.support') }} · {{ teamName(r.worker.team_id) }}</el-tag>
                 <el-tag v-if="r.overtime_until" size="small" type="warning" effect="plain">⏱ {{ t(r.overtime_prev ? 'ot.prevTag' : 'ot.untilTag', { t: hm(r.overtime_until) }) }}</el-tag>
               </div>
@@ -144,7 +148,8 @@ function addTask() {
 .team.top { background: #f5f9ff; border-radius: 8px; padding: 2px 10px 6px; }
 .team h4 { margin: 14px 0 6px; display: flex; gap: 6px; align-items: center; }
 .person { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; border-bottom: 1px solid #f2f3f5; }
-.person.s-leave, .person.s-sick, .person.s-absent, .person.s-off { opacity: .6; }
+.person.s-leave, .person.s-sick, .person.s-absent, .person.s-off, .person.s-off_hours { opacity: .6; }
+.hrs { color: #1d7a66; border-color: #8fd4c4; }
 .nocheck { width: 14px; flex: none; }
 .person :deep(.el-checkbox) { margin-top: 10px; height: auto; }
 .info { flex: 1; min-width: 0; }

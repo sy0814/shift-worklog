@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from .models import Attendance, Worker
 from .schedule_service import load_schedule
-from .shifts import OFF, Schedule
+from .shifts import OFF, Schedule, parse_hours
 from .worker_history import Entry, Timelines
 
 STATUSES = ("present", "leave", "sick", "absent", "off")
@@ -21,16 +21,18 @@ class DayAttendance:
     team_id: int | None
     source: str  # default / import / manual
     note: str = ""
+    hours: str | None = None  # 按排班有自定义上班时间时，例如 "07:00-12:00,14:00-17:00"
 
 
 def default_for(sched: Schedule, entry: Entry, d: date) -> DayAttendance:
     """按当天有效的班组 / 个人循环推算默认出勤。"""
     if entry.team_id is None and entry.cycle is None:
         return DayAttendance(None, None, None, "default")
-    kind = sched.worker_shift(sched.team(entry.team_id), entry.cycle, d)
+    raw = sched.worker_entry(sched.team(entry.team_id), entry.cycle, d)
+    kind = sched.entry_kind(raw)
     if kind == OFF:
         return DayAttendance("off", None, entry.team_id, "default")
-    return DayAttendance("present", kind, entry.team_id, "default")
+    return DayAttendance("present", kind, entry.team_id, "default", hours=raw if parse_hours(raw) else None)
 
 
 def effective(db: Session, workers: list[Worker], start: date, end: date,
@@ -62,8 +64,10 @@ def effective(db: Session, workers: list[Worker], start: date, end: date,
                         kind = k if k and k != OFF else None
                     else:
                         kind = base.shift_kind
+                # 手工改过 / 导入的：班次没变的话保留自定义上班时间
+                hours = base.hours if a.status == "present" and kind == base.shift_kind else None
                 row[d] = DayAttendance(a.status, kind if a.status == "present" else None,
-                                       a.team_id or entry.team_id, a.source, a.note)
+                                       a.team_id or entry.team_id, a.source, a.note, hours)
             else:
                 row[d] = base
             d += timedelta(days=1)
