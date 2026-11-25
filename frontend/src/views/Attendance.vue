@@ -1,4 +1,5 @@
 <script setup>
+import { useRoute, useRouter } from 'vue-router'
 import ScheduleGuide from '../components/ScheduleGuide.vue'
 import WhyPanel from '../components/WhyPanel.vue'
 // 出勤表：按月、按班组；点格子看此人当天做了什么，并可修改出勤
@@ -19,6 +20,8 @@ import { fmtFull } from '../format'
 
 const { t } = useI18n()
 const auth = useAuth()
+const route = useRoute()
+const router = useRouter()
 const month = ref(dayjs().format('YYYY-MM'))
 const teamId = ref(auth.user?.team_id ?? auth.teams[0]?.id)
 const data = ref(null)
@@ -66,7 +69,25 @@ async function delOvertime(o) {
   load()
 }
 const fmtH = (h) => (Number.isInteger(h) ? h : h.toFixed(1))
-onMounted(load)
+// 从「为什么？」「怎么改排班？」的链接进来：?worker=员工 id&day=日期（打开这一格）；?team=班组 id&month=YYYY-MM
+async function applyQuery(q) {
+  if (q.team && auth.teams.some((x) => x.id === Number(q.team))) teamId.value = Number(q.team)
+  if (q.month) month.value = q.month
+  if (q.worker && q.day) {
+    await ensureWorkers()
+    const w0 = allWorkers.value.find((x) => x.id === Number(q.worker))
+    month.value = q.day.slice(0, 7)
+    if (w0?.team_id && auth.teams.some((x) => x.id === w0.team_id)) teamId.value = w0.team_id
+  }
+  await load()
+  if (q.worker && q.day) {
+    const w = data.value?.workers.find((x) => x.id === Number(q.worker))
+    if (w && data.value.cells[w.id]?.[q.day]) openCell(w, q.day)
+  }
+  if (q.worker || q.team || q.month) router.replace({ query: {} }) // 刷新页面时不再自动弹出
+}
+onMounted(() => applyQuery(route.query))
+watch(() => route.query, (q) => { if (q.worker || q.team || q.month) applyQuery(q) })
 
 function code(c) {
   if (!c || c.status == null) return ''
@@ -257,7 +278,7 @@ const exportOpen = ref(false)
           </span>
           <el-button link type="primary" size="small" style="margin-left: auto" @click="whyOpen = !whyOpen">{{ t('why.button') }} {{ whyOpen ? '▴' : '▾' }}</el-button>
         </div>
-        <div v-if="whyOpen" class="why-box"><WhyPanel type="worker" :id="cur.worker.id" :day="cur.day" /></div>
+        <div v-if="whyOpen" class="why-box"><WhyPanel type="worker" :id="cur.worker.id" :day="cur.day" :hide="['attendance', 'overtime']" @navigate="dlg = false" /></div>
         <el-form label-width="auto" :disabled="!canEdit(cur.worker)">
           <el-form-item :label="t('att.status')">
             <el-radio-group v-model="form.status">

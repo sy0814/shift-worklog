@@ -242,6 +242,40 @@ def swap_team_shifts(body: TeamSwapIn, db: Session = Depends(get_db), user: User
     return list_team_shifts(body.start, body.end, db, user, a.dept)
 
 
+class UnaffectedOut(BaseModel):
+    worker_id: int
+    name: str
+    reason: str  # personal（按个人循环）/ attendance（这天有出勤记录：请假、顶班、改班次……）
+    days: list[date]
+
+
+@router.get("/team-shifts/unaffected", response_model=list[UnaffectedOut])
+def team_shift_unaffected(team_id: int, start: date, end: date, db: Session = Depends(get_db),
+                          _: User = Depends(get_current_user)):
+    """这个班组这几天里，班组调班对他不起作用的人：按个人循环上班的，或那天有出勤记录的（以出勤为准）。
+    调班保存后前端提示用。判定和 attendance_service.resolve 一致（个人循环不看班组排班，出勤记录优先）。"""
+    from .. import worker_history
+    from ..models import Attendance
+
+    days = _range(start, end)
+    workers = worker_history.members(db, team_id, start, end)
+    if not workers:
+        return []
+    tl = worker_history.Timelines(db, workers)
+    recs = {(a.worker_id, a.day) for a in db.scalars(select(Attendance).where(
+        Attendance.worker_id.in_([w.id for w in workers]), Attendance.day.in_(days)))}
+    out: dict = {}
+    for w in workers:
+        for d in days:
+            e = tl.on(w.id, d)
+            if e.team_id != team_id:
+                continue
+            reason = "attendance" if (w.id, d) in recs else "personal" if e.cycle is not None else None
+            if reason:
+                out.setdefault((w.id, reason), UnaffectedOut(worker_id=w.id, name=w.name, reason=reason, days=[])).days.append(d)
+    return sorted(out.values(), key=lambda x: (x.reason, x.name))
+
+
 @router.delete("/team-shifts", status_code=204)
 def clear_team_shift(team_id: int, start: date, end: date, db: Session = Depends(get_db),
                      admin: User = Depends(get_current_user)):

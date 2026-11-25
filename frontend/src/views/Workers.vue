@@ -1,4 +1,5 @@
 <script setup>
+import { useRoute, useRouter } from 'vue-router'
 // 员工名册（系统管理员；车间管理员管本车间）：像表格一样点格子直接改（改完马上保存、留痕）、加行、加自定义列、Excel 导入导出
 import RowActions from '../components/RowActions.vue'
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
@@ -19,6 +20,8 @@ const fields = ref([])
 const showInactive = ref(false)
 const teamFilter = ref(null)
 
+const route = useRoute()
+const router = useRouter()
 async function load() {
   const [w, f] = await Promise.all([
     api.get('/workers', { params: { include_inactive: showInactive.value } }),
@@ -27,7 +30,14 @@ async function load() {
   rows.value = w.data
   fields.value = f.data
 }
-onMounted(load)
+// 从「为什么？」的「改长期排班」进来：?schedule=员工 id，打开他的长期排班
+onMounted(async () => {
+  await load()
+  const id = Number(route.query.schedule)
+  const w = id && !readonly.value && rows.value.find((x) => x.id === id)
+  if (w) openSchedule(w)
+  if (route.query.schedule) router.replace({ query: {} })
+})
 // 别人改了也能看到：没在编辑时每 30 秒刷新一次
 const timer = setInterval(() => { if (!editing.key && !draft.value) load() }, 30000)
 onUnmounted(() => clearInterval(timer))

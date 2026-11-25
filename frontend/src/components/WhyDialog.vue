@@ -11,6 +11,6 @@ const { t } = useI18n()
 
 <template>
   <el-dialog v-model="visible" :title="title || t('why.title')" width="min(560px, 96vw)" :fullscreen="isNarrow()" append-to-body destroy-on-close>
-    <WhyPanel v-if="visible && id" :type="type" :id="id" :day="day" />
+    <WhyPanel v-if="visible && id" :type="type" :id="id" :day="day" @navigate="visible = false" />
   </el-dialog>
 </template>
