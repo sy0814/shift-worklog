@@ -1,6 +1,8 @@
 <script setup>
 // 设备台账：设备编号、名称、区域、型号、备注（名称 / 区域 / 备注三语，只填一种会自动翻译）。
 // 每台设备可以查看关联的任务；任务表单里可以选设备。
+import RowActions from '../components/RowActions.vue'
+import { useActionsWidth } from '../rowActions'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -14,6 +16,7 @@ import TaskCard from '../components/TaskCard.vue'
 import TaskDetail from '../components/TaskDetail.vue'
 
 const { t, locale } = useI18n()
+const actW = useActionsWidth(() => [t('common.edit')])
 const auth = useAuth()
 const canManage = computed(() => auth.can('equipment.manage'))
 const list = ref([])
@@ -166,8 +169,8 @@ const fileInput = ref(null)
       <el-table-column :label="t('eq.note')" min-width="160" show-overflow-tooltip>
         <template #default="{ row }">{{ tx(row, 'note').text }}</template>
       </el-table-column>
-      <el-table-column v-if="canManage" :label="t('common.actions')" width="80" fixed="right">
-        <template #default="{ row }"><el-button link type="primary" @click="openEdit(row)">{{ t('common.edit') }}</el-button></template>
+      <el-table-column v-if="canManage" :label="t('common.actions')" :width="actW" fixed="right">
+        <template #default="{ row }"><RowActions v-if="row.can_manage" :items="[{ label: t('common.edit'), type: 'primary', onClick: () => openEdit(row) }]" /></template>
       </el-table-column>
     </el-table>
 

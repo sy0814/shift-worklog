@@ -1,11 +1,14 @@
 <script setup>
 // 术语表维护（管理员）+ 翻译服务状态
+import RowActions from '../components/RowActions.vue'
+import { useActionsWidth } from '../rowActions'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api'
 
 const { t } = useI18n()
+const actW = useActionsWidth(() => [t('common.edit'), t('common.delete')])
 const rows = ref([])
 const q = ref('')
 const status = ref(null)
@@ -95,10 +98,10 @@ async function retryFailed() {
       <el-table-column prop="en" :label="t('glossary.en')" min-width="160" />
       <el-table-column prop="category" :label="t('glossary.category')" width="90" />
       <el-table-column prop="note" :label="t('glossary.note')" width="100" />
-      <el-table-column :label="t('common.actions')" width="120" fixed="right">
+      <el-table-column :label="t('common.actions')" :width="actW" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openEdit(row)">{{ t('common.edit') }}</el-button>
-          <el-button link type="danger" @click="remove(row)">{{ t('common.delete') }}</el-button>
+          <RowActions :items="[{ label: t('common.edit'), type: 'primary', onClick: () => openEdit(row) },
+                               { label: t('common.delete'), type: 'danger', onClick: () => remove(row) }]" />
         </template>
       </el-table-column>
     </el-table>

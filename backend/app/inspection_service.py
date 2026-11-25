@@ -40,7 +40,7 @@ def to_utc(local: datetime) -> datetime:
 def rule_of(t: InspectionTemplate) -> Rule:
     return Rule(kind=t.kind, at_time=t.at_time, every_n=t.every_n, weekdays=list(t.weekdays or []),
                 month_days=list(t.month_days or []), year_dates=list(t.year_dates or []), shift_kinds=list(t.shift_kinds or []),
-                start_date=t.start_date, assign=t.assign, team_id=t.team_id)
+                start_date=t.start_date, assign=t.assign, team_id=t.team_id, dept=t.department_id)
 
 
 def schedule_next(db: Session, t: InspectionTemplate, after_local: datetime | None = None) -> None:
@@ -87,7 +87,7 @@ def create_task(db: Session, t: InspectionTemplate, occ_local: datetime, run_sta
         inspection_id=t.id, status="not_started", shift_date=shift_date, shift_kind=shift_kind,
         created_by=user_id or t.updated_by, updated_by=user_id or t.updated_by,
         recorded_at=occ_utc, created_at=now, updated_at=now, chain_started_at=occ_utc, handover_count=0,
-        translation_status="pending", manual_fields=[],
+        translation_status="pending", manual_fields=[], transferable=t.transferable,
     )
     if not _copy_translation(db, t, task):
         setattr(task, f"content_{t.lang}", t.content.strip())

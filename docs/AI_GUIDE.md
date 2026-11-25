@@ -38,6 +38,7 @@ backend/
     seed.py               首次启动：班组、管理员、示例班长、术语表
     security.py           密码哈希、JWT、get_current_user（含「必须先改密码」拦截）、图片签名
     permissions.py        ★ 角色权限：PERMS、Who、who(db, user)
+    departments.py        ★ 车间：当前车间（get_dept 依赖，X-Department 头）、员工车间跟班组同步（before_flush）
     audit.py              ★ 留痕：log() / log_changes()
     shifts.py             ★ 排班引擎（纯函数）：Cycle、TeamInfo、Schedule
     schedule_service.py   从库里构造 Schedule（含「成员带出来的班次」）、local_now()
@@ -55,7 +56,7 @@ backend/
     images.py             图片处理（EXIF 时间、转正、浏览图 / 缩略图、头像）
     app_settings.py       app_settings 表里的配置（警示阈值、默认密码……）
     routers/              每个页面 / 资源一个文件，前缀 /api
-  migrations/versions/    0001…0016（表结构以这里为准）
+  migrations/versions/    0001…0017（表结构以这里为准）
   tests/                  pytest，conftest 用临时 SQLite
   static/                 前端构建产物（npm run build 输出，git 忽略）
 frontend/src/
@@ -68,7 +69,8 @@ frontend/src/
   photo.js                手机端压缩、读 EXIF
   cycle.js                排班写法显示（「7-12 14-17」、休息时间）
   branding.js             系统名称
-  stores/auth.js          当前用户、权限、班组列表
+  stores/auth.js          当前用户、权限、班组列表（allTeams = 全厂，teams = 当前车间）、车间（dept / departments）
+  dept.js                 本机记住的当前车间（api.js 每个请求带 X-Department）
   views/                  页面
   components/             组件
 deploy/windows/           install / update / backup / uninstall / set-address / common .ps1 + 三语部署指南
@@ -86,11 +88,20 @@ deploy/Caddyfile, deploy/install/install.html
 - 常用：`shift_at(dt)`、`main_team_on(d,k)`、`teams_on`、`group_of`、`recording_slot`（录入的任务归哪个班）、`receiving_slot`（移交过去归哪个班）、`next_shift_of_team`（找不到会抛 ValueError，调用方要兜底）、`coverage_problems`。
 - 测试里构造班组用 `rotating(id, offset)` / `day_team(id)`。基准：2026-11-21 应为 1 班白、2 班中、3 班夜、4 班休。
 
+### 3.1a 车间（`departments`，`departments.py`）
+- 班组之上的一层：`teams.department_id` 必填；`workers.department_id`（有班组时 = 班组的车间，`before_flush` 自动同步；车间管理员这种没班组的人单独设）；`equipment.department_id`（空 = 全厂共用）；`inspection_templates.department_id`（「派给在班班组」在哪个车间找）；`ai_reports.department_id`。
+- **排班按车间分开**：`TeamInfo.dept`；`teams_on(d, k, dept)`、`main_team_on(d, k, dept)`、`coverage_problems(..., dept)` 的 `dept` 不给（`shifts.ALL`）= 不分车间（只给旧测试和单车间用）；`group_of`、`handover_target`、`default_handover_target` 自动用 team 自己的车间。**新代码里凡是「某班次哪个班组在班」都要带车间。**
+- **当前车间**：路由加参数 `dept: int | None = Depends(get_dept)`。只有能切换的人（系统管理员、角色的 `task.view` 为 `all`）认请求头 `X-Department`，其他人永远是自己的车间（`departments.current`）。列表类接口（首页、交接班、警示、在岗、日历、排班检查、调班列表、任务列表、项目、巡查、设备、出勤、加班、导出、AI 分析、名册导入导出）按当前车间筛。
+- `GET /api/teams` 返回**所有车间**的班组（带 `department_id`），前端 `auth.teams` 再按当前车间筛；跨车间移交时用 `auth.allTeams`。
+- 跨车间：移交可以交给任何车间的班组（`perform_handover` 不限车间）；借调 = 出勤里顶别的车间的班组。
+- 只有一个车间时前端不显示车间（`auth.multiDept`），行为和加车间以前完全一样。
+
 ### 3.2 员工、账号、角色
 - **账号以名册为准**：`workers` 是人；`users.worker_id` 一对一关联；`users.role` 只有 `admin` 和 `staff`。
 - 员工属于哪个班组、跟班组排班还是个人循环，按**变更记录** `worker_schedules` 的生效日期算（`worker_history.Timelines`），所以换班组不影响历史出勤。
-- **角色** `roles`：权限表 `{权限: none/self/team/all}` + 登录方式（`password` 个人账号 / `pin` 班组账号点头像）+「首页单独显示」。
+- **角色** `roles`：权限表 `{权限: none/self/team/dept/all}`（dept = 本车间，all = 全厂）+ 登录方式（`password` 个人账号 / `pin` 班组账号点头像）+「首页单独显示」。
 - 新员工自动开账号、默认密码、第一次登录强制改密码（`must_change_password`，后端拦截）。
+- 内置角色：班长、副班长、成员、**车间管理员**（`dept_admin`，`DEPT_ADMIN_PERMS` = 每项都是 dept）。按车间的权限 `worker.manage`（名册）、`team.manage`（班组管理）、`analysis`（AI 分析）用 `who.dept_ok(perm, dept_id)` 判断。范围不是 all 的人不能给别人设含 all 的角色、不能改含 all 角色的人（防止越权）。
 
 ### 3.3 出勤（`attendance_service.effective`）
 - **默认不存库**，按当天有效的排班推算；`attendance` 表只存例外（请假 / 病假 / 缺勤 / 休息 / 调班 / 顶班）。
@@ -103,6 +114,7 @@ deploy/Caddyfile, deploy/install/install.html
 - 归属班次 `shift_date / shift_kind`（按录入班组的 `recording_slot`）。
 - **移交** = 原任务标 `handed_over` + 接收班组新建一条（`source_task_id` 指回），带内容、译文、图片（指向同一文件）、`project_id`、`inspection_id`、`equipment_id`；逻辑在 `routers/handover.py:perform_handover`（手动、自动共用）。
 - 带队人 `lead_worker_id` **同时也在** `task_workers` 里。
+- **可移交** `tasks.transferable`（迁移 0018）：能不能移交看 `tasks.can_transfer(task)` = 任务自己可移交且（子项目时）项目也可移交；`TaskOut.transferable` 返回的就是它。巡查项的 `transferable` 在没有小项目时写到生成的任务上。
 - 离线：`client_id`（UUID）去重；`recorded_at` 决定班次；状态修改带 `expect` / `at`。
 - 关联：`project_id`（子项目）、`inspection_id`（巡查生成）、`equipment_id`（设备）。
 
@@ -118,7 +130,7 @@ deploy/Caddyfile, deploy/install/install.html
 
 ## 4. 必须遵守的规则（不变量）
 
-1. **权限只走 `permissions.who(db, user)`**：`scope(perm)` / `has` / `team_ok` / `task_ok` / `visible_team_ids`。新功能要在 `PERMS` 里加权限名和可选范围，在 `LEADER_PERMS` / `MEMBER_PERMS` 给默认值，**迁移里给已有角色补默认值**，前端 `i18n.js` 的 `rp.perms` 里加三语名称（key 里的 `.` 换成 `_`）。前端用 `auth.can(perm)` / `auth.scope(perm)` / `auth.teamOk(perm, teamId)` 控制显示，但后端必须再校验。
+1. **权限只走 `permissions.who(db, user)`**：`scope(perm)` / `has` / `team_ok` / `task_ok` / `dept_ok` / `teams_in` / `visible_team_ids`。范围有 dept（本车间）时不要再写 `scope == "all"` 这种判断，用 `team_ok` / `dept_ok`；「像管理员一样不受限」用 `scope in ("dept", "all")`。新功能要在 `PERMS` 里加权限名和可选范围，在 `LEADER_PERMS` / `MEMBER_PERMS` 给默认值，**迁移里给已有角色补默认值**，前端 `i18n.js` 的 `rp.perms` 里加三语名称（key 里的 `.` 换成 `_`）。前端用 `auth.can(perm)` / `auth.scope(perm)` / `auth.teamOk(perm, teamId)` / `auth.deptOk(perm)` / `auth.wide(perm)` 控制显示，但后端必须再校验。
 2. **所有修改写留痕**：`audit.log()` / `audit.log_changes()`。`audit_log` 由数据库触发器禁止 UPDATE / DELETE。系统自动的操作 `user_id=None`。留痕里不记密码、API Key。
 3. **改了 `models.py` 必须写迁移**（`backend/migrations/versions/00NN_*.py`，revision 用四位数字串 `"0017"`，down_revision 指上一个）。新增非空列给 `server_default`；布尔用 `sa.true()/sa.false()`；SQLite 改表用 `op.batch_alter_table`。`tests/test_migrations.py` 会比对模型和迁移。
 4. **三语**：
@@ -136,7 +148,14 @@ deploy/Caddyfile, deploy/install/install.html
     - 弹窗 / 抽屉 / 确认框的 body 宽度补偿已在 `style.css` 处理，加了 `scrollbar-gutter: stable`。
     - 会出现 / 消失的提示文字要**预留位置**（min-height），不要用 v-if 让下面的按钮移动。
     - 组件根元素 class 名要独特，避免被父组件 scoped 样式命中。
-11. **离线**：新的「手机上常用的写操作」要考虑走发件箱（`stores/outbox.js`，带 `client_id` 或 `expect` 防重复 / 防覆盖）。`GET /api/*` 自动有离线缓存。
+11. **表格和工具栏的写法**（2026-11-25 统一）：
+    - 表格「操作」列一律用 `components/RowActions.vue`（items = [{label, type, onClick}]，删除放最后），列宽用 `rowActions.useActionsWidth(() => [所有可能的按钮文字])` 算（按当前语言量文字宽度，塞语最长也不换行；手机上只算直接显示的那几个）。标题都是「操作」、`fixed="right"`。
+    - 普通列宽度用 `rowActions.colWidth(表头, 可能的内容)`（表头、内容取宽的，按当前语言量），标签一排用 `tagsWidth`；操作按钮多、页面放不下时给 `RowActions` 传 `max`，后面的收进「⋯」（账号管理页的做法）。
+    - 手机上 `.toolbar` 的直接子元素由 `style.css` 统一排：输入框 / 下拉框整行，按钮两个一排等宽。新页面的工具栏按钮直接放在 `.toolbar` 下面就行。
+    - 列表里一部分行有勾选框时，其他行也要留同样宽的位置（首页交接班的 `.pick`）。
+    - 手机上表格单元格里的班次用 `<ShiftTag short>`。
+    - 检查脚本思路：Playwright 逐页打开，找单元格里按钮 `top` 不同（换行）、`scrollWidth > clientWidth`（溢出）、同一列表卡片 `left` 不同；中文和塞语、电脑和手机各跑一遍。
+12. **离线**：新的「手机上常用的写操作」要考虑走发件箱（`stores/outbox.js`，带 `client_id` 或 `expect` 防重复 / 防覆盖）。`GET /api/*` 自动有离线缓存。
 
 ## 5. 加一个功能的标准步骤
 
@@ -185,7 +204,8 @@ npm run build    # 输出到 backend/static
 
 | 领域 | 接口 |
 |---|---|
-| 登录 | `POST /auth/login`（表单）、`GET /auth/teams`、`GET /auth/teams/{id}/people`、`POST /auth/pin`、`GET/PATCH /auth/me`、`POST /auth/change-password` |
+| 车间 | `GET /departments`（导航页，不需要登录，含此刻在班班组）、`POST/PUT/DELETE /departments/{id}`（系统管理员） |
+| 登录 | `POST /auth/login`（表单）、`GET /auth/teams?department_id=`、`GET /auth/teams/{id}/people`、`POST /auth/pin`、`GET/PATCH /auth/me`、`POST /auth/change-password` |
 | 任务 | `GET/POST /tasks`、`GET/PATCH /tasks/{id}`、`POST /tasks/{id}/status`、`POST /tasks/{id}/attachments`、`DELETE /attachments/{id}`、`GET /files/{id}/{thumb\|view\|original}?t=`、`GET /tasks/{id}/history`、`GET /assignable` |
 | 交接班 | `GET /board`、`GET /handover/default`、`POST /handover`、`POST /tasks/{id}/discard`、`GET /overdue`、`GET /duty?which=current\|next` |
 | 翻译 | `PUT /tasks/{id}/translation`、`POST /tasks/{id}/retranslate`、`POST /translate`、`GET /translation/status`、`POST /translation/retry-failed`、术语表 `/glossary*` |
@@ -221,3 +241,6 @@ npm run build    # 输出到 backend/static
 - SQLite 读出的 datetime 没有时区（存的是 UTC）。
 - PG 测试库必须是空的，否则大量失败（不是代码问题）。
 - 非主班组「休息」但成员被单独安排上班的情况，见 3.1 的 `member_fn`。
+- 多个车间的班组名可能相同（各车间都有「1班」）：按名字找班组时（Excel 导入）只在当前车间里找。
+- Service Worker 的离线缓存按网址存，不看 `X-Department` 头：能切换车间的人离线时看到的是最后一次联网时那个网址的数据。
+- `tests/test_inspections.py::test_due_creates_task_and_advances` 在工厂时间 08:00～08:05 之间跑会失败（测试把巡查定在每天 08:00，「5 分钟前到期」跨过了下一次），换个时间再跑就好，不是代码问题。

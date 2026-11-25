@@ -44,7 +44,7 @@ async function remove(r) {
   await api.delete(`/roles/${r.id}`)
   load()
 }
-const scopeType = { none: 'info', self: 'warning', team: 'primary', all: 'success' }
+const scopeType = { none: 'info', self: 'warning', team: 'primary', dept: 'success', all: 'danger' }
 const rows = computed(() => defs.value.map((d) => ({ ...d })))
 </script>
 

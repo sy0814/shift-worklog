@@ -28,10 +28,27 @@ def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+class Department(Base):
+    """车间（部门）：班组之上的一层。排班的主班组、合并显示、交接顺序、排班检查都只在同一个车间里算；
+    「本车间」权限范围（dept）也按它。跨车间可以移交任务、借调人员。只有一个车间时，界面上不显示车间。"""
+
+    __tablename__ = "departments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    code: Mapped[str] = mapped_column(String(20), unique=True)  # D1, D2 ……
+    name_zh: Mapped[str] = mapped_column(String(100))
+    name_sr: Mapped[str] = mapped_column(String(100))
+    name_en: Mapped[str] = mapped_column(String(100))
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())  # 停用后不在导航页显示
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class Team(Base):
     __tablename__ = "teams"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    department_id: Mapped[int] = mapped_column(ForeignKey("departments.id"), index=True)  # 属于哪个车间
     code: Mapped[str] = mapped_column(String(20), unique=True)  # T1..T4, DAY
     name_zh: Mapped[str] = mapped_column(String(50))
     name_sr: Mapped[str] = mapped_column(String(50))
@@ -175,6 +192,9 @@ class Worker(Base):
     avatar_path: Mapped[str | None] = mapped_column(String(255), nullable=True)  # 头像（上传目录下的相对路径）
     extra: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")  # 自定义列的值 {列 id: 文字}
     role_id: Mapped[int | None] = mapped_column(ForeignKey("roles.id"), nullable=True)  # 空 = 成员
+    # 属于哪个车间。有班组时自动等于班组的车间（departments.py 里 before_flush 同步）；
+    # 没有班组的人（例如车间管理员）单独设
+    department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id"), nullable=True, index=True)
 
 
 class Project(Base):
@@ -218,6 +238,7 @@ class Equipment(Base):
     note_sr: Mapped[str | None] = mapped_column(Text, nullable=True)
     note_en: Mapped[str | None] = mapped_column(Text, nullable=True)
     model: Mapped[str] = mapped_column(String(200), default="", server_default="")  # 型号规格（不翻译）
+    department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id"), nullable=True, index=True)  # 空 = 全厂共用
     source_lang: Mapped[str] = mapped_column(String(5))  # 录入时的语言（翻译从这个语言出发）
     translation_status: Mapped[str] = mapped_column(String(10), default="pending")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())
@@ -290,6 +311,8 @@ class Task(Base):
     inspection_id: Mapped[int | None] = mapped_column(ForeignKey("inspection_templates.id"), nullable=True, index=True)
     project_id: Mapped[int | None] = mapped_column(ForeignKey("projects.id"), nullable=True, index=True)  # 属于哪个项目（子项目）
     equipment_id: Mapped[int | None] = mapped_column(ForeignKey("equipment.id"), nullable=True, index=True)  # 关联的设备
+    # 可移交：False = 这条任务一直留在本班组（不能手动移交、不参加自动移交）。项目子项目还要看项目的设置
+    transferable: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())
     # 带队人员（一个，可不填）。带队人同时也在 workers（task_workers）里，所以按「参与」统计时自动算上他
     lead_worker_id: Mapped[int | None] = mapped_column(ForeignKey("workers.id"), nullable=True, index=True)
 
@@ -435,6 +458,7 @@ class AiReport(Base):
     start: Mapped[date] = mapped_column(Date)
     end: Mapped[date] = mapped_column(Date)
     team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"), nullable=True)
+    department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id"), nullable=True)  # 不选班组时：分析哪个车间
     lang: Mapped[str] = mapped_column(String(5))
     status: Mapped[str] = mapped_column(String(10), default="pending")  # pending / running / done / failed
     model: Mapped[str] = mapped_column(String(100), default="")
@@ -463,6 +487,7 @@ class InspectionTemplate(Base):
     year_dates: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")  # 每年："MM-DD"
     shift_kinds: Mapped[list] = mapped_column(JSON, default=list)
     start_date: Mapped[date] = mapped_column(Date)
+    department_id: Mapped[int] = mapped_column(ForeignKey("departments.id"), index=True)  # 「派给在班班组」按这个车间找
     assign: Mapped[str] = mapped_column(String(10), default="on_duty")  # on_duty / fixed
     team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"), nullable=True)
     worker_ids: Mapped[list] = mapped_column(JSON, default=list)  # 只在固定班组时使用

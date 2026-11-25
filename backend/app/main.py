@@ -6,10 +6,11 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import audit  # noqa: F401  注册 audit_log 的 after_create 触发器
+from . import departments as _departments  # noqa: F401  注册员工车间跟班组同步（before_flush）
 from .db import SessionLocal, engine
 from . import migrate, translation_service
 from .config import get_settings
-from .routers import analysis as analysis_router, attendance, branding, duty, equipment, overtime, inspections, audit_log, auth, export, handover, llm_settings, projects, roles, schedule, storage, tasks, translation, users, workers
+from .routers import analysis as analysis_router, attendance, departments as departments_router, branding, duty, equipment, overtime, inspections, audit_log, auth, export, handover, llm_settings, projects, roles, schedule, storage, tasks, translation, users, workers
 from .seed import seed, seed_glossary
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"  # 前端构建产物
@@ -22,6 +23,10 @@ async def lifespan(_: FastAPI):
     with SessionLocal() as db:
         seed(db)
         seed_glossary(db)
+        from .permissions import ensure_builtin_roles
+
+        ensure_builtin_roles(db)  # 新版本加的内置角色（例如车间管理员）
+        db.commit()
     if get_settings().run_scheduler:
         translation_service.start_workers()  # 翻译队列的后台线程
         translation_service.start_scheduler()  # 定时把待翻译的任务放进队列
@@ -32,6 +37,7 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="工作记录系统", lifespan=lifespan)
 app.include_router(auth.router)
+app.include_router(departments_router.router)
 app.include_router(branding.router)
 app.include_router(overtime.router)
 app.include_router(users.router)

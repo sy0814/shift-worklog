@@ -4,12 +4,15 @@ import router from './router'
 import { i18n } from './i18n'
 import { net, noteResponse } from './net'
 import { translateError } from './apiErrors'
+import { getDept } from './dept'
 
 const api = axios.create({ baseURL: '/api', timeout: 20000 })
 
 api.interceptors.request.use((cfg) => {
   const token = localStorage.getItem('token')
   if (token) cfg.headers.Authorization = `Bearer ${token}`
+  const dept = getDept()
+  if (dept && !cfg.headers['X-Department']) cfg.headers['X-Department'] = String(dept)
   return cfg
 })
 

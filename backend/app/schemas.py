@@ -33,6 +33,17 @@ class TeamOut(ORM):
     sort_order: int = 0
     active_from: date | None = None
     active_to: date | None = None
+    department_id: int | None = None
+
+
+class DepartmentOut(ORM):
+    id: int
+    code: str
+    name_zh: str
+    name_sr: str
+    name_en: str
+    sort_order: int = 0
+    is_active: bool = True
 
 
 class UserOut(ORM):
@@ -65,6 +76,8 @@ class MeOut(UserOut):
     role_info: RoleBrief | None = None
     perms: dict[str, str] = {}
     group_team_ids: list[int] = []
+    department_id: int | None = None  # 自己的车间（系统管理员为空）
+    can_switch_dept: bool = False  # 能不能在各车间之间切换（系统管理员、看任务范围为「全厂」的角色）
 
 
 class TokenOut(BaseModel):
@@ -165,6 +178,7 @@ class WorkerOut(ORM):
     avatar_url: str | None = None  # 没有头像时为空，前端显示名字
     extra: dict[str, str] = {}  # 自定义列 {列 id: 值}
     role_id: int | None = None  # 空 = 成员
+    department_id: int | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -174,7 +188,7 @@ class WorkerOut(ORM):
 
             return {"id": v.id, "name": v.name, "employee_no": v.employee_no, "team_id": v.team_id,
                     "is_active": v.is_active, "extra": {str(k): str(x) for k, x in (v.extra or {}).items()},
-                    "role_id": v.role_id,
+                    "role_id": v.role_id, "department_id": v.department_id,
                     "avatar_url": avatar_url(v.id, v.avatar_path) if v.avatar_path else None}
         return v
 
@@ -183,6 +197,7 @@ class WorkerCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     employee_no: str | None = Field(default=None, max_length=50)
     team_id: int | None = None
+    department_id: int | None = None  # 没有班组时属于哪个车间（空 = 当前车间）
     extra: dict[str, str] = {}
 
 
@@ -196,6 +211,7 @@ class WorkerUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=100)
     employee_no: str | None = Field(default=None, max_length=50)
     team_id: int | None = None
+    department_id: int | None = None  # 只对没有班组的人有用（有班组时跟着班组）
     is_active: bool | None = None
     extra: dict[str, str] | None = None  # 只改给出的列；值为空字符串 = 清空
 
@@ -219,6 +235,7 @@ class TaskCreate(BaseModel):
     worker_ids: list[int] = Field(default_factory=list, max_length=200)
     lead_worker_id: int | None = None  # 带队人员（可不填）
     equipment_id: int | None = None  # 关联的设备（可不填）
+    transferable: bool = True  # False = 不可移交，一直留在本班组
     status: Literal["not_started", "in_progress", "done"] = "not_started"
     start_at: datetime | None = None
     end_at: datetime | None = None
@@ -234,6 +251,7 @@ class TaskUpdate(BaseModel):
     worker_ids: list[int] | None = Field(default=None, max_length=200)
     lead_worker_id: int | None = None  # 传了就改（null = 去掉带队人），不传不改
     equipment_id: int | None = None  # 传了就改（null = 不关联设备），不传不改
+    transferable: bool | None = None  # 传了就改
     start_at: datetime | None = None
     end_at: datetime | None = None
     # 原文改了以后：True 重新翻译（覆盖人工校对的译文）；False 保留现有译文
@@ -352,6 +370,7 @@ class TaskOut(BaseModel):
     perms: dict[str, bool] = {}
     project: "ProjectBrief | None" = None  # 属于哪个项目（子项目）
     equipment: EquipmentBrief | None = None  # 关联的设备
+    transferable: bool = True  # 能不能移交（任务自己的设置，且项目子项目时项目也可移交）
     # 移交 / 废弃 / 警示
     chain_started_at: UTCDateTime
     handover_count: int

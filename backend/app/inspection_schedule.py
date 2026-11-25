@@ -19,7 +19,7 @@ import calendar
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 
-from .shifts import ORDER, Schedule, TeamInfo
+from .shifts import ALL, ORDER, Schedule, TeamInfo
 
 MAX_SEARCH_DAYS = 800
 MAX_SEARCH_DAYS_YEARLY = 366 * 10 + 3  # 每隔 N 年（最多 10 年）也能找到
@@ -37,6 +37,7 @@ class Rule:
     start_date: date = date(2026, 1, 1)
     assign: str = "on_duty"  # on_duty / fixed
     team_id: int | None = None
+    dept: object = ALL  # 「派给在班班组」时在哪个车间里找
 
 
 def _team(sched: Schedule, team_id: int | None) -> TeamInfo | None:
@@ -127,4 +128,4 @@ def assignment(rule: Rule, occ: datetime, sched: Schedule) -> tuple[TeamInfo | N
             return None, d, k
         rd, rk = sched.receiving_slot(team, occ)
         return team, rd, rk
-    return sched.rotating_team_on(d, k), d, k
+    return sched.main_team_on(d, k, rule.dept), d, k

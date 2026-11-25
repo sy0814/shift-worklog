@@ -158,7 +158,7 @@ const shownHistory = computed(() => history.value.filter((h) => {
   if (h.action === 'discard') return /^discard_reason_(zh|sr|en)$/.test(h.field)
   return true
 }))
-const teamLabel = (id) => localName(auth.teamById(Number(id)))
+const teamLabel = (id) => auth.teamLabel(Number(id))
 
 function parse(v) {
   if (v == null) return null
@@ -201,12 +201,13 @@ function histText(h) {
     <div v-if="task" class="detail">
       <div class="head">
         <el-tag :type="STATUS_TYPE[task.status]" effect="dark">{{ t(`status.${task.status}`) }}</el-tag>
-        <span class="team">{{ localName(auth.teamById(task.team_id)) }}</span>
+        <span class="team">{{ auth.teamLabel(task.team_id) }}</span>
         <ShiftTag :kind="task.shift_kind" />
         <span class="muted">{{ task.shift_date }}</span>
         <el-tag v-if="task.inspection_id" size="small" type="success" effect="plain">{{ t('insp.tag') }} · {{ task.inspection_name }}</el-tag>
         <el-tag v-if="task.equipment" size="small" type="info" effect="plain">⚙ {{ task.equipment.code }} {{ localText(task.equipment.name, task.equipment.source_lang).text }}</el-tag>
-        <el-tag v-if="task.project" size="small" type="primary" effect="plain">📁 {{ localText(task.project.name, task.project.source_lang).text }} · {{ task.project.done }}/{{ task.project.total }}<template v-if="!task.project.transferable"> · {{ t('proj.fixed') }}</template></el-tag>
+        <el-tag v-if="task.project" size="small" type="primary" effect="plain">📁 {{ localText(task.project.name, task.project.source_lang).text }} · {{ task.project.done }}/{{ task.project.total }}</el-tag>
+        <el-tag v-if="task.transferable === false" size="small" type="info" effect="plain">🔒 {{ t('task.notTransferable') }}</el-tag>
       </div>
 
       <el-alert v-if="task.overdue" type="error" :closable="false" show-icon class="mt"

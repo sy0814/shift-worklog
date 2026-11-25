@@ -1,5 +1,6 @@
 <script setup>
-// 员工名册（管理员）：像表格一样点格子直接改（改完马上保存、留痕）、加行、加自定义列、Excel 导入导出
+// 员工名册（系统管理员；车间管理员管本车间）：像表格一样点格子直接改（改完马上保存、留痕）、加行、加自定义列、Excel 导入导出
+import RowActions from '../components/RowActions.vue'
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -32,8 +33,9 @@ const timer = setInterval(() => { if (!editing.key && !draft.value) load() }, 30
 onUnmounted(() => clearInterval(timer))
 
 // 班长（有「重设成员个人密码」权限）也能进来：只读，只看本班组，只能给班组账号的成员重设个人密码
-const readonly = computed(() => !auth.isAdmin)
+const readonly = computed(() => !auth.deptOk('worker.manage'))
 const shown = computed(() => rows.value.filter((w) => (!teamFilter.value || w.team_id === teamFilter.value)
+  && (!auth.multiDept || w.department_id === auth.dept) // 多个车间时只列当前车间的人
   && (!readonly.value || auth.inGroup(w.team_id))))
 // 角色
 const roles = ref([])
@@ -41,7 +43,10 @@ api.get('/roles').then((r) => { roles.value = r.data }).catch(() => {})
 const memberRole = computed(() => roles.value.find((r) => r.code === 'member'))
 const roleOf = (w) => roles.value.find((r) => r.id === (w.role_id ?? memberRole.value?.id))
 const roleLabel = (w) => { const r = roleOf(w); return r ? r[`name_${locale.value}`] : '' }
-const canAccount = (w) => auth.isAdmin || (roleOf(w)?.login_mode === 'pin' && auth.teamOk('worker.pin', w.team_id))
+const canAccount = (w) => !readonly.value || (roleOf(w)?.login_mode === 'pin' && auth.teamOk('worker.pin', w.team_id))
+// 车间管理员不能给人设「全厂」范围的角色
+const assignableRoles = computed(() => roles.value.filter((r) => auth.isAdmin || auth.scope('worker.manage') === 'all'
+  || !Object.values(r.permissions || {}).includes('all')))
 const accOpen = ref(false)
 const accWorker = ref(null)
 function openAccount(w) { accWorker.value = w; accOpen.value = true }
@@ -226,6 +231,7 @@ async function saveBulk() {
         <input ref="fileInput" type="file" accept=".xlsx" hidden @change="importFile" />
         <el-button @click="bulk.team_id = teamFilter; bulkOpen = true">{{ t('workers.bulk') }}</el-button>
         <el-button @click="openAll">{{ t('dp.openAll') }}</el-button>
+        <el-button v-if="auth.isAdmin" :icon="Plus" @click="addCol">{{ t('workers.addCol') }}</el-button>
       </template>
     </div>
     <div class="muted small">{{ readonly ? t('workers.leaderHint') : t('workers.editHint') }}</div>
@@ -240,10 +246,10 @@ async function saveBulk() {
             <th>{{ t('workers.team') }}</th>
             <th class="c-role">{{ t('workers.role') }}</th>
             <th class="c-act">{{ t('workers.active') }}</th>
-            <th class="c-ws">{{ t('acc.btn') }}</th>
-            <th v-if="!readonly" class="c-ws">{{ t('schedule.cycleCol') }}</th>
+            <th class="c-ops">{{ t('common.actions') }}</th>
             <th v-for="f in fields" :key="f.id" class="xcol">
-              <el-dropdown trigger="click" @command="(c) => colCommand(f, c)">
+              <span v-if="!auth.isAdmin" class="colhead">{{ f.label }}</span>
+              <el-dropdown v-else trigger="click" @command="(c) => colCommand(f, c)">
                 <span class="colhead">{{ f.label }} ▾</span>
                 <template #dropdown>
                   <el-dropdown-menu>
@@ -253,7 +259,6 @@ async function saveBulk() {
                 </template>
               </el-dropdown>
             </th>
-            <th v-if="!readonly" class="addcol"><el-button link type="primary" :icon="Plus" @click="addCol">{{ t('workers.addCol') }}</el-button></th>
           </tr>
         </thead>
         <tbody>
@@ -288,20 +293,22 @@ async function saveBulk() {
             <td :class="['c-role', { ok: flashed === `${w.id}|role_id` }]">
               <span v-if="readonly">{{ roleLabel(w) }}</span>
               <el-select v-else :model-value="w.role_id ?? memberRole?.id" size="small" class="rolesel" @change="(v) => setRole(w, v)">
-                <el-option v-for="r in roles" :key="r.id" :value="r.id" :label="r[`name_${locale}`]" />
+                <el-option v-for="r in assignableRoles" :key="r.id" :value="r.id" :label="r[`name_${locale}`]" />
               </el-select>
             </td>
             <td :class="['cell', 'c-act', { ok: flashed === `${w.id}|is_active` }]">
               <el-switch :model-value="w.is_active" size="small" :disabled="readonly" @change="(v) => { editing.id = w.id; editing.key = 'is_active'; editing.value = v; commit() }" />
             </td>
-            <td class="c-ws"><el-button v-if="canAccount(w)" link type="primary" size="small" @click="openAccount(w)">{{ t('acc.btn') }}</el-button></td>
-            <td v-if="!readonly" class="c-ws"><el-button link type="primary" size="small" @click="openSchedule(w)">{{ t('ws.btn') }}</el-button></td>
+            <!-- 账号、排班放在同一格 -->
+            <td class="c-ops">
+              <RowActions :items="[...(canAccount(w) ? [{ label: t('acc.btn'), type: 'primary', onClick: () => openAccount(w) }] : []),
+                                   ...(!readonly ? [{ label: t('ws.btn'), type: 'primary', onClick: () => openSchedule(w) }] : [])]" />
+            </td>
             <td v-for="f in fields" :key="f.id" :class="['cell', { on: isEditing(w, 'x' + f.id), ok: flashed === `${w.id}|x${f.id}` }]" @click="startEdit(w, 'x' + f.id)">
               <el-input v-if="isEditing(w, 'x' + f.id)" v-model="editing.value" size="small" class="cell-editor" maxlength="500"
                         @blur="commit" @keydown="onKey" />
               <span :class="{ ghost: isEditing(w, 'x' + f.id) }">{{ w.extra?.[String(f.id)] }}</span>
             </td>
-            <td v-if="!readonly" />
           </tr>
           <!-- 新增的一行 -->
           <tr v-if="draft" class="draft">
@@ -313,7 +320,7 @@ async function saveBulk() {
                 <el-option v-for="tm in auth.teams" :key="tm.id" :label="localName(tm)" :value="tm.id" />
               </el-select>
             </td>
-            <td :colspan="fields.length + 5">
+            <td :colspan="fields.length + 3">
               <el-button size="small" type="primary" :disabled="!draft.name.trim()" @click="saveDraft">{{ t('common.save') }}</el-button>
               <el-button size="small" @click="draft = null">{{ t('common.cancel') }}</el-button>
             </td>
@@ -358,7 +365,7 @@ async function saveBulk() {
 .sheet .av { width: 40px; text-align: center; padding: 0 4px; }
 .c-name { min-width: 130px; }
 .c-act { width: 60px; text-align: center !important; }
-.c-ws { width: 70px; text-align: center !important; }
+.c-ops { width: 1%; white-space: nowrap; }
 .c-role { width: 120px; transition: background .4s; }
 .c-role.ok { background: #e1f3d8; }
 .rolesel { width: 110px; }

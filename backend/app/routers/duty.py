@@ -13,6 +13,7 @@ from ..db import get_db
 from ..models import Role, Task, User, Worker
 from ..overtime_service import expand as expand_overtime
 from ..schedule_service import load_schedule, local_now
+from ..departments import get_dept
 from ..schemas import Trilingual, WorkerOut
 from ..security import get_current_user
 
@@ -95,16 +96,18 @@ def _working_now(sched, row: dict, d, now):
 
 @router.get("/duty", response_model=DutyOut)
 def duty(which: str = Query(default="current", pattern="^(current|next)$"), db: Session = Depends(get_db),
-         user: User = Depends(get_current_user)):
-    """某个班次在岗的人：按出勤（含调班、顶班）算；忙碌 = 手上有未完成的任务（未开始或进行中）。"""
+         user: User = Depends(get_current_user), dept: int | None = Depends(get_dept)):
+    """当前车间某个班次在岗的人：按出勤（含调班、顶班）算；忙碌 = 手上有未完成的任务（未开始或进行中）。
+    别的车间借调来支援本车间班组的人也算在内（按他顶的班组）。"""
     sched = load_schedule(db)
     d, k = sched.shift_at(local_now())
     if which == "next":
         d, k = sched.next_shift(d, k)
     start, end = sched.shift_window(d, k)
-    slot_teams = sched.teams_on(d, k)
+    slot_teams = sched.teams_on(d, k, dept)
     slot_ids = {t.id for t in slot_teams}
-    main = sched.main_team_on(d, k)
+    main = sched.main_team_on(d, k, dept)
+    dept_ids = {t.id for t in sched.teams if t.dept == dept}
 
     workers = list(db.scalars(select(Worker).where(Worker.is_active.is_(True)).order_by(Worker.name)))
     eff = att.effective(db, workers, d - timedelta(days=1), d)
@@ -145,6 +148,7 @@ def duty(which: str = Query(default="current", pattern="^(current|next)$"), db: 
         elif w.team_id in slot_ids and a.status in ("leave", "sick", "absent", "off") and a.source != "default":
             rows.setdefault(w.team_id, []).append((w, a.status, False))  # 本该上这个班，但请假 / 调走了
 
+    rows = {tid: rs for tid, rs in rows.items() if tid in dept_ids}  # 只列本车间班组的（含借调来的人）
     ids = [w.id for rs in rows.values() for w, _s, _x in rs]
     tasks = list(db.scalars(select(Task).options(selectinload(Task.workers))
                             .where(Task.status.in_(OPEN), Task.workers.any(Worker.id.in_(ids))))) if ids else []
@@ -190,5 +194,7 @@ def duty(which: str = Query(default="current", pattern="^(current|next)$"), db: 
         main_team_id=main.id if main else None, teams=teams,
         top=sorted(top, key=lambda r: (roles[r.role_id].sort_order if r.role_id in roles else 99, order.index(r.team_id)
                                        if r.team_id in order else 99, r.worker.name)), counts=DutyCounts(**counts),
-        can_add=permissions.who(db, user).has("task.create") and (user.role == "admin" or user.team_id in slot_ids),
+        can_add=(lambda w: w.has("task.create") and (w.is_admin or w.scope("task.create") in ("dept", "all")
+                                                     and any(w.team_ok("task.create", t) for t in slot_ids)
+                                                     or user.team_id in slot_ids))(permissions.who(db, user)),
     )

@@ -11,7 +11,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from .. import app_settings, audit, inspection_service, translation_service
+from .. import app_settings, audit, departments, inspection_service, translation_service
+from ..departments import get_dept
 from ..db import get_db
 from ..models import Attachment, AppSetting, Task, TaskHandover, Team, User, utcnow
 from ..schedule_service import load_schedule, local_now
@@ -26,7 +27,7 @@ from ..schemas import (
 from ..security import get_current_user, require_admin
 from ..shifts import TeamInfo
 from .. import permissions
-from .tasks import LANGS, OPEN, _get_task, _require, overdue_clause, tasks_out
+from .tasks import LANGS, OPEN, _get_task, _require, can_transfer, overdue_clause, tasks_out
 
 router = APIRouter(prefix="/api", tags=["handover"])
 
@@ -57,8 +58,8 @@ def handover(body: HandoverRequest, db: Session = Depends(get_db),
     for t in tasks:
         if t.status not in OPEN:
             raise HTTPException(status.HTTP_409_CONFLICT, f"task {t.id} is {t.status}")
-        if t.project_id and t.project and not t.project.transferable:
-            raise HTTPException(status.HTTP_409_CONFLICT, "project tasks cannot be handed over")
+        if not can_transfer(t):
+            raise HTTPException(status.HTTP_409_CONFLICT, "this task cannot be handed over")
         _require(db, t, user, "handover")
 
     created = perform_handover(db, tasks, body.to_team_id, note, lang, user.id)
@@ -172,21 +173,26 @@ def board_teams(sched, team, d, kind=None) -> list:
 
 
 @router.get("/board", response_model=BoardOut)
-def board(team_id: int | None = None, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def board(team_id: int | None = None, db: Session = Depends(get_db), user: User = Depends(get_current_user),
+          dept: int | None = Depends(get_dept)):
     """首页交接班：上一班移交过来的、本班待办、本班完成（不在班时显示它上一个班完成的）。
 
-    不指定班组时：管理员看当前在班的倒班班组，班长看本班组。
+    不指定班组时：有班组的人看本班组；管理员、车间管理员看当前车间此刻在班的主班组。
     常白班上班的日子，常白班和当天白班的倒班班组合并显示（两边班长都能操作）。
     """
     sched = load_schedule(db)
     now_local = local_now()
     d, k = sched.shift_at(now_local)
     if team_id is None:
-        if user.role != "admin" and user.team_id:
-            team_id = user.team_id
+        own_team = sched.team(user.team_id) if user.role != "admin" and user.team_id else None
+        if own_team is not None and own_team.dept == dept:
+            team_id = own_team.id
         else:
-            rot = sched.main_team_on(d, k)
-            team_id = rot.id if rot else sched.teams[0].id
+            rot = sched.main_team_on(d, k, dept)
+            dept_teams = [t for t in sched.teams if t.dept == dept]
+            if rot is None and not dept_teams:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, "no teams in this department")
+            team_id = rot.id if rot else dept_teams[0].id
     w = permissions.who(db, user)
     vis = w.visible_team_ids()
     if vis is not None and team_id not in vis:
@@ -202,7 +208,7 @@ def board(team_id: int | None = None, db: Session = Depends(get_db), user: User 
     ids = [t.id for t in group]
     on_duty = any(sched.is_on(t, d, k) for t in group)
     pd, pk = sched.prev_shift(sd, sk)
-    prev_ids = [t.id for t in sched.teams_on(pd, pk) if t.id not in ids]
+    prev_ids = [t.id for t in sched.teams_on(pd, pk, main.dept) if t.id not in ids]
     nxt = sched.default_handover_target(main, now_local)
 
     opts = [selectinload(Task.workers), selectinload(Task.attachments), selectinload(Task.lead)]
@@ -236,10 +242,12 @@ def board(team_id: int | None = None, db: Session = Depends(get_db), user: User 
 
 
 @router.get("/overdue", response_model=list[TaskOut])
-def overdue(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    """首页未闭环警示：所有班组的超时任务，本班组的排最前。"""
+def overdue(db: Session = Depends(get_db), user: User = Depends(get_current_user),
+            dept: int | None = Depends(get_dept)):
+    """首页未闭环警示：当前车间所有班组的超时任务，本班组的排最前。"""
     rows = db.scalars(select(Task).options(selectinload(Task.workers), selectinload(Task.attachments))
-                      .where(overdue_clause(db, utcnow())).order_by(Task.chain_started_at).limit(200)).all()
+                      .where(overdue_clause(db, utcnow()), Task.team_id.in_(departments.team_ids(db, dept)))
+                      .order_by(Task.chain_started_at).limit(200)).all()
     vis = permissions.who(db, user).visible_team_ids()
     if vis is not None:  # 只能看本班组的，只显示本班组（和合并班组）的超时任务
         rows = [t for t in rows if t.team_id in vis]

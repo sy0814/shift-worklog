@@ -42,7 +42,7 @@ def test_builtin_roles(client, admin_h, leader_h, roles):
     assert client.post("/api/roles", headers=leader_h, json={"name_zh": "x"}).status_code == 403
     assert client.delete(f"/api/roles/{roles['leader']['id']}", headers=admin_h).status_code == 400
     defs = {d["key"]: d["scopes"] for d in client.get("/api/roles/perms", headers=leader_h).json()}
-    assert defs["task.view"] == ["team", "all"] and "self" in defs["photo.upload"]
+    assert defs["task.view"] == ["team", "dept", "all"] and "self" in defs["photo.upload"]
     # 原来的班长账号已关联到名册里的人
     me = client.get("/api/auth/me", headers=leader_h).json()
     assert me["worker_id"] and me["role_info"]["code"] == "leader"

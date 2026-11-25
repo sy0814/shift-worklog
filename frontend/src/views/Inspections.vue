@@ -1,6 +1,8 @@
 <script setup>
 // 定期巡查：巡查项列表、编辑（带「接下来 5 次」实时预览）、立即派发、派发记录
 // 管理员管理全部；班长只能管理「固定派给本班组」的巡查项，其他的只读
+import RowActions from '../components/RowActions.vue'
+import { useActionsWidth } from '../rowActions'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -18,6 +20,7 @@ import { Plus } from '@element-plus/icons-vue'
 const props = defineProps({ embedded: { type: Boolean, default: false } })
 const emit = defineEmits(['open-project'])
 const { t, tm, locale } = useI18n()
+const actW = useActionsWidth(() => [t('common.edit'), t('insp.runNow'), t('insp.history'), t('common.delete')])
 const auth = useAuth()
 const rows = ref([])
 const workers = ref([])
@@ -70,7 +73,7 @@ const form = reactive({})
 const blank = () => ({
   name: '', content: '', lang: locale.value, enabled: true, kind: 'daily', at_time: '08:00', every_n: 1,
   weekdays: [], month_days: [], year_dates: [], shift_kinds: [], start_date: dayjs().format('YYYY-MM-DD'),
-  ...(auth.scope('inspection.manage') === 'all' ? { assign: 'on_duty', team_id: null } : { assign: 'fixed', team_id: auth.user.team_id }), worker_ids: [],
+  ...(auth.wide('inspection.manage') ? { assign: 'on_duty', team_id: null } : { assign: 'fixed', team_id: auth.user.team_id }), worker_ids: [],
   transferable: true, subs: [],
 })
 // 小项目：表单里用 { content, target: { mode: default / team / person, team_id, worker_id } }，提交时转成 sub_items
@@ -183,21 +186,22 @@ const runType = { created: 'success', manual: 'primary', skipped: 'info', failed
         <template #default="{ row }"><el-switch :model-value="row.enabled" size="small" :disabled="!row.can_edit" @change="(v) => toggle(row, v)" /></template>
       </el-table-column>
       <el-table-column :label="t('insp.name')" min-width="140">
-        <template #default="{ row }">{{ row.name }} <el-tag v-if="row.sub_items?.length" size="small" effect="plain">📁 {{ t('insp.subsCount', { n: row.sub_items.length }) }}</el-tag></template>
+        <template #default="{ row }">{{ row.name }} <el-tag v-if="row.sub_items?.length" size="small" effect="plain">📁 {{ t('insp.subsCount', { n: row.sub_items.length }) }}</el-tag>
+          <el-tag v-if="!row.transferable" size="small" type="info" effect="plain">{{ t('task.notTransferable') }}</el-tag></template>
       </el-table-column>
-      <el-table-column :label="t('insp.kind')" min-width="200"><template #default="{ row }">{{ summary(row) }}</template></el-table-column>
-      <el-table-column :label="t('insp.assign')" width="160"><template #default="{ row }">{{ who(row) }}</template></el-table-column>
-      <el-table-column :label="t('insp.nextRun')" width="140"><template #default="{ row }">{{ row.next_run_at ? fmtFull(row.next_run_at) : '—' }}</template></el-table-column>
-      <el-table-column :label="t('insp.lastRun')" width="140"><template #default="{ row }">{{ row.last_run_at ? fmtFull(row.last_run_at) : '—' }}</template></el-table-column>
-      <el-table-column prop="runs" :label="t('insp.runs')" width="80" align="center" />
-      <el-table-column :label="t('common.actions')" width="230" fixed="right">
+      <el-table-column :label="t('insp.kind')" min-width="150"><template #default="{ row }">{{ summary(row) }}</template></el-table-column>
+      <el-table-column :label="t('insp.assign')" min-width="140"><template #default="{ row }">{{ who(row) }}</template></el-table-column>
+      <el-table-column :label="t('insp.nextRun')" width="130"><template #default="{ row }">{{ row.next_run_at ? fmtFull(row.next_run_at) : '—' }}</template></el-table-column>
+      <el-table-column :label="t('insp.lastRun')" width="130"><template #default="{ row }">{{ row.last_run_at ? fmtFull(row.last_run_at) : '—' }}</template></el-table-column>
+      <el-table-column prop="runs" :label="t('insp.runs')" width="90" align="center" />
+      <el-table-column :label="t('common.actions')" :width="actW" fixed="right">
         <template #default="{ row }">
-          <template v-if="row.can_edit">
-            <el-button link type="primary" @click="openEdit(row)">{{ t('common.edit') }}</el-button>
-            <el-button link type="success" @click="runNow(row)">{{ t('insp.runNow') }}</el-button>
-          </template>
-          <el-button link @click="openHistory(row)">{{ t('insp.history') }}</el-button>
-          <el-button v-if="row.can_edit" link type="danger" @click="remove(row)">{{ t('common.delete') }}</el-button>
+          <RowActions :items="row.can_edit ? [
+            { label: t('common.edit'), type: 'primary', onClick: () => openEdit(row) },
+            { label: t('insp.runNow'), type: 'success', onClick: () => runNow(row) },
+            { label: t('insp.history'), onClick: () => openHistory(row) },
+            { label: t('common.delete'), type: 'danger', onClick: () => remove(row) },
+          ] : [{ label: t('insp.history'), onClick: () => openHistory(row) }]" />
         </template>
       </el-table-column>
     </el-table>
@@ -222,10 +226,12 @@ const runType = { created: 'success', manual: 'primary', skipped: 'info', failed
                 <el-button link type="danger" @click="form.subs.splice(i, 1)">✕</el-button>
               </div>
               <el-button size="small" :icon="Plus" @click="form.subs.push({ content: '', target: { mode: 'default', team_id: null, worker_id: null } })">{{ t('proj.addSub') }}</el-button>
-              <div v-if="form.subs?.length" class="row">
-                <el-switch v-model="form.transferable" />
-                <small class="muted">{{ form.transferable ? t('proj.transferableHint') : t('proj.fixedHint') }}</small>
-              </div>
+            </div>
+          </el-form-item>
+          <el-form-item :label="t('task.transferable')">
+            <div class="row">
+              <el-switch v-model="form.transferable" />
+              <small class="muted">{{ form.transferable ? (form.subs?.length ? t('proj.transferableHint') : '') : t('insp.transferHint') }}</small>
             </div>
           </el-form-item>
           <el-form-item :label="t('insp.kind')">
@@ -285,14 +291,14 @@ const runType = { created: 'success', manual: 'primary', skipped: 'info', failed
           </el-form-item>
 
           <el-form-item :label="t('insp.assign')">
-            <el-radio-group v-model="form.assign" :disabled="auth.scope('inspection.manage') !== 'all'">
+            <el-radio-group v-model="form.assign" :disabled="!auth.wide('inspection.manage')">
               <el-radio value="on_duty">{{ t('insp.onDuty') }}</el-radio>
               <el-radio value="fixed">{{ t('insp.fixed') }}</el-radio>
             </el-radio-group>
           </el-form-item>
           <template v-if="form.assign === 'fixed'">
             <el-form-item :label="t('insp.team')">
-              <el-select v-model="form.team_id" :disabled="auth.scope('inspection.manage') !== 'all'" style="width: 160px">
+              <el-select v-model="form.team_id" :disabled="!auth.wide('inspection.manage')" style="width: 160px">
                 <el-option v-for="tm2 in auth.teams" :key="tm2.id" :label="localName(tm2)" :value="tm2.id" />
               </el-select>
               <div class="muted small">{{ t('insp.fixedHint') }}</div>

@@ -32,12 +32,15 @@ const main = computed(() => [
   { name: 'schedule', label: t('nav.schedule'), icon: Clock },
   { name: 'projects', label: t('proj.title'), icon: Folder },
   { name: 'equipment', label: t('eq.title'), icon: Setting },
-  ...(!auth.isAdmin && auth.can('worker.pin') ? [{ name: 'workers', label: t('nav2.workers') }] : []), // 班长：给成员重设个人密码
+  ...(!auth.isAdmin && !auth.can('worker.manage') && auth.can('worker.pin') ? [{ name: 'workers', label: t('nav2.workers') }] : []), // 班长：给成员重设个人密码
 ])
 const admin = computed(() => auth.isAdmin ? [
   { name: 'workers', label: t('nav2.workers') }, { name: 'glossary', label: t('nav2.glossary') },
   { name: 'analysis', label: t('ai.title') }, { name: 'roles', label: t('rp.title') }, { name: 'users', label: t('nav.users') }, { name: 'audit', label: t('nav.audit') }, { name: 'settings', label: t('sys.title') },
-] : [])
+] : [ // 车间管理员：本车间的名册、AI 分析
+  ...(auth.can('worker.manage') ? [{ name: 'workers', label: t('nav2.workers') }] : []),
+  ...(auth.can('analysis') ? [{ name: 'analysis', label: t('ai.title') }] : []),
+])
 const tabs = computed(() => main.value.slice(0, 4)) // 手机底部标签栏
 const adminActive = computed(() => admin.value.some((m) => m.name === route.name))
 
@@ -64,6 +67,15 @@ onUnmounted(() => {
 })
 const roleName = computed(() => auth.roleName(locale.value))
 
+// 车间：多个车间时顶栏显示当前车间；能切换的人（系统管理员、全厂范围的角色）可以切换
+const activeDepts = computed(() => auth.departments.filter((d) => d.is_active || d.id === auth.dept))
+function switchDept(id) {
+  if (id === 'portal') return router.push({ name: 'portal' })
+  if (id === auth.dept) return
+  auth.setDept(id)
+  router.push({ name: 'home' })
+}
+
 const pwDialog = ref(false)
 const pw = reactive({ old_password: '', new_password: '' })
 async function changePassword() {
@@ -78,6 +90,17 @@ async function changePassword() {
   <div :class="['layout', { narrow }]">
     <header class="topbar">
       <div class="brand">{{ appTitle(locale) }}</div>
+      <el-dropdown v-if="auth.multiDept" trigger="click" :disabled="!auth.canSwitchDept" @command="switchDept">
+        <span :class="['dept', { fixed: !auth.canSwitchDept }]">
+          {{ localName(auth.currentDept) }}<el-icon v-if="auth.canSwitchDept"><ArrowDown /></el-icon>
+        </span>
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item v-for="d in activeDepts" :key="d.id" :command="d.id" :class="{ on: d.id === auth.dept }">{{ localName(d) }}</el-dropdown-item>
+            <el-dropdown-item divided command="portal">{{ t('dept.portal') }}</el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
       <nav v-if="!narrow" class="nav">
         <router-link v-for="m in main" :key="m.name" :to="{ name: m.name }" class="nav-link">{{ m.label }}</router-link>
         <el-dropdown v-if="admin.length" trigger="click" @command="go">
@@ -115,7 +138,7 @@ async function changePassword() {
       {{ net.cachedAt ? t('pwa.offlineData', { time: dayjs(net.cachedAt).format('MM-DD HH:mm') }) : t('pwa.offlineNoData') }}
     </div>
 
-    <main><router-view /></main>
+    <main><router-view :key="auth.dept || 0" /></main>
 
     <!-- 手机：底部标签栏 -->
     <nav v-if="narrow" class="tabbar">
@@ -170,6 +193,10 @@ async function changePassword() {
   padding: 8px 16px; padding-top: calc(8px + env(safe-area-inset-top));
   position: sticky; top: 0; z-index: 20;
 }
+.dept { color: #fff; background: #2f4a66; border-radius: 4px; padding: 4px 8px; font-size: 13px; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 2px; white-space: nowrap; max-width: 40vw; overflow: hidden; text-overflow: ellipsis; }
+.dept.fixed { cursor: default; }
+:global(.el-dropdown-menu__item.on) { color: #409eff; font-weight: 600; }
 .brand { font-weight: 600; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex-shrink: 1; }
 .nav { display: flex; gap: 4px; flex: 1; flex-wrap: wrap; align-items: center; }
 .nav-link { color: #cfd8e3; text-decoration: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; gap: 2px; font-size: 14px; }

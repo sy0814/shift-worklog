@@ -17,6 +17,7 @@ from ..models import InspectionRun, InspectionTemplate, Team, User, Worker, utcn
 from ..schedule_service import load_schedule
 from ..schemas import UTCDateTime
 from ..security import get_current_user
+from ..departments import get_dept
 
 router = APIRouter(prefix="/api/inspections", tags=["inspections"])
 
@@ -44,7 +45,7 @@ class InspectionIn(BaseModel):
     team_id: int | None = None
     worker_ids: list[int] = Field(default_factory=list, max_length=50)
     sub_items: list[SubItem] = Field(default_factory=list, max_length=100)  # 小项目
-    transferable: bool = True  # 有小项目时：生成的项目是否可移交
+    transferable: bool = True  # 生成的任务（有小项目时 = 生成的项目）是否可移交
 
 
 class InspectionOut(InspectionIn):
@@ -55,6 +56,7 @@ class InspectionOut(InspectionIn):
     runs: int
     updated_at: UTCDateTime
     can_edit: bool = False
+    department_id: int | None = None
 
 
 class Occurrence(BaseModel):
@@ -75,7 +77,8 @@ class RunOut(BaseModel):
     created_at: UTCDateTime
 
 
-def _validate(db: Session, b: InspectionIn) -> dict:
+def _validate(db: Session, b: InspectionIn, dept_id: int | None) -> dict:
+    """dept_id：在班班组按哪个车间找（新建 = 当前车间，修改 = 原来的车间）；固定班组时 = 那个班组的车间。"""
     d = b.model_dump()
     if not b.sub_items and not b.content.strip():
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "content required")
@@ -125,24 +128,27 @@ def _validate(db: Session, b: InspectionIn) -> dict:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "unknown worker")
     else:
         d["team_id"], d["worker_ids"] = None, []  # 在班班组每次不同，不能预设人员
+    d["department_id"] = db.get(Team, d["team_id"]).department_id if d["team_id"] else dept_id
+    if d["department_id"] is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "department not found")
     return d
 
 
-def _may_manage(user: User, assign: str, team_id: int | None) -> bool:
-    """管理员：全部；班长：只能管固定派给本班组的巡查项。"""
+def _may_manage(user: User, assign: str, team_id: int | None, dept_id: int | None) -> bool:
+    """管理员：全部；车间管理员（范围本车间）：本车间的；班长：只能管固定派给本班组的巡查项。"""
     from ..db import SessionLocal
 
     if user.role == "admin":
         return True
     with SessionLocal() as db:
         who = permissions.who(db, user)
-        if who.scope("inspection.manage") == "all":
+        if who.dept_ok("inspection.manage", dept_id):
             return True
         return assign == "fixed" and who.team_ok("inspection.manage", team_id)
 
 
-def _require_manage(user: User, assign: str, team_id: int | None) -> None:
-    if not _may_manage(user, assign, team_id):
+def _require_manage(user: User, assign: str, team_id: int | None, dept_id: int | None) -> None:
+    if not _may_manage(user, assign, team_id, dept_id):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "leaders can only manage inspections fixed to their own team")
 
 
@@ -168,7 +174,8 @@ def _out(db: Session, t: InspectionTemplate, user: User | None = None) -> Inspec
         start_date=t.start_date, assign=t.assign, team_id=t.team_id, worker_ids=t.worker_ids or [],
         sub_items=t.sub_items or [], transferable=t.transferable,
         next_run_at=t.next_run_at, last_run_at=t.last_run_at, runs=n, updated_at=t.updated_at,
-        can_edit=user is not None and _may_manage(user, t.assign, t.team_id))
+        can_edit=user is not None and _may_manage(user, t.assign, t.team_id, t.department_id),
+        department_id=t.department_id)
 
 
 def _get(db: Session, iid: int) -> InspectionTemplate:
@@ -179,19 +186,23 @@ def _get(db: Session, iid: int) -> InspectionTemplate:
 
 
 @router.get("", response_model=list[InspectionOut])
-def list_inspections(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    return [_out(db, t, user) for t in db.scalars(select(InspectionTemplate).order_by(InspectionTemplate.id))]
+def list_inspections(db: Session = Depends(get_db), user: User = Depends(get_current_user),
+                     dept: int | None = Depends(get_dept)):
+    """当前车间的巡查项。"""
+    return [_out(db, t, user) for t in db.scalars(select(InspectionTemplate)
+                                                 .where(InspectionTemplate.department_id == dept)
+                                                 .order_by(InspectionTemplate.id))]
 
 
 @router.post("/preview", response_model=list[Occurrence])
-def preview(body: InspectionIn, count: int = Query(default=5, le=20), db: Session = Depends(get_db),
-            user: User = Depends(get_current_user)):
-    """按表单里的设置（不保存）算出接下来几次的时间和派给谁。"""
-    d = _validate(db, body)
-    _require_manage(user, d["assign"], d["team_id"])
+def preview(body: InspectionIn, count: int = Query(default=5, le=20), iid: int | None = None,
+            db: Session = Depends(get_db), user: User = Depends(get_current_user), dept: int | None = Depends(get_dept)):
+    """按表单里的设置（不保存）算出接下来几次的时间和派给谁。iid = 正在修改的巡查项（按它的车间算）。"""
+    d = _validate(db, body, _get(db, iid).department_id if iid else dept)
+    _require_manage(user, d["assign"], d["team_id"], d["department_id"])
     rule = Rule(kind=d["kind"], at_time=d["at_time"], every_n=d["every_n"], weekdays=d["weekdays"],
                 month_days=d["month_days"], year_dates=d.get("year_dates", []), shift_kinds=d["shift_kinds"], start_date=d["start_date"],
-                assign=d["assign"], team_id=d["team_id"])
+                assign=d["assign"], team_id=d["team_id"], dept=d["department_id"])
     sched = load_schedule(db)
     out = []
     for occ in upcoming(rule, inspection_service.to_local(utcnow()), sched, count):
@@ -201,9 +212,10 @@ def preview(body: InspectionIn, count: int = Query(default=5, le=20), db: Sessio
 
 
 @router.post("", response_model=InspectionOut, status_code=201)
-def create(body: InspectionIn, db: Session = Depends(get_db), admin: User = Depends(get_current_user)):
-    d = _validate(db, body)
-    _require_manage(admin, d["assign"], d["team_id"])
+def create(body: InspectionIn, db: Session = Depends(get_db), admin: User = Depends(get_current_user),
+           dept: int | None = Depends(get_dept)):
+    d = _validate(db, body, dept)
+    _require_manage(admin, d["assign"], d["team_id"], d["department_id"])
     _check_sub_targets(db, admin, d["sub_items"])
     t = InspectionTemplate(**d, created_by=admin.id, updated_by=admin.id, created_at=utcnow(), updated_at=utcnow())
     db.add(t)
@@ -218,9 +230,9 @@ def create(body: InspectionIn, db: Session = Depends(get_db), admin: User = Depe
 @router.put("/{iid}", response_model=InspectionOut)
 def update(iid: int, body: InspectionIn, db: Session = Depends(get_db), admin: User = Depends(get_current_user)):
     t = _get(db, iid)
-    _require_manage(admin, t.assign, t.team_id)
-    d = _validate(db, body)
-    _require_manage(admin, d["assign"], d["team_id"])
+    _require_manage(admin, t.assign, t.team_id, t.department_id)
+    d = _validate(db, body, t.department_id)
+    _require_manage(admin, d["assign"], d["team_id"], d["department_id"])
     _check_sub_targets(db, admin, d["sub_items"])
     if audit.log_changes(db, t, d, user_id=admin.id, entity="inspection", entity_id=t.id):
         t.updated_by, t.updated_at = admin.id, utcnow()
@@ -232,7 +244,7 @@ def update(iid: int, body: InspectionIn, db: Session = Depends(get_db), admin: U
 @router.delete("/{iid}", status_code=204)
 def delete(iid: int, db: Session = Depends(get_db), admin: User = Depends(get_current_user)):
     t = _get(db, iid)
-    _require_manage(admin, t.assign, t.team_id)
+    _require_manage(admin, t.assign, t.team_id, t.department_id)
     if db.scalar(select(InspectionRun.id).where(InspectionRun.template_id == t.id).limit(1)):
         raise HTTPException(status.HTTP_409_CONFLICT, "already has runs; disable it instead")
     audit.log(db, user_id=admin.id, action="delete", entity="inspection", entity_id=t.id, old={"name": t.name})
@@ -244,7 +256,7 @@ def delete(iid: int, db: Session = Depends(get_db), admin: User = Depends(get_cu
 def run_now(iid: int, db: Session = Depends(get_db), admin: User = Depends(get_current_user)):
     """立即派发一次（不影响正常周期）。"""
     t = _get(db, iid)
-    _require_manage(admin, t.assign, t.team_id)
+    _require_manage(admin, t.assign, t.team_id, t.department_id)
     # 手动派发用精确到微秒的时间，连点两次也不会和「同一次不能派两遍」的规则冲突
     run = inspection_service.create_task(db, t, inspection_service.to_local(utcnow()),
                                          run_status="manual", user_id=admin.id)

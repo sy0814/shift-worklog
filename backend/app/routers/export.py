@@ -22,6 +22,8 @@ from ..config import get_settings
 from ..db import get_db
 from ..models import Task, TaskHandover, Team, User, Worker
 from ..schedule_service import load_schedule
+from ..departments import get_dept
+from .. import departments
 from ..security import get_current_user
 
 router = APIRouter(prefix="/api", tags=["export"])
@@ -104,7 +106,8 @@ def _header(ws, row: list[str]) -> None:
 
 
 def build_workbook(db: Session, start: date, end: date, team_id: int | None, worker_id: int | None,
-                   lang: str) -> Workbook:
+                   lang: str, dept_id: int | None = None) -> Workbook:
+    """dept_id：没选班组时只导出这个车间（空 = 全厂）。"""
     T = L[lang]
     teams = {t.id: t for t in db.scalars(select(Team))}
     tname = lambda tid: getattr(teams[tid], f"name_{lang}") if tid in teams else ""
@@ -114,6 +117,8 @@ def build_workbook(db: Session, start: date, end: date, team_id: int | None, wor
         .where(Task.shift_date >= start, Task.shift_date <= end)
     if team_id:
         q = q.where(Task.team_id == team_id)
+    elif dept_id is not None:
+        q = q.where(Task.team_id.in_(departments.team_ids(db, dept_id)))
     if worker_id:
         q = q.where(Task.workers.any(Worker.id == worker_id))
     tasks = list(db.scalars(q.order_by(Task.shift_date, Task.created_at)))
@@ -169,6 +174,8 @@ def build_workbook(db: Session, start: date, end: date, team_id: int | None, wor
         q = select(Worker).where(Worker.is_active.is_(True))
         if team_id:
             q = q.where(Worker.team_id == team_id)
+        elif dept_id is not None:
+            q = q.where(Worker.department_id == dept_id)
         workers = list(db.scalars(q))
         seen = {w.id for w in workers}
         for t in tasks:  # 来帮忙的其他班组员工也算进来
@@ -243,19 +250,24 @@ def export_tasks(
     lang: str = Query(default="zh", pattern="^(zh|sr|en)$"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
+    dept: int | None = Depends(get_dept),
 ):
+    """没选班组时导出当前车间。"""
     if end < start or (end - start).days > 366:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "range must be 0..366 days")
     who = permissions.who(db, user)
     scope = who.scope("export")
     permissions.require(scope != "none")
-    if scope != "all":  # 只能导出本班组（含合并显示的班组）
-        if team_id is not None and not who.team_ok("export", team_id):
-            raise HTTPException(status.HTTP_403_FORBIDDEN, "own team only")
+    if team_id is not None and not who.team_ok("export", team_id):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "own team only")
+    if scope == "team":  # 只能导出本班组（含合并显示的班组）
         team_id = team_id or user.team_id
-    wb = build_workbook(db, start, end, team_id, worker_id, lang)
+    elif scope == "dept":
+        dept = who.dept_id
+    wb = build_workbook(db, start, end, team_id, worker_id, lang, dept)
     audit.log(db, user_id=user.id, action="export", entity="export", entity_id="tasks",
-              new={"start": start, "end": end, "team_id": team_id, "worker_id": worker_id, "lang": lang})
+              new={"start": start, "end": end, "team_id": team_id, "worker_id": worker_id, "lang": lang,
+                   "department_id": dept})
     db.commit()
     buf = io.BytesIO()
     wb.save(buf)
