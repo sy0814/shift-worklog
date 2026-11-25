@@ -169,26 +169,7 @@ Write-Ok (& $caddyExe version)
 # ---------------- 7. 注册 Windows 服务 ----------------
 Write-Step '7/9 注册 Windows 服务（开机自动启动、崩溃自动重启）'
 $fwd = { param($p) $p.Replace('\', '/') }
-$appXml = @"
-<service>
-  <id>$SvcApp</id>
-  <name>WorkRecord App</name>
-  <description>工作记录系统（交接班 / 工作安排）后台程序</description>
-  <executable>$VenvPy</executable>
-  <arguments>-m uvicorn app.main:app --host 127.0.0.1 --port 8000 --proxy-headers --forwarded-allow-ips 127.0.0.1</arguments>
-  <workingdirectory>$Backend</workingdirectory>
-  <startmode>Automatic</startmode>
-  <depend>$pgSvc</depend>
-  <onfailure action="restart" delay="10 sec"/>
-  <onfailure action="restart" delay="30 sec"/>
-  <resetfailure>1 hour</resetfailure>
-  <stoptimeout>15 sec</stoptimeout>
-  <env name="PYTHONIOENCODING" value="utf-8"/>
-  <env name="PYTHONUTF8" value="1"/>
-  <logpath>$LogDir</logpath>
-  <log mode="roll-by-size"><sizeThreshold>10240</sizeThreshold><keepFiles>8</keepFiles></log>
-</service>
-"@
+$appXml = Get-AppServiceXml $pgSvc
 $caddyData = Join-Path $DataDir 'caddy'
 $caddyXml = @"
 <service>
