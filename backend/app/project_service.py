@@ -102,6 +102,7 @@ def create_sub(db: Session, project: Project, content: str, lang: str, user_id: 
         project_id=project.id, inspection_id=inspection_id, status="not_started", shift_date=slot[0], shift_kind=slot[1],
         created_by=user_id, updated_by=user_id, recorded_at=recorded_at or now, created_at=now, updated_at=now,
         translation_status="pending", chain_started_at=recorded_at or now, handover_count=0, manual_fields=[],
+        kind="inspection" if inspection_id else "other",
     )
     setattr(t, f"content_{lang}", content.strip())
     if worker is not None:

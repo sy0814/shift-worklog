@@ -325,6 +325,9 @@ class Task(Base):
     confirmed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # 任务类型（设备统计用）：fault 故障维修 / maintenance 计划检修 / inspection 巡查 / other 其他
+    kind: Mapped[str] = mapped_column(String(12), default="other", server_default="other")
+
     # 移交链：第一次录入的时间、已经移交过几次（用于未闭环警示）
     chain_started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     handover_count: Mapped[int] = mapped_column(Integer, default=0)

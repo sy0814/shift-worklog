@@ -119,6 +119,8 @@ deploy/Caddyfile, deploy/install/install.html
 - **可移交** `tasks.transferable`（迁移 0018）：能不能移交看 `tasks.can_transfer(task)` = 任务自己可移交且（子项目时）项目也可移交；`TaskOut.transferable` 返回的就是它。巡查项的 `transferable` 在没有小项目时写到生成的任务上。
 - 离线：`client_id`（UUID）去重；`recorded_at` 决定班次；状态修改带 `expect` / `at`。
 - 关联：`project_id`（子项目）、`inspection_id`（巡查生成）、`equipment_id`（设备）。
+- **任务类型** `tasks.kind`（迁移 0020）：fault / maintenance / inspection / other；巡查生成的为 inspection（`inspection_service`、`project_service`），移交时带过去；任务表单里选，导出有「类型」列。
+- **设备统计**（`app/equipment_stats.py`、`routers/equipment_stats.py`，前缀 `/api/equipment-stats`，前端 `EquipmentStats.vue` 在设备台账页「统计」）：按**移交链**计数（第一条 `source_task_id` 为空且班次日期在时间段里），类型 / 状态 / 完成时间看链上最新一条；处理用时用最新一条的 完成 − 开始（移交会复制开始时间，不能链上相加）；反复 = 30 天内故障 ≥3 次（滑动窗口）。能看：管理员、`task.view` 为 dept / all、或有 `equipment.manage`
 - **班次日志** `task_logs`（迁移 0019，`routers/task_logs.py`）：一条任务多条自由记录，三语列 + `source_lang`，翻译队列项 `("log", id)`（`translation_service.translate_log`，定时重试也包括）；班次按写的时间 `recorded_at` 算（离线最多往前 3 天）；`GET /tasks/{id}/logs` 列整条移交链（`chain_ids`）；写需要 `task_perms` 的 `log`（= 能开始 / 完成或修改，已完成的要 `task.edit_done`）；删 = 写的人或能修改任务的人，软删除；留痕在任务上（action `log` / `log_delete`）。前端 `TaskLogs.vue`，离线走发件箱（type `log`，`client_id` 去重）。导出多一张「班次日志」表。i18n 用 `tlog`（`log` 已被操作记录页占用）
 
 ### 3.5 项目与定期巡查
@@ -223,6 +225,7 @@ npm run build    # 输出到 backend/static
 | 设备 | `/equipment`、`/equipment/export/xlsx`、`/equipment/import/xlsx` |
 | 导出 / 分析 | `GET /export/tasks`、`/analysis`（`/{id}`、`/{id}/retry`） |
 | 班次日志 | `GET/POST /tasks/{id}/logs`、`DELETE /task-logs/{id}` |
+| 设备统计 | `GET /equipment-stats?start&end`、`GET /equipment-stats/{id}/timeline`、`GET /equipment-stats/xlsx` |
 | 报警 | `GET /alerts`（管理员：备份失败 / 太久没备份 / 磁盘快满，`app/alerts.py`）；服务停了由 `deploy/windows/watchdog.ps1` 检查 |
 | 设置 | `GET/PUT /settings`（警示阈值）、`/branding`、`/settings/llm`（AI 接口，含 `/test`、`/models`）、`/users/default-password`、`/storage`（`/check`、`/backup-now`、`/archive-now`）、`/audit` |
 

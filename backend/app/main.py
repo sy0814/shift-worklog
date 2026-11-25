@@ -10,7 +10,7 @@ from . import departments as _departments  # noqa: F401  注册员工车间跟�
 from .db import SessionLocal, engine
 from . import migrate, translation_service
 from .config import get_settings
-from .routers import analysis as analysis_router, attendance, departments as departments_router, branding, duty, equipment, explain as explain_router, task_logs, overtime, inspections, audit_log, auth, export, handover, llm_settings, projects, roles, schedule, storage, tasks, translation, users, workers
+from .routers import analysis as analysis_router, attendance, departments as departments_router, branding, duty, equipment, equipment_stats, explain as explain_router, task_logs, overtime, inspections, audit_log, auth, export, handover, llm_settings, projects, roles, schedule, storage, tasks, translation, users, workers
 from .seed import seed, seed_glossary
 from .security import require_admin
 
@@ -45,6 +45,7 @@ app.include_router(users.router)
 app.include_router(roles.router)
 app.include_router(projects.router)
 app.include_router(equipment.router)
+app.include_router(equipment_stats.router)
 app.include_router(storage.router)
 app.include_router(schedule.router)
 app.include_router(audit_log.router)

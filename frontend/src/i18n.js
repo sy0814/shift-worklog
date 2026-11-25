@@ -45,6 +45,7 @@ const messages = {
     nav2: { tasks: '任务', workers: '员工名册', board: '交接班', glossary: '术语表' },
     status: { not_started: '未开始', in_progress: '进行中', done: '已完成', handed_over: '已移交', discarded: '已废弃', open: '未完成', all: '全部' },
     task: {
+      kind: '类型', kinds: { fault: '故障维修', maintenance: '计划检修', inspection: '巡查', other: '其他' },
       transferable: '可移交', notTransferable: '不可移交', transferableHint: '关掉 = 这条任务一直留在本班组，不能移交、不会自动移交',
       new: '新建任务', edit: '编辑任务', content: '工作内容', contentPh: '可以用中文、塞语或英语填写', workers: '参与人员', team: '班组',
       start: '开始时间', end: '完成时间', leftover: '遗留问题', status: '状态', publisher: '发布人', updater: '最后修改',
@@ -158,6 +159,12 @@ const messages = {
       archiveHint: '每天 02:50 自动搬。浏览图和缩略图留在原处，系统照常显示；点「原图」从归档盘读取，归档盘没接上时先显示浏览图。已备份过的原图在备份里也还有一份。',
       archStat: '已归档 {a} 张原图，现在可以归档 {d} 张', archiveNow: '立即归档', archived: '已归档 {n} 张',
     },
+    eqs: {
+      title: '统计', list: '台账', lastDays: '最近 {n} 天', faults: '故障次数', repeatCount: '反复故障的设备', openAll: '未完成', idle: '没有任务的设备',
+      hint: '一件事移交几次也只算一次。「反复」= {d} 天内故障 {n} 次以上。类型在新建 / 修改任务时选（故障维修、计划检修、巡查、其他）。点设备看它的每件事和班次日志。',
+      topTitle: '故障次数最多的设备', noFaults: '这段时间没有故障', tableTitle: '全部设备', open: '未完成', overdueN: '超时 {n}',
+      avg: '平均修好(小时)', workHours: '处理用时(小时)', handovers: '移交', last: '最近一次', repeat: '反复故障', repeatMax: '{n} 次/30天', fixedIn: '{h} 小时修好',
+    },
     eq: {
       title: '设备台账', one: '设备', pick: '选择设备（可不选）', add: '新增设备', search: '搜索编号 / 名称 / 区域 / 型号', showInactive: '显示停用的',
       export: '导出 Excel', import: '导入 Excel', code: '设备编号', name: '名称', area: '区域', model: '型号规格', note: '备注',
@@ -269,6 +276,7 @@ const messages = {
     nav2: { tasks: 'Zadaci', workers: 'Radnici', board: 'Primopredaja', glossary: 'Rečnik' },
     status: { not_started: 'Nije započeto', in_progress: 'U toku', done: 'Završeno', handed_over: 'Predato', discarded: 'Odbačeno', open: 'Nezavršeno', all: 'Sve' },
     task: {
+      kind: 'Vrsta', kinds: { fault: 'Kvar', maintenance: 'Planirano održavanje', inspection: 'Obilazak', other: 'Ostalo' },
       transferable: 'Može se predati', notTransferable: 'bez predaje', transferableHint: 'Isključeno = zadatak ostaje u ovoj ekipi i ne može se predati',
       new: 'Novi zadatak', edit: 'Izmena zadatka', content: 'Opis posla', contentPh: 'Možete pisati na srpskom, kineskom ili engleskom', workers: 'Učesnici', team: 'Smena',
       start: 'Početak', end: 'Završetak', leftover: 'Preostali problemi', status: 'Status', publisher: 'Uneo', updater: 'Poslednja izmena',
@@ -382,6 +390,12 @@ const messages = {
       archiveHint: 'Premešta se svaki dan u 02:50. Pregledne slike i sličice ostaju, sistem radi isto; „Original” se čita sa arhivskog diska, a ako disk nije priključen, prikazuje se pregledna slika. Originali koji su već kopirani postoje i u rezervnoj kopiji.',
       archStat: 'Arhivirano {a} originala, sada može {d}', archiveNow: 'Arhiviraj sada', archived: 'Arhivirano: {n}',
     },
+    eqs: {
+      title: 'Statistika', list: 'Spisak', lastDays: 'Poslednjih {n} dana', faults: 'Kvarovi', repeatCount: 'Oprema sa ponovljenim kvarovima', openAll: 'Otvoreno', idle: 'Oprema bez zadataka',
+      hint: 'Jedan posao se broji jednom, bez obzira na broj predaja. „Ponavlja se” = {n} ili više kvarova za {d} dana. Vrsta se bira pri unosu / izmeni zadatka (kvar, planirano održavanje, obilazak, ostalo). Kliknite na opremu za sve događaje i dnevnik smene.',
+      topTitle: 'Oprema sa najviše kvarova', noFaults: 'Nema kvarova u ovom periodu', tableTitle: 'Sva oprema', open: 'Otvoreno', overdueN: 'kasni {n}',
+      avg: 'Prosečno do popravke (h)', workHours: 'Sati rada', handovers: 'Predaje', last: 'Poslednji put', repeat: 'Ponavlja se', repeatMax: '{n} / 30 dana', fixedIn: 'popravljeno za {h} h',
+    },
     eq: {
       title: 'Oprema', one: 'Oprema', pick: 'Izaberite opremu (nije obavezno)', add: 'Nova oprema', search: 'Traži šifru / naziv / lokaciju / model', showInactive: 'Prikaži neaktivnu',
       export: 'Izvoz u Excel', import: 'Uvoz iz Excela', code: 'Šifra opreme', name: 'Naziv', area: 'Lokacija', model: 'Model / tip', note: 'Napomena',
@@ -493,6 +507,7 @@ const messages = {
     nav2: { tasks: 'Tasks', workers: 'Workers', board: 'Handover', glossary: 'Glossary' },
     status: { not_started: 'Not started', in_progress: 'In progress', done: 'Done', handed_over: 'Handed over', discarded: 'Discarded', open: 'Open', all: 'All' },
     task: {
+      kind: 'Type', kinds: { fault: 'Breakdown repair', maintenance: 'Planned maintenance', inspection: 'Inspection', other: 'Other' },
       transferable: 'Can be handed over', notTransferable: 'not transferable', transferableHint: 'Off = the task stays with this team and cannot be handed over',
       new: 'New task', edit: 'Edit task', content: 'Work', contentPh: 'Chinese, Serbian or English', workers: 'Workers', team: 'Team',
       start: 'Start', end: 'Finish', leftover: 'Open issues', status: 'Status', publisher: 'Posted by', updater: 'Last edited',
@@ -605,6 +620,12 @@ const messages = {
       archiveDir: 'Archive folder (another disk)',
       archiveHint: 'Runs daily at 02:50. View-size images and thumbnails stay, so everything looks the same; “Original” is read from the archive disk, and if it is not connected the view-size image is shown. Originals already backed up stay in the backup too.',
       archStat: '{a} originals archived, {d} can be archived now', archiveNow: 'Archive now', archived: '{n} archived',
+    },
+    eqs: {
+      title: 'Statistics', list: 'List', lastDays: 'Last {n} days', faults: 'Breakdowns', repeatCount: 'Equipment with recurring breakdowns', openAll: 'Open', idle: 'Equipment without tasks',
+      hint: 'A job counts once no matter how often it was handed over. “Recurring” = {n} or more breakdowns within {d} days. The type is chosen when creating / editing a task (breakdown repair, planned maintenance, inspection, other). Click a piece of equipment to see every job and the shift logs.',
+      topTitle: 'Most breakdowns', noFaults: 'No breakdowns in this period', tableTitle: 'All equipment', open: 'Open', overdueN: '{n} overdue',
+      avg: 'Avg. hours to fix', workHours: 'Work hours', handovers: 'Handovers', last: 'Last', repeat: 'Recurring', repeatMax: '{n} / 30 days', fixedIn: 'fixed in {h} h',
     },
     eq: {
       title: 'Equipment', one: 'Equipment', pick: 'Choose equipment (optional)', add: 'Add equipment', search: 'Search code / name / area / model', showInactive: 'Show inactive',
