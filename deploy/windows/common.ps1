@@ -23,6 +23,9 @@ $EnvFile   = Join-Path $Backend '.env'
 $SvcApp    = 'WorkRecordApp'
 $SvcCaddy  = 'WorkRecordCaddy'
 $TaskBackup = 'WorkRecordBackup'
+# update.ps1 -Online 从这里下载最新代码（GitHub 上 master 分支的 ZIP）。仓库改成私有后要换成别的下载方式
+$UpdateZipUrl = 'https://github.com/sy0814/shift-worklog/archive/refs/heads/master.zip'
+if ($env:WORKRECORD_UPDATE_URL) { $UpdateZipUrl = $env:WORKRECORD_UPDATE_URL }
 $TaskWatchdog = 'WorkRecordWatchdog'   # 看门狗：每 5 分钟检查服务、备份、磁盘（watchdog.ps1）
 
 # Caddy：从官方 GitHub Releases 下载（caddyserver.com 的下载接口现在要登录，会返回 401）

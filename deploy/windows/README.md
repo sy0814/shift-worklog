@@ -277,6 +277,21 @@ cd D:\shift-worklog\deploy\windows
 
 ### 9.3 更新到新版本
 
+**最省事：自动下载并更新**（服务器要能上网）。用管理员身份打开 PowerShell（同 6.1），一行一行输入：
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass -Force
+```
+
+```powershell
+C:\WorkRecord\app\deploy\windows\update.ps1 -Online
+```
+
+它会自己从 GitHub 下载最新版本，再按下面第 3、4 点那样更新。看到「更新完成」就好了。
+（第一次用 `-Online` 之前，已安装的版本要先按下面的方法手动更新一次，旧版本还没有这个功能。）
+
+**手动下载更新：**
+
 1. 按第 5 步下载新版本，解压到一个**新的文件夹**，例如 `D:\shift-worklog-new`。
 2. 用管理员身份打开 PowerShell（同 6.1），一行一行输入：
 
