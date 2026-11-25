@@ -128,6 +128,11 @@ def test_duty(client, admin_h, teams):
     assert st["Duty Idle"]["status"] == "idle" and st["Duty Leave"]["status"] == "leave"
     assert st["Duty Assigned"]["status"] == "busy" and st["Duty Assigned"]["tasks"][0]["is_lead"]
     assert d["counts"]["busy"] >= 1 and d["counts"]["absent"] >= 1 and d["can_add"] is True
+    # 管理人员单独数；班长、副班长（首页单独显示）照常算在岗
+    c, on = d["counts"], ("busy", "idle")
+    assert c["managers"] == sum(1 for x in d["managers"] if x["status"] in on)
+    assert c["on_duty"] == sum(1 for x in [*d["top"], *(y for t in d["teams"] for y in t["workers"])]
+                               if x["status"] in on) == c["busy"] + c["idle"]
     # 不在这个班次的班长不能快捷添加
     other = next(c for c in ("T1", "T2", "T3", "T4") if teams[c] not in [x["team_id"] for x in d["teams"]])
     assert client.get("/api/duty", headers=h(client, other)).json()["can_add"] is False
@@ -168,3 +173,30 @@ def test_board_done_this_shift(client, admin_h):
         if not bo["on_duty"]:  # 不在班：显示的是更早的班次，不含刚完成的任务
             assert bo["done_shift_date"] <= b["shift_date"]
             assert t["id"] not in [x["id"] for x in bo["done_recent"]]
+
+
+def test_duty_managers(client, admin_h):
+    """管理人员 = 能给整个车间派活的人（新建任务范围本车间 / 全厂）。按个人排班算在不在班，单独一块，不在班组里；
+    没设排班的列出来提醒。"""
+    d = client.get("/api/duty", headers=admin_h).json()
+    day, kind = d["shift_date"], d["shift_kind"]
+    rid = next(r["id"] for r in client.get("/api/roles", headers=admin_h).json() if r["code"] == "dept_admin")
+
+    def mk(name, pattern):
+        w = client.post("/api/workers", headers=admin_h, json={"name": name}).json()
+        assert client.patch(f"/api/workers/{w['id']}", headers=admin_h, json={"role_id": rid}).status_code == 200
+        if pattern:
+            r = client.put(f"/api/workers/{w['id']}/schedule", headers=admin_h, json={
+                "effective_from": day, "team_id": None, "personal": True, "pattern": pattern, "cycle_start": day})
+            assert r.status_code == 200, r.text
+        return w
+
+    mk("Mgr On", [kind])
+    mk("Mgr Off", ["night" if kind == "day" else "day"])  # 上别的班
+    mk("Mgr Nosched", None)
+    d = client.get("/api/duty", headers=admin_h).json()
+    names = [x["worker"]["name"] for x in d["managers"]]
+    assert "Mgr On" in names and "Mgr Off" not in names
+    assert "Mgr Nosched" in d["managers_unscheduled"]
+    assert d["counts"]["managers"] >= 1
+    assert all(y["worker"]["name"] != "Mgr On" for t in d["teams"] for y in t["workers"])

@@ -9,6 +9,9 @@ export const useAuth = defineStore('auth', {
   // allTeams：所有车间的班组；teams（getter）：当前车间的班组；dept：当前车间 id；departments：所有车间
   state: () => ({ user: null, allTeams: [], departments: [], dept: getDept(), lastSecret: null }),
   getters: {
+    // 「为什么？」（排班是怎么来的）：管理员和能改出勤 / 调班 / 名册 / 班组的人才看得到，成员看不到（和后端 explain 一致）
+    canWhy: (s) => s.user?.role === 'admin' || ['attendance.edit', 'schedule.team_shift', 'worker.manage', 'team.manage']
+      .some((p) => (s.user?.perms?.[p] || 'none') !== 'none'),
     teams: (s) => (s.departments.length > 1 ? s.allTeams.filter((t) => t.department_id === s.dept) : s.allTeams),
     // 有多个车间才显示车间（只有一个时界面和以前一样）
     multiDept: (s) => s.departments.filter((d) => d.is_active).length > 1,

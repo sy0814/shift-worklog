@@ -72,6 +72,9 @@ def test_member_team_login_and_permissions(client, admin_h, teams, roles):
     assert r.json()["user"]["must_change_password"] is True
     assert client.get("/api/tasks", headers=mh).status_code == 403
     assert client.post("/api/auth/change-password", headers=mh, json={"old_password": "1234", "new_password": "8765"}).status_code == 204
+    # 成员看不到「为什么？」（排班解释），管理员能看
+    assert client.get(f"/api/explain/worker/{w['id']}", headers=mh, params={"day": "2026-11-25"}).status_code == 403
+    assert client.get(f"/api/explain/worker/{w['id']}", headers=admin_h, params={"day": "2026-11-25"}).status_code == 200
 
     # 班长建两条任务：一条有这个成员，一条没有
     lead = next(x for x in client.get("/api/users", headers=admin_h).json() if x["team_id"] == tid and x["role"] == "staff"
@@ -80,6 +83,9 @@ def test_member_team_login_and_permissions(client, admin_h, teams, roles):
     new = lambda **kw: client.post("/api/tasks", headers=lh, json={"client_id": str(uuid.uuid4()), "content": "M test", "lang": "en"} | kw)
     mine = new(worker_ids=[w["id"]]).json()
     notmine = new(worker_ids=[other["id"]]).json()
+    # 任务页「我的任务」= 按自己筛（worker_id）
+    ids = [x["id"] for x in client.get("/api/tasks", headers=mh, params={"worker_id": w["id"]}).json()["items"]]
+    assert mine["id"] in ids and notmine["id"] not in ids
     assert mine["perms"]["edit"] and mine["perms"]["status"]
     # 成员：能看本班组的，能开始 / 完成自己的，不能改、不能动别人的、不能新建
     seen = client.get(f"/api/tasks/{mine['id']}", headers=mh).json()

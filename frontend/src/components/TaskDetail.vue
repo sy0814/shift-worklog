@@ -310,7 +310,6 @@ function histText(h) {
     <el-skeleton v-else :rows="6" animated />
     <el-dialog v-model="doneOpen" :title="t('task.confirmDone')" width="min(480px, 94vw)" append-to-body>
       <template v-if="task?.perms?.log">
-        <div class="small muted done-hint">{{ t('task.doneLogHint') }}</div>
         <el-input v-model="doneLog" type="textarea" :autosize="{ minRows: 3, maxRows: 8 }" maxlength="5000" :placeholder="t('tlog.placeholder')" />
       </template>
       <template #footer>
@@ -338,6 +337,5 @@ function histText(h) {
 .wtag { margin: 2px 4px 2px 0; }
 .pre { white-space: pre-wrap; }
 .mt { margin-top: 12px; }
-.done-hint { margin-bottom: 6px; }
 h4 { margin: 16px 0 8px; }
 </style>

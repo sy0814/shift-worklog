@@ -55,6 +55,7 @@ class DutyTeam(BaseModel):
 
 
 class DutyCounts(BaseModel):
+    managers: int = 0  # 管理人员在班（忙碌 + 空闲）；下面这些不含管理人员
     on_duty: int
     busy: int
     idle: int
@@ -69,8 +70,12 @@ class DutyOut(BaseModel):
     start: datetime
     end: datetime
     main_team_id: int | None  # 卡片上显示的班组（倒班班组）
+    # 管理人员：能给整个车间派活的人（角色的「新建任务」范围是本车间 / 全厂，例如车间管理员），本车间的、这个班次在班的。
+    # 他们一般不属于班组，按自己的个人排班（名册「长期排班」）算在不在班；不在班组列表里，单独一块（2026-11-26 用户要求）
+    managers: list[DutyWorker] = []
+    managers_unscheduled: list[str] = []  # 本车间还没设排班（没有班组也没有个人循环）的管理人员，没法判断在不在班
     top: list[DutyWorker] = []  # 「首页单独显示」的角色（班长、副班长……），单独列在上面
-    teams: list[DutyTeam]  # 这个班次所有在岗班组（含常白班），不含 top 里的人
+    teams: list[DutyTeam]  # 这个班次所有在岗班组（含常白班），不含 top、managers 里的人
     counts: DutyCounts
     can_add: bool  # 当前用户能不能在这里快捷添加任务
 
@@ -128,6 +133,11 @@ def duty(which: str = Query(default="current", pattern="^(current|next)$"), db: 
     dept_ids = {t.id for t in sched.teams if t.dept == dept}
 
     workers = list(db.scalars(select(Worker).where(Worker.is_active.is_(True)).order_by(Worker.name)))
+    roles = {r.id: r for r in db.scalars(select(Role))}
+    member = next((r.id for r in roles.values() if r.code == "member"), None)
+    role_of = lambda w: roles.get(w.role_id or member)
+    is_mgr = lambda w: (role_of(w) is not None and (role_of(w).permissions or {}).get("task.create") in ("dept", "all")
+                        and (dept is None or w.department_id == dept))
     eff = att.effective(db, workers, d - timedelta(days=1), d)
     rows: dict[int, list[tuple[Worker, str, bool]]] = {}
     hours_of: dict[int, str | None] = {}
@@ -174,8 +184,12 @@ def duty(which: str = Query(default="current", pattern="^(current|next)$"), db: 
             overlap_of[w.id] = (ov_from, ov_until)
             rows.setdefault(team, []).append((w, "on", team != w.team_id))
 
-    rows = {tid: rs for tid, rs in rows.items() if tid in dept_ids}  # 只列本车间班组的（含借调来的人）
-    ids = [w.id for rs in rows.values() for w, _s, _x in rs]
+    # 管理人员从班组里拿出来单独列（没有班组的人 rows 的键是 None）
+    mgr_rows = [(w, st, sup, tid) for tid, rs in rows.items() for w, st, sup in rs if is_mgr(w)]
+    rows = {tid: [r for r in rs if not is_mgr(r[0])] for tid, rs in rows.items()
+            if tid in dept_ids}  # 只列本车间班组的（含借调来的人）
+    unscheduled = sorted(w.name for w in workers if is_mgr(w) and eff[w.id][d].status is None)
+    ids = [w.id for rs in rows.values() for w, _s, _x in rs] + [w.id for w, *_ in mgr_rows]
     tasks = list(db.scalars(select(Task).options(selectinload(Task.workers))
                             .where(Task.status.in_(OPEN), Task.workers.any(Worker.id.in_(ids))))) if ids else []
     by_worker: dict[int, list[Task]] = {}
@@ -183,26 +197,17 @@ def duty(which: str = Query(default="current", pattern="^(current|next)$"), db: 
         for w in t.workers:
             by_worker.setdefault(w.id, []).append(t)
 
-    roles = {r.id: r for r in db.scalars(select(Role))}
-    member = next((r.id for r in roles.values() if r.code == "member"), None)
-    on_top = lambda w: roles.get(w.role_id or member) is not None and roles[w.role_id or member].show_on_top
+    on_top = lambda w: role_of(w) is not None and role_of(w).show_on_top
     top: list[DutyWorker] = []
-    teams, counts = [], {"on_duty": 0, "busy": 0, "idle": 0, "absent": 0, "off_hours": 0}
+    teams, counts = [], {"managers": 0, "on_duty": 0, "busy": 0, "idle": 0, "absent": 0, "off_hours": 0}
     order = [t.id for t in sorted(slot_teams, key=lambda t: not t.is_main)]
     order += [tid for tid in rows if tid not in order]
-    for tid in order:
-        out = []
-        for w, st, support in rows.get(tid, []):
-            mine = sorted(by_worker.get(w.id, []), key=lambda t: (t.status != "in_progress", t.id))
-            if st == "on":
-                st = "busy" if mine else "idle"  # 分配了任务（未开始也算）就是忙碌
-                counts["on_duty"] += 1
-                counts[st] += 1
-            elif st == "off_hours":
-                counts["off_hours"] += 1
-            else:
-                counts["absent"] += 1
-            (top if on_top(w) else out).append(DutyWorker(
+
+    def entry(w, st, support, tid) -> DutyWorker:
+        mine = sorted(by_worker.get(w.id, []), key=lambda t: (t.status != "in_progress", t.id))
+        if st == "on":
+            st = "busy" if mine else "idle"  # 分配了任务（未开始也算）就是忙碌
+        return DutyWorker(
                 hours=hours_of.get(w.id),
                 back_at=back_of[w.id].replace(tzinfo=get_settings().tz) if w.id in back_of else None,
                 overlap_from=overlap_of[w.id][0].replace(tzinfo=get_settings().tz) if w.id in overlap_of else None,
@@ -212,14 +217,30 @@ def duty(which: str = Query(default="current", pattern="^(current|next)$"), db: 
                 overtime_prev=ot.get(w.id, (None, False))[1],
                 tasks=[DutyTask(id=t.id, content=Trilingual(zh=t.content_zh, sr=t.content_sr, en=t.content_en),
                                 source_lang=t.source_lang, status=t.status, is_lead=t.lead_worker_id == w.id,
-                                team_id=t.team_id) for t in mine[:5]]))
+                                team_id=t.team_id) for t in mine[:5]])
+
+    for tid in order:
+        out = []
+        for w, st, support in rows.get(tid, []):
+            r = entry(w, st, support, tid)
+            if r.status in ("busy", "idle"):
+                counts["on_duty"] += 1
+                counts[r.status] += 1
+            elif r.status == "off_hours":
+                counts["off_hours"] += 1
+            else:
+                counts["absent"] += 1
+            (top if on_top(w) else out).append(r)
         out.sort(key=lambda r: (_status_order(r.status), r.worker.name))
         teams.append(DutyTeam(team_id=tid, workers=out))
+    managers = sorted((entry(w, st, sup, tid) for w, st, sup, tid in mgr_rows),
+                      key=lambda r: (_status_order(r.status), r.worker.name))
+    counts["managers"] = sum(r.status in ("busy", "idle") for r in managers)
 
     tz = get_settings().tz
     return DutyOut(
         which=which, shift_date=d, shift_kind=k, start=start.replace(tzinfo=tz), end=end.replace(tzinfo=tz),
-        main_team_id=main.id if main else None, teams=teams,
+        main_team_id=main.id if main else None, teams=teams, managers=managers, managers_unscheduled=unscheduled,
         top=sorted(top, key=lambda r: (roles[r.role_id].sort_order if r.role_id in roles else 99, order.index(r.team_id)
                                        if r.team_id in order else 99, r.worker.name)), counts=DutyCounts(**counts),
         can_add=(lambda w: w.has("task.create") and (w.is_admin or w.scope("task.create") in ("dept", "all")

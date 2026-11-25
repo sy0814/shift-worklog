@@ -276,7 +276,7 @@ const exportOpen = ref(false)
           <span v-if="cur.cell.source !== 'default'" class="muted small">
             {{ cur.cell.source === 'import' ? t('att.importedSrc') : t('att.edited') }}
           </span>
-          <el-button link type="primary" size="small" style="margin-left: auto" @click="whyOpen = !whyOpen">{{ t('why.button') }} {{ whyOpen ? '▴' : '▾' }}</el-button>
+          <el-button v-if="auth.canWhy" link type="primary" size="small" style="margin-left: auto" @click="whyOpen = !whyOpen">{{ t('why.button') }} {{ whyOpen ? '▴' : '▾' }}</el-button>
         </div>
         <div v-if="whyOpen" class="why-box"><WhyPanel type="worker" :id="cur.worker.id" :day="cur.day" :hide="['attendance', 'overtime']" @navigate="dlg = false" /></div>
         <el-form label-width="auto" :disabled="!canEdit(cur.worker)">

@@ -100,7 +100,7 @@ deploy/Caddyfile, deploy/install/install.html
 ### 3.2 员工、账号、角色
 - **账号以名册为准**：`workers` 是人；`users.worker_id` 一对一关联；`users.role` 只有 `admin` 和 `staff`。
 - 员工属于哪个班组、跟班组排班还是个人循环，按**变更记录** `worker_schedules` 的生效日期算（`worker_history.Timelines`），所以换班组不影响历史出勤。
-- **角色** `roles`：权限表 `{权限: none/self/team/dept/all}`（dept = 本车间，all = 全厂）+ 登录方式（`password` 个人账号 / `pin` 班组账号点头像）+「首页单独显示」。
+- **角色** `roles`：权限表 `{权限: none/self/team/dept/all}`（dept = 本车间，all = 全厂）+ 登录方式（`password` 管理账号 / `pin` 个人账号点头像）+「首页单独显示」。
 - 新员工自动开账号、默认密码、第一次登录强制改密码（`must_change_password`，后端拦截）。
 - 内置角色：班长、副班长、成员、**车间管理员**（`dept_admin`，`DEPT_ADMIN_PERMS` = 每项都是 dept）。按车间的权限 `worker.manage`（名册）、`team.manage`（班组管理）、`analysis`（AI 分析）用 `who.dept_ok(perm, dept_id)` 判断。范围不是 all 的人不能给别人设含 all 的角色、不能改含 all 角色的人（防止越权）。
 
@@ -109,6 +109,7 @@ deploy/Caddyfile, deploy/install/install.html
 - 某人某天的判定只在 `attendance_service.resolve(sched, entry, 例外记录, d, trace=None)` 一处：先 `default_for`（排班），再叠例外。`effective` 逐天调它；不要在别处另写一份。
 - 返回 `DayAttendance(status, shift_kind, team_id, source, note, hours)`。在岗、可分配人员、工时、导出、AI 分析都从这里取。
 - 加班 `overtime`：某班次后加班到几点（`overtime_service.expand`）。
+- 首页人员状态 `routers/duty.py`：**管理人员**（角色 `task.create` 为 dept / all、本车间）从班组里拿出来放 `DutyOut.managers`，`counts.managers` 单独数，其他 counts 不含他们；在不在班照常按 `attendance_service.resolve`（他们靠个人循环）；没有班组也没有个人循环的列在 `managers_unscheduled`
 
 ### 3.4 任务
 - 三语列 `content_zh/sr/en` + `source_lang`；遗留问题 `leftover_*`、废弃原因 `discard_reason_*` 各自翻译；`translation_status`、`manual_fields`（人工校对过的列，机器不覆盖）。
@@ -218,7 +219,7 @@ npm run build    # 输出到 backend/static
 | 交接班 | `GET /board`、`GET /handover/default`、`POST /handover`、`POST /tasks/{id}/discard`、`GET /overdue`、`GET /duty?which=current\|next` |
 | 翻译 | `PUT /tasks/{id}/translation`、`POST /tasks/{id}/retranslate`、`POST /translate`、`GET /translation/status`、`POST /translation/retry-failed`、术语表 `/glossary*` |
 | 排班 | `GET /shifts/now`、`GET /shifts/calendar`、`GET /shifts/coverage`、`GET/PUT /shifts/config`（班次时间）、`/teams`（增删改）、`/team-shifts`（调班、`/swap` 互换、`/unaffected` 不受调班影响的人）、`/holidays/{day}` |
-| 为什么？ | `GET /explain/worker/{id}?day=`、`GET /explain/team/{id}?day=`：`{day, result, steps[]}`（登录即可看）。前端每一步的「去修改」链接（`WhyPanel.vue` 的 `link()`）靠页面 query 打开弹窗：`/attendance?worker=&day=`、`/attendance?team=&month=`、`/schedule?tab=teams&team=`、`/schedule?tab=calendar&shift=班组&day=`、`/schedule?tab=holidays`、`/workers?schedule=员工`；打开后 `router.replace` 去掉 query |
+| 为什么？ | `GET /explain/worker/{id}?day=`、`GET /explain/team/{id}?day=`：`{day, result, steps[]}`（管理员或有 attendance.edit / schedule.team_shift / worker.manage / team.manage 之一的人；成员 403）。前端每一步的「去修改」链接（`WhyPanel.vue` 的 `link()`）靠页面 query 打开弹窗：`/attendance?worker=&day=`、`/attendance?team=&month=`、`/schedule?tab=teams&team=`、`/schedule?tab=calendar&shift=班组&day=`、`/schedule?tab=holidays`、`/workers?schedule=员工`；打开后 `router.replace` 去掉 query |
 | 出勤 | `GET/PUT /attendance`、`PUT /attendance/batch`、`POST /attendance/swap`、`GET /attendance/template`、`POST /attendance/import`、`GET /workers/{id}/day`、`/overtime` |
 | 员工 / 账号 | `/workers`（增改、Excel 导入导出、自定义列、头像、`/{id}/schedule`、`/{id}/account`、`/accounts/open-all`）、`/users`、`/roles` |
 | 项目 / 巡查 | `/projects`（`/subs`、`/subs/{id}/assign`、`/people`）、`/inspections`（`/preview`、`/{id}/run-now`、`/{id}/runs`） |

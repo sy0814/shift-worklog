@@ -17,7 +17,10 @@ const auth = useAuth()
 const outbox = useOutbox()
 
 const STATUS_SETS = { open: ['not_started', 'in_progress'], done: ['done'], all: [] }
+// 「我的任务 / 班组任务」（名册里的人才有）：成员（不能改班组任务的人）默认看自己的，班长等默认看班组的
+const hasMine = !!auth.user?.worker_id
 const filters = reactive({
+  scope: hasMine && ['none', 'self'].includes(auth.scope('task.edit')) ? 'mine' : 'team',
   team_id: auth.user?.team_id ?? null,
   statusSet: 'open',
   dates: null,
@@ -32,7 +35,8 @@ async function load(append = false) {
   loading.value = true
   try {
     const params = new URLSearchParams()
-    if (filters.team_id) params.append('team_id', filters.team_id)
+    if (filters.scope === 'mine') params.append('worker_id', auth.user.worker_id) // 自己是带队人或参与人员的（不限班组）
+    else if (filters.team_id) params.append('team_id', filters.team_id)
     for (const s of STATUS_SETS[filters.statusSet]) params.append('status', s)
     if (filters.dates) {
       params.append('date_from', filters.dates[0])
@@ -53,7 +57,7 @@ async function load(append = false) {
     loading.value = false
   }
 }
-watch(() => [filters.team_id, filters.statusSet, filters.dates], () => load())
+watch(() => [filters.scope, filters.team_id, filters.statusSet, filters.dates], () => load())
 // 离线草稿同步成功后刷新列表
 watch(() => outbox.lastSyncedTaskIds.length, () => load())
 onMounted(load)
@@ -82,7 +86,11 @@ function open(task) {
 <template>
   <div class="page">
     <div class="toolbar">
-      <el-select v-model="filters.team_id" clearable :placeholder="t('task.allTeams')" style="width: 130px">
+      <el-radio-group v-if="hasMine" v-model="filters.scope">
+        <el-radio-button value="mine">{{ t('task.scopeMine') }}</el-radio-button>
+        <el-radio-button value="team">{{ t('task.scopeTeam') }}</el-radio-button>
+      </el-radio-group>
+      <el-select v-if="filters.scope === 'team'" v-model="filters.team_id" clearable :placeholder="t('task.allTeams')" style="width: 130px">
         <el-option v-for="tm in auth.teams" :key="tm.id" :label="localName(tm)" :value="tm.id" />
       </el-select>
       <el-radio-group v-model="filters.statusSet">

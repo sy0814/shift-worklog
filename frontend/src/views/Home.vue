@@ -131,6 +131,7 @@ function open(id) {
         <div class="teams">{{ mainTeam(c.s) }}</div>
         <div class="meta"><ShiftTag :kind="c.s.kind" /> {{ fmt(c.s.start) }} – {{ fmt(c.s.end) }}</div>
         <div v-if="c.d" class="counts">
+          <span class="cnt mgr">👔 {{ t('duty.managers', { n: c.d.counts.managers ?? 0 }) }}</span>
           <span class="cnt">👷 {{ t('duty.onDuty', { n: c.d.counts.on_duty }) }}</span>
           <span class="cnt busy">{{ t('duty.busy', { n: c.d.counts.busy }) }}</span>
           <span class="cnt idle">{{ t('duty.idle', { n: c.d.counts.idle }) }}</span>
@@ -182,6 +183,7 @@ function open(id) {
 .mine .teams, .today-item.mine span { color: #409eff; }
 .counts { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 10px; font-size: 13px; }
 .cnt { color: #303133; }
+.cnt.mgr { color: var(--el-color-primary); font-weight: 600; }
 .cnt.busy { color: #b88230; }
 .cnt.idle { color: #529b2e; }
 .cnt.absent { color: #909399; }
