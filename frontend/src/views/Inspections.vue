@@ -1,6 +1,8 @@
 <script setup>
 // 定期巡查：巡查项列表、编辑（带「接下来 5 次」实时预览）、立即派发、派发记录
 // 管理员管理全部；班长只能管理「固定派给本班组」的巡查项，其他的只读
+import RowActions from '../components/RowActions.vue'
+import { useActionsWidth } from '../rowActions'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -18,6 +20,7 @@ import { Plus } from '@element-plus/icons-vue'
 const props = defineProps({ embedded: { type: Boolean, default: false } })
 const emit = defineEmits(['open-project'])
 const { t, tm, locale } = useI18n()
+const actW = useActionsWidth(() => [t('common.edit'), t('insp.runNow'), t('insp.history'), t('common.delete')])
 const auth = useAuth()
 const rows = ref([])
 const workers = ref([])
@@ -186,19 +189,19 @@ const runType = { created: 'success', manual: 'primary', skipped: 'info', failed
         <template #default="{ row }">{{ row.name }} <el-tag v-if="row.sub_items?.length" size="small" effect="plain">📁 {{ t('insp.subsCount', { n: row.sub_items.length }) }}</el-tag>
           <el-tag v-if="!row.transferable" size="small" type="info" effect="plain">{{ t('task.notTransferable') }}</el-tag></template>
       </el-table-column>
-      <el-table-column :label="t('insp.kind')" min-width="200"><template #default="{ row }">{{ summary(row) }}</template></el-table-column>
-      <el-table-column :label="t('insp.assign')" width="160"><template #default="{ row }">{{ who(row) }}</template></el-table-column>
-      <el-table-column :label="t('insp.nextRun')" width="140"><template #default="{ row }">{{ row.next_run_at ? fmtFull(row.next_run_at) : '—' }}</template></el-table-column>
-      <el-table-column :label="t('insp.lastRun')" width="140"><template #default="{ row }">{{ row.last_run_at ? fmtFull(row.last_run_at) : '—' }}</template></el-table-column>
-      <el-table-column prop="runs" :label="t('insp.runs')" width="80" align="center" />
-      <el-table-column :label="t('common.actions')" width="230" fixed="right">
+      <el-table-column :label="t('insp.kind')" min-width="150"><template #default="{ row }">{{ summary(row) }}</template></el-table-column>
+      <el-table-column :label="t('insp.assign')" min-width="140"><template #default="{ row }">{{ who(row) }}</template></el-table-column>
+      <el-table-column :label="t('insp.nextRun')" width="130"><template #default="{ row }">{{ row.next_run_at ? fmtFull(row.next_run_at) : '—' }}</template></el-table-column>
+      <el-table-column :label="t('insp.lastRun')" width="130"><template #default="{ row }">{{ row.last_run_at ? fmtFull(row.last_run_at) : '—' }}</template></el-table-column>
+      <el-table-column prop="runs" :label="t('insp.runs')" width="90" align="center" />
+      <el-table-column :label="t('common.actions')" :width="actW" fixed="right">
         <template #default="{ row }">
-          <template v-if="row.can_edit">
-            <el-button link type="primary" @click="openEdit(row)">{{ t('common.edit') }}</el-button>
-            <el-button link type="success" @click="runNow(row)">{{ t('insp.runNow') }}</el-button>
-          </template>
-          <el-button link @click="openHistory(row)">{{ t('insp.history') }}</el-button>
-          <el-button v-if="row.can_edit" link type="danger" @click="remove(row)">{{ t('common.delete') }}</el-button>
+          <RowActions :items="row.can_edit ? [
+            { label: t('common.edit'), type: 'primary', onClick: () => openEdit(row) },
+            { label: t('insp.runNow'), type: 'success', onClick: () => runNow(row) },
+            { label: t('insp.history'), onClick: () => openHistory(row) },
+            { label: t('common.delete'), type: 'danger', onClick: () => remove(row) },
+          ] : [{ label: t('insp.history'), onClick: () => openHistory(row) }]" />
         </template>
       </el-table-column>
     </el-table>

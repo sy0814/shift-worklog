@@ -114,6 +114,7 @@ deploy/Caddyfile, deploy/install/install.html
 - 归属班次 `shift_date / shift_kind`（按录入班组的 `recording_slot`）。
 - **移交** = 原任务标 `handed_over` + 接收班组新建一条（`source_task_id` 指回），带内容、译文、图片（指向同一文件）、`project_id`、`inspection_id`、`equipment_id`；逻辑在 `routers/handover.py:perform_handover`（手动、自动共用）。
 - 带队人 `lead_worker_id` **同时也在** `task_workers` 里。
+- **可移交** `tasks.transferable`（迁移 0018）：能不能移交看 `tasks.can_transfer(task)` = 任务自己可移交且（子项目时）项目也可移交；`TaskOut.transferable` 返回的就是它。巡查项的 `transferable` 在没有小项目时写到生成的任务上。
 - 离线：`client_id`（UUID）去重；`recorded_at` 决定班次；状态修改带 `expect` / `at`。
 - 关联：`project_id`（子项目）、`inspection_id`（巡查生成）、`equipment_id`（设备）。
 
@@ -147,7 +148,13 @@ deploy/Caddyfile, deploy/install/install.html
     - 弹窗 / 抽屉 / 确认框的 body 宽度补偿已在 `style.css` 处理，加了 `scrollbar-gutter: stable`。
     - 会出现 / 消失的提示文字要**预留位置**（min-height），不要用 v-if 让下面的按钮移动。
     - 组件根元素 class 名要独特，避免被父组件 scoped 样式命中。
-11. **离线**：新的「手机上常用的写操作」要考虑走发件箱（`stores/outbox.js`，带 `client_id` 或 `expect` 防重复 / 防覆盖）。`GET /api/*` 自动有离线缓存。
+11. **表格和工具栏的写法**（2026-11-25 统一）：
+    - 表格「操作」列一律用 `components/RowActions.vue`（items = [{label, type, onClick}]，删除放最后），列宽用 `rowActions.useActionsWidth(() => [所有可能的按钮文字])` 算（按当前语言量文字宽度，塞语最长也不换行；手机上只算直接显示的那几个）。标题都是「操作」、`fixed="right"`。
+    - 手机上 `.toolbar` 的直接子元素由 `style.css` 统一排：输入框 / 下拉框整行，按钮两个一排等宽。新页面的工具栏按钮直接放在 `.toolbar` 下面就行。
+    - 列表里一部分行有勾选框时，其他行也要留同样宽的位置（首页交接班的 `.pick`）。
+    - 手机上表格单元格里的班次用 `<ShiftTag short>`。
+    - 检查脚本思路：Playwright 逐页打开，找单元格里按钮 `top` 不同（换行）、`scrollWidth > clientWidth`（溢出）、同一列表卡片 `left` 不同；中文和塞语、电脑和手机各跑一遍。
+12. **离线**：新的「手机上常用的写操作」要考虑走发件箱（`stores/outbox.js`，带 `client_id` 或 `expect` 防重复 / 防覆盖）。`GET /api/*` 自动有离线缓存。
 
 ## 5. 加一个功能的标准步骤
 

@@ -121,8 +121,13 @@ const sections = computed(() => board.value && [
         <h3 class="sec">{{ sec.title }} <el-tag size="small" round>{{ sec.list.length }}</el-tag></h3>
         <div class="list">
           <div v-for="task in sec.list" :key="task.id" class="row">
-            <el-checkbox v-if="sec.selectable && task.perms?.handover" :model-value="selected.includes(task.id)" class="pick"
-                         @change="(v) => toggle(task.id, v)" />
+            <!-- 能移交的放勾选框；不能移交的留同样宽的位置（不可移交的显示 🔒），卡片左边都对齐 -->
+            <span v-if="sec.selectable" class="pick">
+              <el-checkbox v-if="task.perms?.handover" :model-value="selected.includes(task.id)" @change="(v) => toggle(task.id, v)" />
+              <el-tooltip v-else-if="task.transferable === false" :content="t('task.notTransferable')" placement="top">
+                <span class="lock">🔒</span>
+              </el-tooltip>
+            </span>
             <TaskCard :task="task" class="grow" @click="open(task)" />
           </div>
           <div v-if="!sec.list.length" class="muted empty">{{ t('board.empty') }}</div>
@@ -149,7 +154,9 @@ const sections = computed(() => board.value && [
 .sec { margin: 14px 0 8px; font-size: 15px; display: flex; align-items: center; gap: 6px; }
 .list { display: flex; flex-direction: column; gap: 8px; }
 .row { display: flex; gap: 8px; align-items: flex-start; }
-.pick { margin-top: 10px; }
+.pick { flex: 0 0 18px; display: flex; justify-content: center; margin-top: 10px; height: 20px; }
+.pick :deep(.el-checkbox) { height: 20px; margin: 0; }
+.lock { font-size: 12px; line-height: 20px; opacity: .55; cursor: default; }
 .grow { flex: 1; min-width: 0; }
 .empty { padding: 4px 0 8px; }
 </style>

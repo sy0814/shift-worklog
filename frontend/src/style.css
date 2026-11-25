@@ -14,6 +14,7 @@ body { font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", 
 .page { padding: 16px; max-width: 1200px; margin: 0 auto; box-sizing: border-box; }
 .page-title { font-size: 18px; font-weight: 600; margin: 0 0 12px; }
 .shift-tag { display: inline-block; padding: 2px 8px; border-radius: 4px; color: #fff; font-size: 12px; line-height: 18px; white-space: nowrap; }
+.shift-tag.short { min-width: 22px; padding: 2px 6px; text-align: center; box-sizing: border-box; }
 .shift-day { background: var(--shift-day); }
 .shift-middle { background: var(--shift-middle); }
 .shift-night { background: var(--shift-night); }
@@ -23,4 +24,16 @@ body { font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", 
 @media print {
   .topbar, .tabbar, .offline-bar { display: none !important; }
   body { background: #fff; }
+}
+
+/* 手机：页面顶部工具栏——标题、搜索框、下拉框各占一整行，按钮两个一行等宽排列（单数时最后一个占满），
+   不再按文字长短参差折行 */
+@media (max-width: 767px) {
+  .toolbar > .page-title, .toolbar > h1 { flex: 1 1 100% !important; }
+  .toolbar > .el-input, .toolbar > .el-select, .toolbar > .el-date-editor {
+    flex: 1 1 100%; width: auto !important; max-width: none !important;
+  }
+  .toolbar > .el-button { flex: 1 1 calc(50% - 8px); min-width: 0; margin-left: 0 !important; }
+  .toolbar > .el-button > span { overflow: hidden; text-overflow: ellipsis; }
+  .toolbar > .spacer { display: none; }
 }

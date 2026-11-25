@@ -1,5 +1,6 @@
 <script setup>
 // 员工名册（系统管理员；车间管理员管本车间）：像表格一样点格子直接改（改完马上保存、留痕）、加行、加自定义列、Excel 导入导出
+import RowActions from '../components/RowActions.vue'
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -230,6 +231,7 @@ async function saveBulk() {
         <input ref="fileInput" type="file" accept=".xlsx" hidden @change="importFile" />
         <el-button @click="bulk.team_id = teamFilter; bulkOpen = true">{{ t('workers.bulk') }}</el-button>
         <el-button @click="openAll">{{ t('dp.openAll') }}</el-button>
+        <el-button v-if="auth.isAdmin" :icon="Plus" @click="addCol">{{ t('workers.addCol') }}</el-button>
       </template>
     </div>
     <div class="muted small">{{ readonly ? t('workers.leaderHint') : t('workers.editHint') }}</div>
@@ -244,8 +246,7 @@ async function saveBulk() {
             <th>{{ t('workers.team') }}</th>
             <th class="c-role">{{ t('workers.role') }}</th>
             <th class="c-act">{{ t('workers.active') }}</th>
-            <th class="c-ws">{{ t('acc.btn') }}</th>
-            <th v-if="!readonly" class="c-ws">{{ t('schedule.cycleCol') }}</th>
+            <th class="c-ops">{{ t('common.actions') }}</th>
             <th v-for="f in fields" :key="f.id" class="xcol">
               <span v-if="!auth.isAdmin" class="colhead">{{ f.label }}</span>
               <el-dropdown v-else trigger="click" @command="(c) => colCommand(f, c)">
@@ -258,7 +259,6 @@ async function saveBulk() {
                 </template>
               </el-dropdown>
             </th>
-            <th v-if="auth.isAdmin" class="addcol"><el-button link type="primary" :icon="Plus" @click="addCol">{{ t('workers.addCol') }}</el-button></th>
           </tr>
         </thead>
         <tbody>
@@ -299,14 +299,16 @@ async function saveBulk() {
             <td :class="['cell', 'c-act', { ok: flashed === `${w.id}|is_active` }]">
               <el-switch :model-value="w.is_active" size="small" :disabled="readonly" @change="(v) => { editing.id = w.id; editing.key = 'is_active'; editing.value = v; commit() }" />
             </td>
-            <td class="c-ws"><el-button v-if="canAccount(w)" link type="primary" size="small" @click="openAccount(w)">{{ t('acc.btn') }}</el-button></td>
-            <td v-if="!readonly" class="c-ws"><el-button link type="primary" size="small" @click="openSchedule(w)">{{ t('ws.btn') }}</el-button></td>
+            <!-- 账号、排班放在同一格 -->
+            <td class="c-ops">
+              <RowActions :items="[...(canAccount(w) ? [{ label: t('acc.btn'), type: 'primary', onClick: () => openAccount(w) }] : []),
+                                   ...(!readonly ? [{ label: t('ws.btn'), type: 'primary', onClick: () => openSchedule(w) }] : [])]" />
+            </td>
             <td v-for="f in fields" :key="f.id" :class="['cell', { on: isEditing(w, 'x' + f.id), ok: flashed === `${w.id}|x${f.id}` }]" @click="startEdit(w, 'x' + f.id)">
               <el-input v-if="isEditing(w, 'x' + f.id)" v-model="editing.value" size="small" class="cell-editor" maxlength="500"
                         @blur="commit" @keydown="onKey" />
               <span :class="{ ghost: isEditing(w, 'x' + f.id) }">{{ w.extra?.[String(f.id)] }}</span>
             </td>
-            <td v-if="auth.isAdmin" />
           </tr>
           <!-- 新增的一行 -->
           <tr v-if="draft" class="draft">
@@ -318,7 +320,7 @@ async function saveBulk() {
                 <el-option v-for="tm in auth.teams" :key="tm.id" :label="localName(tm)" :value="tm.id" />
               </el-select>
             </td>
-            <td :colspan="fields.length + 5">
+            <td :colspan="fields.length + 3">
               <el-button size="small" type="primary" :disabled="!draft.name.trim()" @click="saveDraft">{{ t('common.save') }}</el-button>
               <el-button size="small" @click="draft = null">{{ t('common.cancel') }}</el-button>
             </td>
@@ -363,7 +365,7 @@ async function saveBulk() {
 .sheet .av { width: 40px; text-align: center; padding: 0 4px; }
 .c-name { min-width: 130px; }
 .c-act { width: 60px; text-align: center !important; }
-.c-ws { width: 70px; text-align: center !important; }
+.c-ops { width: 1%; white-space: nowrap; }
 .c-role { width: 120px; transition: background .4s; }
 .c-role.ok { background: #e1f3d8; }
 .rolesel { width: 110px; }

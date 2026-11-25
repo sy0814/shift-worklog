@@ -331,6 +331,12 @@
   - 跨车间移交：移交对话框「其他车间」下拉；任务卡片上别的车间的班组显示成「车间 · 班组」（`auth.teamLabel`）
   - **只有一个车间时界面和以前完全一样**（不显示车间、不进导航页）
   - 测试 `tests/test_workshops.py`；迁移测试 `test_0017_departments`
+- [x] **不可移交 + 界面统一**（2026-11-25）
+  - `tasks.transferable`（迁移 0018）：普通任务（任务表单「可移交」开关）、定期巡查（开关一直显示；没有小项目时写到生成的任务上，有小项目时写到项目上）都能设不可移交；`tasks.can_transfer` = 任务可移交且项目可移交；接口拒绝 409 `this task cannot be handed over`；自动移交也跳过
+  - 首页交接班：每行都留勾选框位置，不可移交的显示 🔒；任务卡片 / 详情「🔒 不可移交」标签
+  - 表格「操作」列统一用 `components/RowActions.vue` + `rowActions.useActionsWidth`：电脑一行全部显示（按当前语言算宽度），手机最多直接显示约 150px 宽的按钮，其余收进「⋯」（用户选的：手机收纳）。员工名册「账号」「排班」合成一个「操作」格，「添加列」挪到工具栏；账号管理状态标签不换行；补齐没有标题的操作列
+  - 手机工具栏（`style.css`）：输入框整行、按钮两个一排等宽；手机排班日历班次用一个字（`ShiftTag short`）
+  - 用户说「先改着看效果，不行就回滚」：这部分是单独一次提交，回滚就 `git revert` 这一个提交
 - **说明书**（2026-11-25）：`docs/USER_MANUAL.md`（给使用者，按角色写，菜单名和按钮名要和界面一致）、`docs/AI_GUIDE.md`（给 AI / 开发者：结构、领域模型、不变量、加功能步骤、接口一览）。**用户能看到的功能或菜单名改了，要同步改 USER_MANUAL；结构、规则、接口改了，要同步改 AI_GUIDE**
 - 工厂时区由 `APP_TIMEZONE` 配置，默认 `Europe/Belgrade`
 - 排班推算是纯函数，在 `backend/app/shifts.py`，测试在 `backend/tests/test_shifts.py`

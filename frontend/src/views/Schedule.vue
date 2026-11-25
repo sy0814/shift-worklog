@@ -1,4 +1,6 @@
 <script setup>
+import RowActions from '../components/RowActions.vue'
+import { useActionsWidth } from '../rowActions'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -13,6 +15,9 @@ import TriNames from '../components/TriNames.vue'
 import { fullHours, shortEntry, splitHours } from '../cycle'
 
 const { t, tm, locale } = useI18n()
+const actW1 = useActionsWidth(() => [t('schedule.restore')])
+const actW2 = useActionsWidth(() => [t('common.edit'), t('common.delete')])
+const actW3 = useActionsWidth(() => [t('common.delete')])
 const auth = useAuth()
 
 const month = ref(dayjs().format('YYYY-MM'))
@@ -192,7 +197,7 @@ onMounted(async () => {
           <el-table-column v-for="team in auth.teams" :key="team.id" :label="localName(team)" :width="narrow ? 84 : undefined" min-width="90" align="center">
             <template #default="{ row }">
               <span :class="['cell', { admin: canShift(team.id), changed: row.changed?.[team.id] }]" @click="openTeamShift(team.id, row.day)">
-                <ShiftTag v-if="teamActive(team, row.day)" :kind="row.shifts[team.id]" />
+                <ShiftTag v-if="teamActive(team, row.day)" :kind="row.shifts[team.id]" :short="narrow" />
                 <small v-else class="muted">{{ t('schedule.inactive') }}</small>
                 <small v-if="row.hours?.[team.id]" class="hrs" :title="fullHours(row.hours[team.id])">{{ shortEntry(row.hours[team.id], t) }}</small>
                 <small v-if="row.by_members?.includes(team.id)" class="was" :title="t('schedule.byMembersHint')">{{ t('schedule.byMembers') }}</small>
@@ -207,8 +212,8 @@ onMounted(async () => {
             <el-table-column prop="day" :label="t('schedule.date')" width="120" />
             <el-table-column :label="t('task.team')" width="100"><template #default="{ row }">{{ localName(auth.teamById(row.team_id)) }}</template></el-table-column>
             <el-table-column :label="t('schedule.shiftTo')"><template #default="{ row }"><ShiftTag :kind="row.shift" /> <small class="muted">{{ t('schedule.changedFrom', { s: t('shift.' + row.was) }) }}</small></template></el-table-column>
-            <el-table-column v-if="canShiftAny" width="130">
-              <template #default="{ row }"><el-button v-if="canShift(row.team_id)" link type="primary" @click="restoreTeamShift(row.team_id, row.day, row.day)">{{ t('schedule.restore') }}</el-button></template>
+            <el-table-column v-if="canShiftAny" :label="t('common.actions')" :width="actW1" fixed="right">
+              <template #default="{ row }"><RowActions v-if="canShift(row.team_id)" :items="[{ label: t('schedule.restore'), type: 'primary', onClick: () => restoreTeamShift(row.team_id, row.day, row.day) }]" /></template>
             </el-table-column>
           </el-table>
         </template>
@@ -276,10 +281,10 @@ onMounted(async () => {
           <el-table-column :label="t('schedule.period')" width="230">
             <template #default="{ row }"><el-tag v-if="row.active_from || row.active_to" type="warning" size="small">{{ t('schedule.temporary') }}</el-tag> {{ periodText(row) }}</template>
           </el-table-column>
-          <el-table-column width="130">
+          <el-table-column :label="t('common.actions')" :width="actW2" fixed="right">
             <template #default="{ row }">
-              <el-button link type="primary" @click="openTeam(row)">{{ t('common.edit') }}</el-button>
-              <el-button link type="danger" @click="deleteTeam(row)">{{ t('common.delete') }}</el-button>
+              <RowActions :items="[{ label: t('common.edit'), type: 'primary', onClick: () => openTeam(row) },
+                                   { label: t('common.delete'), type: 'danger', onClick: () => deleteTeam(row) }]" />
             </template>
           </el-table-column>
         </el-table>
@@ -346,14 +351,14 @@ onMounted(async () => {
         </div>
         <el-table :data="holidays" size="small" style="max-width: 520px">
           <el-table-column prop="day" :label="t('schedule.date')" width="130" />
-          <el-table-column width="130">
+          <el-table-column :label="t('schedule.kind')" width="130">
             <template #default="{ row }">
               <el-tag :type="row.kind === 'workday' ? 'warning' : 'success'" size="small">{{ row.kind === 'workday' ? t('schedule.kindWorkday') : t('schedule.kindHoliday') }}</el-tag>
             </template>
           </el-table-column>
           <el-table-column prop="name" :label="t('schedule.holidayName')" />
-          <el-table-column width="90">
-            <template #default="{ row }"><el-button link type="danger" @click="removeHoliday(row.day)">{{ t('common.delete') }}</el-button></template>
+          <el-table-column :label="t('common.actions')" :width="actW3">
+            <template #default="{ row }"><RowActions :items="[{ label: t('common.delete'), type: 'danger', onClick: () => removeHoliday(row.day) }]" /></template>
           </el-table-column>
         </el-table>
       </el-tab-pane>

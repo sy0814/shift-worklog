@@ -1,6 +1,8 @@
 <script setup>
 // 系统设置 → 车间管理（系统管理员）：新增 / 改名 / 停用 / 删除车间。
 // 新车间的班组在「排班 → 班组管理」里加（先在顶栏切换到那个车间）。
+import RowActions from './RowActions.vue'
+import { useActionsWidth } from '../rowActions'
 import { reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -10,6 +12,7 @@ import { useAuth } from '../stores/auth'
 import TriNames from './TriNames.vue'
 
 const { t } = useI18n()
+const actW = useActionsWidth(() => [t('common.edit'), t('common.delete')])
 const auth = useAuth()
 
 const open = ref(false)
@@ -54,10 +57,10 @@ async function remove(d) {
       <el-table-column :label="t('workers.team')" width="110" align="center">
         <template #default="{ row }">{{ teamsOf(row.id) }}</template>
       </el-table-column>
-      <el-table-column width="130">
+      <el-table-column :label="t('common.actions')" :width="actW" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" @click="edit(row)">{{ t('common.edit') }}</el-button>
-          <el-button link type="danger" :disabled="auth.departments.length <= 1" @click="remove(row)">{{ t('common.delete') }}</el-button>
+          <RowActions :items="[{ label: t('common.edit'), type: 'primary', onClick: () => edit(row) },
+                               ...(auth.departments.length > 1 ? [{ label: t('common.delete'), type: 'danger', onClick: () => remove(row) }] : [])]" />
         </template>
       </el-table-column>
     </el-table>
