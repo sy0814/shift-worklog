@@ -350,6 +350,35 @@ When you see green「地址已修改。」("Address changed."), you are done.
 - Old home-screen icons point to the old address and no longer open: open the new address, "Add to Home screen" again, and delete the old icon.
 - New phones install the certificate as usual from `http://NEW-IP/install`.
 
+### 9.5 Watchdog (automatic alerts)
+
+The install / update script creates a scheduled task **WorkRecordWatchdog** that checks every 5 minutes:
+
+| What it checks | When there is a problem |
+|---|---|
+| Are both services running | Starts them automatically; tells you once even if the restart worked, alerts if it could not start them |
+| Does the system respond | Service is running but the system does not answer: alert |
+| Backup | Backup failed, or no successful backup for more than 26 hours: alert |
+| Disk space | Less than 5 GB or 10% free on the disk with the program data or the backups: alert |
+
+- **How it alerts**: a **popup on the server PC** (sent to everyone logged in), plus the Windows **event log** (Event Viewer → Windows Logs → Application, source `WorkRecord`) and `C:\WorkRecord\logs\watchdog.log`. Keep someone logged in on the server so the popup is seen.
+- The same problem pops up **at most once every 60 minutes**; when it is fixed you get one more message saying it has recovered.
+- Failed backups and low disk space are **also shown as a red notice on the home page** when an administrator logs in.
+- During an update the script pauses the watchdog and turns it back on at the end. **If the update fails halfway, the watchdog stays paused**: fix the problem and run `update.ps1` again.
+- Windows Home has no popup program (msg.exe): there you only get the event log and the log file.
+
+The popup messages are in Chinese:
+
+| Popup text (beginning) | Meaning |
+|---|---|
+| 服务 … 停了，已自动重新启动 | The service had stopped and was restarted automatically |
+| 服务 … 停了，自动启动失败 | The service stopped and could not be restarted – start it in Services and check the log |
+| … 在运行，但系统没有响应 | The service runs but the system does not respond – check the log, restart the service |
+| 备份失败 | Backup failed – see `logs\backup.log` |
+| 超过 26 小时没有成功的备份 | No successful backup for over 26 hours – check the task WorkRecordBackup |
+| 磁盘 …: 快满了 | That disk is almost full |
+| 已恢复 | The problem is gone |
+
 ---
 
 ## 10. Backup and restore

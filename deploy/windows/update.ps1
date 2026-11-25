@@ -18,6 +18,7 @@ Write-Step '1/4 更新前先备份'
 & (Join-Path $PSScriptRoot 'backup.ps1')
 
 Write-Step '2/4 停止服务、复制新程序'
+Disable-Watchdog
 Stop-AppServices
 if ($Source.TrimEnd('\') -ne $AppDir.TrimEnd('\')) { Copy-Source $Source }
 
@@ -31,5 +32,7 @@ Invoke-Migrate
 Write-Step '4/4 启动服务'
 Start-AppServices
 Wait-Health
+Register-Watchdog
+Write-Ok '看门狗已开启（每 5 分钟检查服务、备份、磁盘）'
 Write-Host ''
 Write-Host '更新完成。手机打开系统时会提示「有新版本」，点刷新即可。' -ForegroundColor Green

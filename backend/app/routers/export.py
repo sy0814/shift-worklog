@@ -30,7 +30,8 @@ router = APIRouter(prefix="/api", tags=["export"])
 
 L = {
     "zh": {
-        "sheet_tasks": "任务明细", "sheet_load": "人员工作量", "sheet_att": "出勤",
+        "sheet_tasks": "任务明细", "sheet_load": "人员工作量", "sheet_att": "出勤", "sheet_logs": "班次日志",
+        "logs": ["任务编号", "记录时间", "班次日期", "班次", "班组", "记录人", "内容", "原文", "工作内容"],
         "tasks": ["编号", "班次日期", "班次", "班组", "状态", "工作内容", "原文", "遗留问题", "带队人员", "参与人员", "开始时间",
                   "完成时间", "工时(小时)", "发布人", "最后修改人", "完成确认人", "移交", "废弃原因", "图片数", "已移交次数", "设备"],
         "load": ["姓名", "工号", "班组", "排班班次", "实际出勤", "请假", "病假", "缺勤", "参与任务", "已完成", "未完成",
@@ -43,7 +44,8 @@ L = {
         "legend": "白/中/夜 = 出勤班次，休 = 休息，假 = 请假，病 = 病假，缺 = 缺勤；斜体 = 手工修改或导入",
     },
     "sr": {
-        "sheet_tasks": "Zadaci", "sheet_load": "Opterećenje", "sheet_att": "Prisustvo",
+        "sheet_tasks": "Zadaci", "sheet_load": "Opterećenje", "sheet_att": "Prisustvo", "sheet_logs": "Dnevnik smene",
+        "logs": ["Br. zadatka", "Vreme", "Datum smene", "Smena", "Ekipa", "Upisao", "Sadržaj", "Original", "Opis posla"],
         "tasks": ["Br.", "Datum smene", "Smena", "Ekipa", "Status", "Opis posla", "Original", "Preostali problemi",
                   "Vođa ekipe", "Učesnici", "Početak", "Završetak", "Sati", "Uneo", "Poslednja izmena", "Potvrdio", "Predaja",
                   "Razlog odbacivanja", "Slike", "Broj predaja", "Oprema"],
@@ -57,7 +59,8 @@ L = {
         "legend": "P/D/T = prva/druga/treća smena, S = slobodno, O = odsustvo, B = bolovanje, I = izostanak; kurziv = ručno ili uvezeno",
     },
     "en": {
-        "sheet_tasks": "Tasks", "sheet_load": "Workload", "sheet_att": "Attendance",
+        "sheet_tasks": "Tasks", "sheet_load": "Workload", "sheet_att": "Attendance", "sheet_logs": "Shift log",
+        "logs": ["Task no.", "Time", "Shift date", "Shift", "Team", "Written by", "Note", "Original", "Work"],
         "tasks": ["No.", "Shift date", "Shift", "Team", "Status", "Work", "Original", "Open issues", "Lead", "Workers", "Start",
                   "Finish", "Hours", "Posted by", "Last edited by", "Confirmed by", "Handover", "Discard reason", "Photos",
                   "Handovers", "Equipment"],
@@ -238,6 +241,28 @@ def build_workbook(db: Session, start: date, end: date, team_id: int | None, wor
     ws3.freeze_panes = "D2"
     ws3.append([])
     ws3.append([T["legend"]])
+
+    # ---- 班次日志（导出的这些任务上写的）----
+    from ..models import TaskLog
+
+    ws4 = wb.create_sheet(T["sheet_logs"])
+    _header(ws4, T["logs"])
+    logs = list(db.scalars(select(TaskLog).where(TaskLog.task_id.in_(ids), TaskLog.deleted_at.is_(None))
+                           .order_by(TaskLog.recorded_at, TaskLog.id))) if ids else []
+    wnames = dict(db.execute(select(Worker.id, Worker.name)).all()) if logs else {}
+    by_id = {t.id: t for t in tasks}
+    for x in logs:
+        orig = getattr(x, f"content_{x.source_lang}") or ""
+        text = getattr(x, f"content_{lang}") or orig
+        ws4.append([x.task_id, _local(x.recorded_at), x.shift_date, T["shift"].get(x.shift_kind, x.shift_kind),
+                    tname(x.team_id), wnames.get(x.worker_id) or names.get(x.created_by, ""), text,
+                    orig if orig != text else "", _text(by_id[x.task_id], "content", "source_lang", lang)[0]])
+    for i, wdt in enumerate([9, 16, 12, 8, 10, 14, 60, 45, 40], start=1):
+        ws4.column_dimensions[get_column_letter(i)].width = wdt
+        if i in (7, 8, 9):
+            for c in ws4[get_column_letter(i)]:
+                c.alignment = Alignment(wrap_text=True, vertical="top")
+    ws4.freeze_panes = "A2"
     return wb
 
 

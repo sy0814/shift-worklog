@@ -58,11 +58,27 @@ export const useOutbox = defineStore('outbox', {
       return this.syncEntry(entry)
     },
 
+    /** 班次日志：加一条（离线也能写，按写的时间归班次）。联网时返回新日志；断网存本地返回 null；服务器拒绝则抛出 */
+    async submitLog(task, content, lang) {
+      const auth = useAuth()
+      const entry = {
+        key: uuid(), user_id: auth.user.id, type: 'log', task: null, task_id: task.id,
+        log: { client_id: null, content, lang, recorded_at: new Date().toISOString() },
+        label: content, photos: [], saved_at: Date.now(), error: null,
+      }
+      entry.log.client_id = entry.key
+      await putEntry(entry)
+      await this.refresh()
+      return this.syncEntry(entry)
+    },
+
     /** 同步一条。成功返回任务对象；网络失败返回 null（保留在本地）；服务器拒绝则记录错误并抛出 */
     async syncEntry(entry) {
       try {
         let task = null
-        if (entry.type === 'status') {
+        if (entry.type === 'log') {
+          task = (await api.post(`/tasks/${entry.task_id}/logs`, entry.log, { silent: true })).data
+        } else if (entry.type === 'status') {
           task = (await api.post(`/tasks/${entry.task_id}/status`, { status: entry.status, expect: entry.expect, at: entry.at }, { silent: true })).data
         } else if (entry.task_id == null) {
           task = (await api.post('/tasks', entry.task, { silent: true })).data

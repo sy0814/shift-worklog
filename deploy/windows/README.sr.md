@@ -352,6 +352,35 @@ Kada se pojavi zeleno „地址已修改。” (adresa je promenjena), gotovo je
 - Stare ikone na početnom ekranu vode na staru adresu i više se ne otvaraju: otvorite novu adresu, ponovo „Dodaj na početni ekran” i obrišite staru ikonu.
 - Novi telefoni kao i obično instaliraju sertifikat sa `http://NOVA-IP/install`.
 
+### 9.5 Čuvar (automatska upozorenja)
+
+Skripta za instalaciju / ažuriranje pravi zakazani zadatak **WorkRecordWatchdog** koji na svakih 5 minuta proverava:
+
+| Šta proverava | Kad postoji problem |
+|---|---|
+| Da li oba servisa rade | Automatski ih pokreće; javi jednom i kad je ponovno pokretanje uspelo, upozori ako nije |
+| Da li sistem odgovara | Servis radi, ali sistem ne odgovara: upozorenje |
+| Rezervna kopija | Kopija nije uspela ili više od 26 sati nema uspešne kopije: upozorenje |
+| Prostor na disku | Manje od 5 GB ili 10% slobodno na disku sa podacima programa ili sa kopijama: upozorenje |
+
+- **Kako upozorava**: **iskačući prozor na serverskom računaru** (svima koji su prijavljeni), plus Windows **dnevnik događaja** (Event Viewer → Windows Logs → Application, izvor `WorkRecord`) i `C:\WorkRecord\logs\watchdog.log`. Neka na serveru uvek neko bude prijavljen, da bi se prozor video.
+- Isti problem iskače **najviše jednom u 60 minuta**; kad se reši, dobijete još jednu poruku da je otklonjen.
+- Neuspela kopija i pun disk se **prikazuju i kao crveno obaveštenje na početnoj strani** kad se administrator prijavi.
+- Tokom ažuriranja skripta pauzira čuvara i na kraju ga ponovo uključi. **Ako ažuriranje pukne na pola, čuvar ostaje pauziran**: rešite problem i ponovo pokrenite `update.ps1`.
+- Windows Home nema program za iskačuće prozore (msg.exe): tamo dobijate samo dnevnik događaja i log fajl.
+
+Poruke u prozoru su na kineskom:
+
+| Tekst u prozoru (početak) | Značenje |
+|---|---|
+| 服务 … 停了，已自动重新启动 | Servis je stao i automatski je ponovo pokrenut |
+| 服务 … 停了，自动启动失败 | Servis je stao i ne može da se pokrene – pokrenite ga u Services i pogledajte log |
+| … 在运行，但系统没有响应 | Servis radi, ali sistem ne odgovara – pogledajte log, restartujte servis |
+| 备份失败 | Rezervna kopija nije uspela – pogledajte `logs\backup.log` |
+| 超过 26 小时没有成功的备份 | Više od 26 sati nema uspešne kopije – proverite zadatak WorkRecordBackup |
+| 磁盘 …: 快满了 | Taj disk je skoro pun |
+| 已恢复 | Problem je otklonjen |
+
 ---
 
 ## 10. Rezervne kopije i vraćanje podataka

@@ -359,6 +359,31 @@ class TaskWorker(Base):
     worker_id: Mapped[int] = mapped_column(ForeignKey("workers.id"), primary_key=True)
 
 
+class TaskLog(Base):
+    """任务的班次日志：任何时候都可以加一条自由填写的记录，自动翻译成另外两种语言。
+    属于哪个班次按录入时间算（离线写的按写的时间，不按同步时间）。任务移交后，下一班能看到整条移交链上的日志。"""
+
+    __tablename__ = "task_logs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id"), index=True)
+    client_id: Mapped[str | None] = mapped_column(String(36), unique=True, nullable=True)  # 离线发件箱去重
+    content_zh: Mapped[str | None] = mapped_column(Text, nullable=True)
+    content_sr: Mapped[str | None] = mapped_column(Text, nullable=True)
+    content_en: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_lang: Mapped[str] = mapped_column(String(5))
+    translation_status: Mapped[str] = mapped_column(String(10), default="pending")  # pending / done
+    shift_date: Mapped[date] = mapped_column(Date)  # 写的时候是哪个班次（夜班归属开始那天）
+    shift_kind: Mapped[str] = mapped_column(String(10))
+    team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"), nullable=True)  # 写的时候任务属于哪个班组
+    worker_id: Mapped[int | None] = mapped_column(ForeignKey("workers.id"), nullable=True)  # 写的人（名册）
+    created_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))  # 写的时间
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # 软删除
+    deleted_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+
+
 class Attachment(Base):
     """任务图片。原图 + 浏览图 + 缩略图，软删除。"""
 

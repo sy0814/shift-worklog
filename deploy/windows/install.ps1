@@ -249,6 +249,8 @@ $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccou
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Hours 2)
 Register-ScheduledTask -TaskName $TaskBackup -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
 Write-Ok "每天 03:40 备份到 $BackupTarget（数据库、图片、证书、配置），数据库备份保留 30 天"
+Register-Watchdog
+Write-Ok '看门狗：每 5 分钟检查一次，服务停了会自动重启并弹窗提醒；备份失败、磁盘快满也会弹窗（记录在 Windows 事件日志和 logs\watchdog.log）'
 
 # ---------------- 完成 ----------------
 $first = ($SiteHosts -split ',')[0].Trim()

@@ -38,10 +38,24 @@ async function load() {
   duty.value = { current: cur.data, next: nxt.data }
 }
 
+// 管理员：备份失败、磁盘快满等报警（服务停了由服务器上的看门狗弹窗）
+const alerts = ref([])
+async function loadAlerts() {
+  if (!auth.isAdmin) return
+  try { alerts.value = (await api.get('/alerts', { silent: true })).data } catch { /* 离线时不显示 */ }
+}
+function alertText(a) {
+  if (a.code === 'disk_low') return t('alert.disk', { path: a.path, gb: a.free_gb, pct: a.free_pct })
+  if (a.code === 'backup_failed') return t('alert.backupFailed', { at: a.at || '' }) + (a.message ? ' · ' + a.message : '')
+  if (a.code === 'backup_old') return t('alert.backupOld', { at: a.at || '?' })
+  return t('alert.backupNever')
+}
+
 let timer
 onMounted(() => {
   load()
-  timer = setInterval(load, 60_000)
+  loadAlerts()
+  timer = setInterval(() => { load(); loadAlerts() }, 60_000)
 })
 onUnmounted(() => clearInterval(timer))
 
@@ -96,6 +110,10 @@ function open(id) {
 <template>
   <div class="page">
     <h1 class="page-title">{{ t('home.welcome', { name: auth.user?.full_name }) }}</h1>
+    <el-alert v-for="(a, i) in alerts" :key="i" type="error" show-icon :closable="false" class="sys-alert"
+              :title="alertText(a)">
+      <router-link to="/settings">{{ t('alert.go') }} →</router-link>
+    </el-alert>
     <!-- 未闭环警示：标红置顶 -->
     <el-card v-if="overdue.length" shadow="never" class="overdue">
       <template #header>
@@ -148,6 +166,8 @@ function open(id) {
 </template>
 
 <style scoped>
+.sys-alert { margin-bottom: 10px; }
+.sys-alert a { color: var(--el-color-primary); text-decoration: none; }
 .overdue { margin-bottom: 12px; border: 1px solid #f56c6c; }
 .overdue :deep(.el-card__header) { background: #fef0f0; padding: 10px 16px; }
 .od-title { color: #f56c6c; font-weight: 600; }
