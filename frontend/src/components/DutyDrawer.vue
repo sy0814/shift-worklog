@@ -87,6 +87,7 @@ function addTask() {
       <template v-if="data">
         <div class="counts">
           <ShiftTag :kind="data.shift_kind" />
+          <el-tag v-if="data.top.length" type="primary" effect="dark">{{ t('duty.managers', { n: data.counts.managers ?? 0 }) }}</el-tag>
           <el-tag type="primary">{{ t('duty.onDuty', { n: data.counts.on_duty }) }}</el-tag>
           <el-tag type="warning">{{ t('duty.busy', { n: data.counts.busy }) }}</el-tag>
           <el-tag type="success">{{ t('duty.idle', { n: data.counts.idle }) }}</el-tag>
@@ -106,7 +107,7 @@ function addTask() {
             <div class="info">
               <div class="name">
                 <b>{{ r.worker.name }}</b>
-                <el-button link type="primary" size="small" class="why" :title="t('why.title')" @click="openWhy(r.worker)">{{ t('why.button') }}</el-button>
+                <el-button v-if="auth.canWhy" link type="primary" size="small" class="why" :title="t('why.title')" @click="openWhy(r.worker)">{{ t('why.button') }}</el-button>
                 <el-tag size="small" type="primary" effect="plain">{{ roleName(r.role_id) }}</el-tag>
                 <el-tag size="small" effect="plain" type="info">{{ teamName(r.team_id) }}</el-tag>
                 <el-tag :type="ST_TYPE[r.status]" size="small" effect="dark">{{ t('duty.st.' + r.status) }}</el-tag>
@@ -133,7 +134,7 @@ function addTask() {
             <div class="info">
               <div class="name">
                 <b>{{ r.worker.name }}</b>
-                <el-button link type="primary" size="small" class="why" :title="t('why.title')" @click="openWhy(r.worker)">{{ t('why.button') }}</el-button>
+                <el-button v-if="auth.canWhy" link type="primary" size="small" class="why" :title="t('why.title')" @click="openWhy(r.worker)">{{ t('why.button') }}</el-button>
                 <el-tag :type="ST_TYPE[r.status]" size="small" effect="dark">{{ t('duty.st.' + r.status) }}</el-tag>
                 <el-tag v-if="r.status === 'off_hours'" size="small" type="info" effect="plain">{{ offText(r) }}</el-tag>
                 <el-tag v-if="r.overlap_until" size="small" type="primary" effect="plain" :title="t('duty.untilHint', { t: hm(r.overlap_until) })">{{ t('duty.untilT', { t: hm(r.overlap_until) }) }}</el-tag>

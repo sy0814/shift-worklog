@@ -392,4 +392,10 @@
 - 2026-11-25 **任务类型 + 设备统计**：用户选「加任务类型」「先不加 AI 总结」。`tasks.kind`（迁移 0020，已有巡查任务设为 inspection）；`app/equipment_stats.py` + `/api/equipment-stats`（汇总、时间线、导出）；`EquipmentStats.vue`（四个数字、故障前 10 条形图、全部设备表、时间线抽屉）。坑：移交会复制开始时间，处理用时不能把链上各条相加；统计路由单独用前缀 `/api/equipment-stats`，放在 `/api/equipment/...` 下会和 `/{eid}` 冲突
 - 2026-11-25 **修复：停服务后 8000 端口被占、服务一直启动失败（10048）**。用户在服务器上实际遇到：占端口的是 `C:\Program Files\Python313\python.exe`。原因：服务启动的是 `.venv\Scripts\python.exe`，在 Windows 上它是转接程序，会再启动基础 Python；停服务时只结束了转接程序。修复：新增 `backend/run_server.py`（基础 Python 直接运行，加载 .venv 的包后启动 uvicorn）；`common.ps1` 加 `Get-BasePython`（读 `.venv\pyvenv.cfg` 的 home）、`Get-AppServiceXml`、`Stop-StaleApp`；install 用新配置，**update 会重写服务配置**；停 / 启服务、看门狗清理残留 Python（看门狗检查 8000 端口的进程往上几层是不是 WorkRecordApp.exe，不是就停服务、清理、重启并报警）。测试 `tests/test_run_server.py`（用基础 Python 加载 venv 的包）。PowerShell 部分容器里检查不了语法，要用户在服务器上跑 update.ps1 确认
 - 2026-11-25 **`update.ps1 -Online`**：用户想在服务器上不手动下载、直接运行更新。`-Online` 从 GitHub 下载 master 的 ZIP（`common.ps1` 的 `$UpdateZipUrl`，可用环境变量 `WORKRECORD_UPDATE_URL` 换），解压到 `%TEMP%\workrecord-update`，再运行新下载的那份 update.ps1（这样更新步骤本身也是新的）。第一次要先手动更新一次（旧版本没有这个选项）。仓库现在是公开的；改成私有后这个下载方式不能用
+- 2026-11-26 **用户反馈**：（服务器上 `TaskCreate` 没有 `kind` 的报错，用户重新下载更新后好了，是服务器上文件没更新完整）
+  1. 点「完成」的确认窗口去掉输入框上面的说明文字（`task.doneLogHint` 删掉），框里的提示保留
+  2. 登录方式改名：「个人账号」→「管理账号」（用户名 + 密码），「班组账号」→「个人账号」（选班组 → 点头像 → 个人密码）；三语、说明书、部署指南同步。代码里的 `password` / `pin` 不变
+  3. 成员看不到「为什么？」：前端 `auth.canWhy`；后端 explain 接口同样检查（成员 403）
+  4. 任务页「我的任务 / 班组任务」切换（用已有的 `?worker_id=` 筛选），成员默认「我的任务」
+  5. 首页班次卡片「管理 N 人」：`DutyCounts.managers`；在岗 / 忙碌 / 空闲 / 请假等不再包含「首页单独显示」的人
 

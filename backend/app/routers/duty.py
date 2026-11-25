@@ -55,6 +55,8 @@ class DutyTeam(BaseModel):
 
 
 class DutyCounts(BaseModel):
+    # 下面这些都不算「首页单独显示」的人（班长、副班长……），他们单独数在 managers 里（2026-11-26 用户要求分开）
+    managers: int = 0  # 管理人员在岗（忙碌 + 空闲）
     on_duty: int
     busy: int
     idle: int
@@ -187,7 +189,7 @@ def duty(which: str = Query(default="current", pattern="^(current|next)$"), db: 
     member = next((r.id for r in roles.values() if r.code == "member"), None)
     on_top = lambda w: roles.get(w.role_id or member) is not None and roles[w.role_id or member].show_on_top
     top: list[DutyWorker] = []
-    teams, counts = [], {"on_duty": 0, "busy": 0, "idle": 0, "absent": 0, "off_hours": 0}
+    teams, counts = [], {"managers": 0, "on_duty": 0, "busy": 0, "idle": 0, "absent": 0, "off_hours": 0}
     order = [t.id for t in sorted(slot_teams, key=lambda t: not t.is_main)]
     order += [tid for tid in rows if tid not in order]
     for tid in order:
@@ -196,6 +198,9 @@ def duty(which: str = Query(default="current", pattern="^(current|next)$"), db: 
             mine = sorted(by_worker.get(w.id, []), key=lambda t: (t.status != "in_progress", t.id))
             if st == "on":
                 st = "busy" if mine else "idle"  # 分配了任务（未开始也算）就是忙碌
+            if on_top(w):  # 管理人员单独数
+                counts["managers"] += st in ("busy", "idle")
+            elif st in ("busy", "idle"):
                 counts["on_duty"] += 1
                 counts[st] += 1
             elif st == "off_hours":

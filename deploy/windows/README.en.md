@@ -222,7 +222,7 @@ After logging in, open the **Admin** menu at the top and do the following:
 1. **Accounts:** team leader accounts already exist (`t1_leader1`–`t4_leader1`, `day_leader1`–`day_leader3`). **Their initial password is the same as the user name, which is not safe.**
    - Under "Admin → Accounts" click "Reset password" for each one, set a new password and tell each team leader.
    - Each leader account belongs to a person in the "Workers" roster (named like the account at first, e.g. "t1_leader1"): rename the person in the roster to the leader's real name; if the person already exists in the roster, use "Relink" on the Accounts page and then disable the extra roster entry.
-   - Accounts for other people are opened in the roster with "Account": leaders and deputies get a username + password; members use the "Team account" (sign in: choose team → tap own photo → personal password). What each role may do is set under "Admin → Roles & permissions".
+   - Accounts for other people are opened in the roster with "Account": leaders and deputies get a username + password; members use the "Personal account" (sign in: choose team → tap own photo → personal password). What each role may do is set under "Admin → Roles & permissions".
 2. **Workers:** click "Bulk add", choose a team, paste one name per line, and save. Do this for each team.
 3. **Schedule** (top menu): check in the "Shift calendar" that today's shifts match reality. If not, edit that team's cycle under "Teams" (cycle length, shift for each day, first day of the cycle; admin only). Enter public holidays under "Holidays / make-up workdays".
 4. **Settings:**

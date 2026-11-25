@@ -95,7 +95,7 @@ function openWhy(teamId, day) {
 const TIMES = Array.from({ length: 48 }, (_, i) => `${String(Math.floor(i / 2)).padStart(2, '0')}:${i % 2 ? '30' : '00'}`)
 const tsHours = computed(() => ts.ranges.filter((r) => r.a && r.b).map((r) => `${r.a}-${r.b}`).join(','))
 function openTeamShift(teamId, day) {
-  if (teamId != null && !canShift(teamId)) return openWhy(teamId, day)
+  if (teamId != null && !canShift(teamId)) return auth.canWhy ? openWhy(teamId, day) : undefined
   if (!canShiftAny.value) return
   const d = day || todayStr
   const cur = days.value.find((x) => x.day === d)
@@ -231,7 +231,7 @@ onMounted(async () => {
         <div class="toolbar">
           <el-date-picker v-model="month" type="month" value-format="YYYY-MM" :clearable="false" />
           <el-button v-if="canShiftAny" type="primary" plain @click="openTeamShift(null)">{{ t('schedule.teamShift') }}</el-button>
-          <span class="muted">{{ canShiftAny ? t('schedule.clickHint') : t('schedule.clickWhy') }}</span>
+          <span v-if="canShiftAny || auth.canWhy" class="muted">{{ canShiftAny ? t('schedule.clickHint') : t('schedule.clickWhy') }}</span>
         </div>
         <ScheduleGuide />
         <el-alert v-if="coverage.length" type="warning" :closable="false" show-icon class="cov" :title="t('schedule.covTitle')">
@@ -244,7 +244,7 @@ onMounted(async () => {
           </el-table-column>
           <el-table-column v-for="team in auth.teams" :key="team.id" :label="localName(team)" :width="narrow ? 84 : undefined" min-width="90" align="center">
             <template #default="{ row }">
-              <span :class="['cell', { admin: canShift(team.id), changed: row.changed?.[team.id] }]" @click="openTeamShift(team.id, row.day)">
+              <span :class="['cell', { admin: canShift(team.id) || auth.canWhy, changed: row.changed?.[team.id] }]" @click="openTeamShift(team.id, row.day)">
                 <ShiftTag v-if="teamActive(team, row.day)" :kind="row.shifts[team.id]" :short="narrow" />
                 <small v-else class="muted">{{ t('schedule.inactive') }}</small>
                 <small v-if="row.hours?.[team.id]" class="hrs" :title="fullHours(row.hours[team.id])">{{ shortEntry(row.hours[team.id], t) }}</small>
@@ -268,7 +268,7 @@ onMounted(async () => {
 
         <el-dialog v-model="tsOpen" :title="t('schedule.teamShift')" width="min(480px, 94vw)" append-to-body>
           <p class="muted">{{ t('schedule.teamShiftHint') }}</p>
-          <template v-if="ts.why">
+          <template v-if="ts.why && auth.canWhy">
             <el-button link type="primary" size="small" @click="tsWhyOpen = !tsWhyOpen">{{ t('why.button') }} {{ localName(auth.teamById(ts.why.team)) }} · {{ ts.why.day }} {{ tsWhyOpen ? '▴' : '▾' }}</el-button>
             <div v-if="tsWhyOpen" class="why-box"><WhyPanel type="team" :id="ts.why.team" :day="ts.why.day" :hide="['team_override']" @navigate="tsOpen = false" /></div>
           </template>
@@ -425,7 +425,7 @@ onMounted(async () => {
 .weekend { color: #f56c6c; }
 .toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
 .cell { display: inline-flex; flex-direction: column; align-items: center; gap: 1px; }
-.cell { cursor: pointer; }
+.cell.admin { cursor: pointer; }
 .why-box { margin: 4px 0 12px; padding: 8px 12px; border-radius: 6px; background: var(--el-fill-color-light); }
 .cell.changed :deep(.el-tag) { outline: 2px dashed #e6a23c; outline-offset: 1px; }
 .was { color: #e6a23c; font-size: 11px; }

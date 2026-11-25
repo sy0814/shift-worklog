@@ -128,6 +128,10 @@ def test_duty(client, admin_h, teams):
     assert st["Duty Idle"]["status"] == "idle" and st["Duty Leave"]["status"] == "leave"
     assert st["Duty Assigned"]["status"] == "busy" and st["Duty Assigned"]["tasks"][0]["is_lead"]
     assert d["counts"]["busy"] >= 1 and d["counts"]["absent"] >= 1 and d["can_add"] is True
+    # 管理人员（首页单独显示的角色）单独数，不重复算进在岗 / 忙碌 / 空闲
+    c, on = d["counts"], ("busy", "idle")
+    assert c["managers"] == sum(1 for x in d["top"] if x["status"] in on)
+    assert c["on_duty"] == sum(1 for t in d["teams"] for x in t["workers"] if x["status"] in on) == c["busy"] + c["idle"]
     # 不在这个班次的班长不能快捷添加
     other = next(c for c in ("T1", "T2", "T3", "T4") if teams[c] not in [x["team_id"] for x in d["teams"]])
     assert client.get("/api/duty", headers=h(client, other)).json()["can_add"] is False
