@@ -109,6 +109,7 @@ deploy/Caddyfile, deploy/install/install.html
 - 某人某天的判定只在 `attendance_service.resolve(sched, entry, 例外记录, d, trace=None)` 一处：先 `default_for`（排班），再叠例外。`effective` 逐天调它；不要在别处另写一份。
 - 返回 `DayAttendance(status, shift_kind, team_id, source, note, hours)`。在岗、可分配人员、工时、导出、AI 分析都从这里取。
 - 加班 `overtime`：某班次后加班到几点（`overtime_service.expand`）。
+- 首页人员状态 `routers/duty.py`：**管理人员**（角色 `task.create` 为 dept / all、本车间）从班组里拿出来放 `DutyOut.managers`，`counts.managers` 单独数，其他 counts 不含他们；在不在班照常按 `attendance_service.resolve`（他们靠个人循环）；没有班组也没有个人循环的列在 `managers_unscheduled`
 
 ### 3.4 任务
 - 三语列 `content_zh/sr/en` + `source_lang`；遗留问题 `leftover_*`、废弃原因 `discard_reason_*` 各自翻译；`translation_status`、`manual_fields`（人工校对过的列，机器不覆盖）。

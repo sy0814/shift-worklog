@@ -221,7 +221,7 @@ const messages = {
       by: '{name} 设置于 {at}', note: '备注：{note}',
     },
     duty: {
-      breaks: '（{b} 休息）', backAt: '休息中，{t} 回来', startsAt: '{t} 上班', doneToday: '今天已下班', managers: '管理 {n} 人', onDuty: '在岗 {n} 人', offHours: '休息中 {n}', untilT: '到 {t}', untilHint: '算在别的班，这个班次里上到 {t}', busy: '忙碌 {n}', idle: '空闲 {n}', absent: '请假/缺勤 {n}', title: '{shift} 人员状态', support: '支援',
+      breaks: '（{b} 休息）', backAt: '休息中，{t} 回来', startsAt: '{t} 上班', doneToday: '今天已下班', managers: '管理 {n} 人', mgrTitle: '管理人员', mgrNoSched: '这些管理人员还没设排班，系统不知道他们什么时候在班：{names}。请到「员工名册 → 长期排班」给他们设个人循环。', onDuty: '在岗 {n} 人', offHours: '休息中 {n}', untilT: '到 {t}', untilHint: '算在别的班，这个班次里上到 {t}', busy: '忙碌 {n}', idle: '空闲 {n}', absent: '请假/缺勤 {n}', title: '{shift} 人员状态', support: '支援',
       st: { off_hours: '休息中', busy: '忙碌', idle: '空闲', leave: '请假', sick: '病假', absent: '缺勤', off: '调休' },
       none: '这个班次没有安排人员', select: '勾选人员后可快捷添加任务', addTask: '给选中的人添加任务（{n}）', noTask: '没有未完成的任务', clickHint: '点击查看人员',
     },
@@ -453,7 +453,7 @@ const messages = {
       by: 'Postavio/la {name}, {at}', note: 'Napomena: {note}',
     },
     duty: {
-      breaks: ' (pauza {b})', backAt: 'Pauza, vraća se u {t}', startsAt: 'Počinje u {t}', doneToday: 'Završio za danas', managers: 'Rukovodstvo {n}', onDuty: 'Na smeni {n}', offHours: 'Pauza {n}', untilT: 'do {t}', untilHint: 'Radi u drugoj smeni; u ovoj je do {t}', busy: 'Zauzeto {n}', idle: 'Slobodno {n}', absent: 'Odsutno {n}', title: '{shift} – stanje radnika', support: 'Pomoć',
+      breaks: ' (pauza {b})', backAt: 'Pauza, vraća se u {t}', startsAt: 'Počinje u {t}', doneToday: 'Završio za danas', managers: 'Rukovodstvo {n}', mgrTitle: 'Rukovodstvo', mgrNoSched: 'Ovi rukovodioci još nemaju raspored, pa sistem ne zna kad su na smeni: {names}. Podesite im lični ciklus u „Radnici → Dugoročni raspored”.', onDuty: 'Na smeni {n}', offHours: 'Pauza {n}', untilT: 'do {t}', untilHint: 'Radi u drugoj smeni; u ovoj je do {t}', busy: 'Zauzeto {n}', idle: 'Slobodno {n}', absent: 'Odsutno {n}', title: '{shift} – stanje radnika', support: 'Pomoć',
       st: { off_hours: 'Pauza', busy: 'Zauzet', idle: 'Slobodan', leave: 'Odsustvo', sick: 'Bolovanje', absent: 'Izostanak', off: 'Slobodan dan' },
       none: 'Za ovu smenu nema raspoređenih radnika', select: 'Označite radnike da biste brzo dodali zadatak', addTask: 'Dodaj zadatak izabranima ({n})', noTask: 'Nema otvorenih zadataka', clickHint: 'Kliknite za radnike',
     },
@@ -685,7 +685,7 @@ const messages = {
       by: 'Set by {name} at {at}', note: 'Note: {note}',
     },
     duty: {
-      breaks: ' (break {b})', backAt: 'On break, back at {t}', startsAt: 'Starts at {t}', doneToday: 'Done for today', managers: '{n} supervisors', onDuty: '{n} on shift', offHours: '{n} on break', untilT: 'until {t}', untilHint: 'Belongs to another shift; here until {t}', busy: '{n} busy', idle: '{n} free', absent: '{n} absent', title: '{shift} – people', support: 'Support',
+      breaks: ' (break {b})', backAt: 'On break, back at {t}', startsAt: 'Starts at {t}', doneToday: 'Done for today', managers: '{n} managers', mgrTitle: 'Managers', mgrNoSched: 'These managers have no schedule yet, so the system cannot tell when they are on shift: {names}. Give them a personal cycle under “Workers → Long-term schedule”.', onDuty: '{n} on shift', offHours: '{n} on break', untilT: 'until {t}', untilHint: 'Belongs to another shift; here until {t}', busy: '{n} busy', idle: '{n} free', absent: '{n} absent', title: '{shift} – people', support: 'Support',
       st: { off_hours: 'On break', busy: 'Busy', idle: 'Free', leave: 'Leave', sick: 'Sick', absent: 'Absent', off: 'Day off' },
       none: 'Nobody is scheduled for this shift', select: 'Tick people to add a task quickly', addTask: 'Add a task for selected ({n})', noTask: 'No open tasks', clickHint: 'Click to see people',
     },

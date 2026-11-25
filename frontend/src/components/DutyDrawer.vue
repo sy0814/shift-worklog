@@ -87,7 +87,7 @@ function addTask() {
       <template v-if="data">
         <div class="counts">
           <ShiftTag :kind="data.shift_kind" />
-          <el-tag v-if="data.top.length" type="primary" effect="dark">{{ t('duty.managers', { n: data.counts.managers ?? 0 }) }}</el-tag>
+          <el-tag v-if="data.managers?.length" type="primary" effect="dark">{{ t('duty.managers', { n: data.counts.managers ?? 0 }) }}</el-tag>
           <el-tag type="primary">{{ t('duty.onDuty', { n: data.counts.on_duty }) }}</el-tag>
           <el-tag type="warning">{{ t('duty.busy', { n: data.counts.busy }) }}</el-tag>
           <el-tag type="success">{{ t('duty.idle', { n: data.counts.idle }) }}</el-tag>
@@ -95,8 +95,37 @@ function addTask() {
           <el-tag v-if="data.counts.off_hours" type="info" effect="plain">{{ t('duty.offHours', { n: data.counts.off_hours }) }}</el-tag>
         </div>
         <div v-if="data.can_add" class="muted small">{{ t('duty.select') }}</div>
-        <div v-if="!data.teams.some((x) => x.workers.length) && !data.top.length" class="muted">{{ t('duty.none') }}</div>
+        <div v-if="!data.teams.some((x) => x.workers.length) && !data.top.length && !data.managers?.length" class="muted">{{ t('duty.none') }}</div>
 
+        <el-alert v-if="data.managers_unscheduled?.length && (auth.isAdmin || auth.deptOk('worker.manage'))" type="warning" :closable="false" show-icon class="mgr-note"
+                  :title="t('duty.mgrNoSched', { names: data.managers_unscheduled.join('、') })" />
+        <!-- 最上面：管理人员（能给整个车间派活的人，按个人排班在班），2026-11-26 -->
+        <section v-if="data.managers?.length" class="team top mgr">
+          <h4>{{ t('duty.mgrTitle') }} <el-tag size="small" round>{{ data.managers.length }}</el-tag></h4>
+          <div v-for="r in data.managers" :key="r.worker.id" :class="['person', `s-${r.status}`]">
+            <el-checkbox v-if="canPick(r)" :model-value="picked.includes(r.worker.id)" @change="(v) => toggle(r.worker.id, v)" />
+            <span v-else class="nocheck" />
+            <WorkerAvatar :worker="r.worker" :size="40" />
+            <div class="info">
+              <div class="name">
+                <b>{{ r.worker.name }}</b>
+                <el-button v-if="auth.canWhy" link type="primary" size="small" class="why" :title="t('why.title')" @click="openWhy(r.worker)">{{ t('why.button') }}</el-button>
+                <el-tag size="small" type="primary" effect="plain">{{ roleName(r.role_id) }}</el-tag>
+                <el-tag v-if="r.team_id" size="small" effect="plain" type="info">{{ teamName(r.team_id) }}</el-tag>
+                <el-tag :type="ST_TYPE[r.status]" size="small" effect="dark">{{ t('duty.st.' + r.status) }}</el-tag>
+                <el-tag v-if="r.status === 'off_hours'" size="small" type="info" effect="plain">{{ offText(r) }}</el-tag>
+                <el-tag v-if="r.overlap_until" size="small" type="primary" effect="plain" :title="t('duty.untilHint', { t: hm(r.overlap_until) })">{{ t('duty.untilT', { t: hm(r.overlap_until) }) }}</el-tag>
+                <el-tag v-if="r.hours" size="small" effect="plain" class="hrs">⏱ {{ hoursText(r.hours) }}</el-tag>
+                <el-tag v-if="r.overtime_until" size="small" type="warning" effect="plain">⏱ {{ t(r.overtime_prev ? 'ot.prevTag' : 'ot.untilTag', { t: hm(r.overtime_until) }) }}</el-tag>
+              </div>
+              <div v-for="task in r.tasks" :key="task.id" class="task" @click="emit('open-task', task.id)">
+                <span :class="['dot', task.status]" />
+                <span v-if="task.is_lead" class="lead">★</span>
+                <span class="tt">{{ localText(task.content, task.source_lang).text }}</span>
+              </div>
+            </div>
+          </div>
+        </section>
         <!-- 上面一块：班长、副班长等「首页单独显示」的角色 -->
         <section v-if="data.top.length" class="team top">
           <h4>{{ topTitle }} <el-tag size="small" round>{{ data.top.length }}</el-tag></h4>
@@ -165,6 +194,7 @@ function addTask() {
 
 <style scoped>
 .foot { display: flex; gap: 8px; }
+.mgr-note { margin-bottom: 8px; }
 .why { font-size: 12px; padding: 0; height: auto; }
 .foot .grow { flex: 1; }
 .counts { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
