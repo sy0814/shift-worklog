@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -10,8 +10,9 @@ from . import departments as _departments  # noqa: F401  注册员工车间跟�
 from .db import SessionLocal, engine
 from . import migrate, translation_service
 from .config import get_settings
-from .routers import analysis as analysis_router, attendance, departments as departments_router, branding, duty, equipment, explain as explain_router, overtime, inspections, audit_log, auth, export, handover, llm_settings, projects, roles, schedule, storage, tasks, translation, users, workers
+from .routers import analysis as analysis_router, attendance, departments as departments_router, branding, duty, equipment, explain as explain_router, task_logs, overtime, inspections, audit_log, auth, export, handover, llm_settings, projects, roles, schedule, storage, tasks, translation, users, workers
 from .seed import seed, seed_glossary
+from .security import require_admin
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"  # 前端构建产物
 
@@ -49,6 +50,7 @@ app.include_router(schedule.router)
 app.include_router(audit_log.router)
 app.include_router(workers.router)
 app.include_router(tasks.router)
+app.include_router(task_logs.router)
 app.include_router(handover.router)
 app.include_router(translation.router)
 app.include_router(attendance.router)
@@ -63,6 +65,15 @@ app.include_router(duty.router)
 @app.get("/api/health")
 def health():
     return {"ok": True}
+
+
+@app.get("/api/alerts")
+def get_alerts(_=Depends(require_admin)):
+    """管理员首页的红色提醒：备份失败 / 太久没备份、磁盘快满（见 app/alerts.py）。"""
+    from . import alerts
+    from .schedule_service import local_now
+
+    return alerts.current(local_now())
 
 
 # 缓存策略：带哈希的静态文件永久缓存；index.html / sw.js / manifest 每次都要检查更新（否则新版本推不下去）

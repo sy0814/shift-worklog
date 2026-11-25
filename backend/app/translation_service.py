@@ -302,6 +302,52 @@ def translate_equipment(equipment_id: int) -> str:
         return "done"
 
 
+# ---------------- 任务的班次日志 ----------------
+def translate_log(log_id: int) -> str:
+    """把日志缺的语言翻译补上（原文原样保留，原文语言以模型判断为准）。"""
+    from .models import TaskLog
+
+    with SessionLocal() as db:
+        x = db.get(TaskLog, log_id)
+        if x is None or x.deleted_at is not None:
+            return "missing"
+        src = getattr(x, f"content_{x.source_lang}")
+        if all(getattr(x, f"content_{l}") for l in LANGS) or not src:
+            if x.translation_status != "done":
+                x.translation_status = "done"
+                db.commit()
+            return "done"
+        if not translator.is_configured():
+            return x.translation_status
+        glossary = load_glossary(db)
+    try:
+        with client_factory() as client:
+            r = translator.translate(src, glossary, client=client)
+    except translator.TranslationError as e:
+        log.warning("translate log %s failed: %s", log_id, e)
+        return "pending"
+    with SessionLocal() as db:
+        x = db.get(TaskLog, log_id)
+        if x is None or getattr(x, f"content_{x.source_lang}") != src:
+            return "stale"
+        new = {"source_lang": r.source_lang}
+        for l in LANGS:
+            new[f"content_{l}"] = src if l == r.source_lang else r.get(l)
+        for k, v in new.items():
+            setattr(x, k, v)
+        x.translation_status = "done"
+        audit.log(db, user_id=None, action="translate", entity="task_log", entity_id=x.id, new=new)
+        db.commit()
+        return "done"
+
+
+def enqueue_log(log_id: int) -> None:
+    if not _threads:
+        translate_log(log_id)
+        return
+    _queue.put(("log", log_id))
+
+
 def enqueue_equipment(equipment_id: int) -> None:
     if not _threads:
         translate_equipment(equipment_id)
@@ -332,9 +378,9 @@ def _work() -> None:
         tid = _queue.get()
         if tid is None:
             return
-        if isinstance(tid, tuple):  # ("project", id) / ("equipment", id)
+        if isinstance(tid, tuple):  # ("project", id) / ("equipment", id) / ("log", id)
             try:
-                (translate_equipment if tid[0] == "equipment" else translate_project)(tid[1])
+                {"equipment": translate_equipment, "log": translate_log, "project": translate_project}[tid[0]](tid[1])
             except Exception:  # noqa: BLE001
                 log.exception("translate %s %s crashed", *tid)
             continue
@@ -380,6 +426,13 @@ def retry_pending() -> int:
         eids = db.scalars(select(Equipment.id).where(Equipment.translation_status == "pending").limit(50)).all()
     for eid in eids:
         enqueue_equipment(eid)
+    from .models import TaskLog
+
+    with SessionLocal() as db:
+        lids = db.scalars(select(TaskLog.id).where(TaskLog.translation_status == "pending",
+                                                   TaskLog.deleted_at.is_(None)).limit(100)).all()
+    for lid in lids:
+        enqueue_log(lid)
     return len(ids)
 
 

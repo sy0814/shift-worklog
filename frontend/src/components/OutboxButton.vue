@@ -52,6 +52,7 @@ onUnmounted(() => {
       <div v-for="e in outbox.entries" :key="e.key" class="item">
         <div>
           <b v-if="e.type === 'status'">{{ t('outbox.statusTo') }} #{{ e.task_id }} → {{ t(`status.${e.status}`) }}</b>
+          <b v-else-if="e.type === 'log'">{{ t('tlog.outbox') }} #{{ e.task_id }}</b>
           <b v-else>{{ e.type === 'task' ? t('outbox.newTask') : t('outbox.addPhotos') + ' #' + e.task_id }}</b>
           <span class="muted"> · {{ dayjs(e.saved_at).format('MM-DD HH:mm') }}</span>
         </div>

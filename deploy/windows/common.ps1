@@ -22,6 +22,7 @@ $EnvFile   = Join-Path $Backend '.env'
 $SvcApp    = 'WorkRecordApp'
 $SvcCaddy  = 'WorkRecordCaddy'
 $TaskBackup = 'WorkRecordBackup'
+$TaskWatchdog = 'WorkRecordWatchdog'   # 看门狗：每 5 分钟检查服务、备份、磁盘（watchdog.ps1）
 
 # Caddy：从官方 GitHub Releases 下载（caddyserver.com 的下载接口现在要登录，会返回 401）
 $CaddyLatestApi = 'https://api.github.com/repos/caddyserver/caddy/releases/latest'
@@ -207,6 +208,21 @@ function Start-AppServices {
         $s = Get-Service -Name $n -ErrorAction SilentlyContinue
         if ($s) { Write-Ok "启动服务 $n"; Start-Service -Name $n }
     }
+}
+
+# 看门狗计划任务：每 5 分钟运行 watchdog.ps1（服务停了先尝试启动再报警；备份失败、磁盘快满也报警）
+function Register-Watchdog {
+    $wdScript = Join-Path $AppDir 'deploy\windows\watchdog.ps1'
+    $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$wdScript`""
+    $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(2) -RepetitionInterval (New-TimeSpan -Minutes 5)
+    $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+    $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 4)
+    Register-ScheduledTask -TaskName $TaskWatchdog -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
+}
+
+# 更新、卸载时先暂停看门狗，免得它把刚停下的服务又启动起来
+function Disable-Watchdog {
+    Disable-ScheduledTask -TaskName $TaskWatchdog -ErrorAction SilentlyContinue | Out-Null
 }
 
 function Wait-Health {

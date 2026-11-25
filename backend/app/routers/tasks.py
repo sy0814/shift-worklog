@@ -91,7 +91,7 @@ def editable_team_ids(db: Session, user: User) -> set[int] | None:
 def task_perms(w: "permissions.Who | None", task: Task) -> dict[str, bool]:
     """当前用户对这条任务能做什么（按角色权限）。已完成的任务要有「改已完成的任务」权限；已移交 / 已废弃的不能再改
     （校对译文除外）。"""
-    keys = ("edit", "status", "handover", "discard", "photo", "correct")
+    keys = ("edit", "status", "handover", "discard", "photo", "correct", "log")
     if w is None:
         return dict.fromkeys(keys, False)
     live = task.status not in TERMINAL
@@ -105,6 +105,8 @@ def task_perms(w: "permissions.Who | None", task: Task) -> dict[str, bool]:
         "discard": open_ and w.task_ok("task.discard", task),
         "photo": live and done_ok and w.task_ok("photo.upload", task),
         "correct": done_ok and w.task_ok("translation.correct", task),
+        # 班次日志：能开始 / 完成或修改这条任务的人
+        "log": live and done_ok and (w.task_ok("task.status", task) or w.task_ok("task.edit", task)),
     }
 
 

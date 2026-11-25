@@ -384,4 +384,8 @@
   - 「为什么？」每一步加「去修改」链接（`WhyPanel.vue` 的 `link()`，按权限显示），目标页面按 query 直接打开对应弹窗：出勤格子、班组调班、班组修改、长期排班、节假日；已经在那个弹窗里的步骤不给链接（`hide`）
   - 班组调班保存后提醒不受影响的人：`GET /api/team-shifts/unaffected`（按个人循环的、那天有出勤记录的），和原来的「班次没人上」合在一个提示里
   - 前端按需引入 Element Plus 减小手机首次下载（压缩后 462 KB）：用户说先不做，已撤回
+- 2026-11-25 **CI、任务班次日志、报警**：
+  - CI：`.github/workflows/ci.yml`（后端 SQLite / PostgreSQL 16、前端构建、`scripts/check_ps1.py` 检查 .ps1 的 BOM + CRLF 和 alembic.ini 纯 ASCII）
+  - 班次日志：表 `task_logs`（迁移 0019）、`routers/task_logs.py`、`TaskLogs.vue`；用户选「多条记录」。翻译队列加 `("log", id)`；离线发件箱加 type `log`；导出加「班次日志」表；`task_perms` 加 `log`。坑：i18n 的 `log` 已被操作记录页用了，日志的文案放在 `tlog`
+  - 报警：用户选「服务器弹窗和日志」（不发邮件 / webhook）。`deploy/windows/watchdog.ps1` + 计划任务 WorkRecordWatchdog（install / update 注册，update 期间暂停，uninstall 删除）；`app/alerts.py` + `GET /api/alerts` 给管理员首页显示备份、磁盘问题。**watchdog.ps1 没法在容器里检查语法**，要请用户在服务器上跑 update.ps1 后看 `logs\watchdog.log` 和任务计划程序里 WorkRecordWatchdog 的「上次运行结果」
 

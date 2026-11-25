@@ -1,4 +1,4 @@
-// 离线发件箱：新建任务、补充图片、开始 / 完成任务先写进 IndexedDB，再尝试上传（按点的先后顺序）。
+// 离线发件箱：新建任务、补充图片、开始 / 完成任务、班次日志先写进 IndexedDB，再尝试上传（按点的先后顺序）。
 // 网络不通时留在本地，联网后自动重试；服务器按 client_id 去重，重复提交不会产生重复数据。
 import { openDB } from 'idb'
 import { toRaw } from 'vue'
@@ -23,6 +23,7 @@ function plain(entry) {
   return {
     ...e,
     task: e.task ? JSON.parse(JSON.stringify(toRaw(e.task))) : null,
+    log: e.log ? JSON.parse(JSON.stringify(toRaw(e.log))) : null,
     photos: toRaw(e.photos || []).map((p) => ({ ...toRaw(p), blob: toRaw(p).blob })),
   }
 }

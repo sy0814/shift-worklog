@@ -116,11 +116,16 @@ def test_export(client, admin_h, leader_h, teams, ws):
         "status": "done", "start_at": "2026-11-21T08:00:00+01:00", "end_at": "2026-11-21T10:30:00+01:00",
         "recorded_at": "2026-11-21T11:00:00+01:00"}).json()
     day = tk["shift_date"]
+    assert client.post(f"/api/tasks/{tk['id']}/logs", headers=admin_h,
+                       json={"content": "托辊轴承已换新", "lang": "zh"}).status_code == 201
     r = client.get("/api/export/tasks", headers=admin_h,
                    params={"start": day, "end": day, "team_id": teams["T1"], "lang": "sr"})
     assert r.status_code == 200 and "spreadsheetml" in r.headers["content-type"]
     wb = load_workbook(io.BytesIO(r.content))
-    assert wb.sheetnames == ["Zadaci", "Opterećenje", "Prisustvo"]
+    assert wb.sheetnames == ["Zadaci", "Opterećenje", "Prisustvo", "Dnevnik smene"]
+    logs = list(wb["Dnevnik smene"].iter_rows(values_only=True))
+    lg = dict(zip(logs[0], next(x for x in logs if x[0] == tk["id"])))
+    assert lg["Sadržaj"] == "托辊轴承已换新" and lg["Opis posla"] == "导出测试：更换托辊"
     rows = list(wb["Zadaci"].iter_rows(values_only=True))
     hdr = rows[0]
     row = next(x for x in rows if x[0] == tk["id"])

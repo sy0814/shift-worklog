@@ -1,5 +1,5 @@
 <script setup>
-// 任务详情抽屉：内容、状态操作、人员、时间、图片、修改记录
+// 任务详情抽屉：内容、状态操作、人员、时间、图片、班次日志、修改记录
 import { computed, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -17,6 +17,7 @@ import TaskForm from './TaskForm.vue'
 import TaskPhotos from './TaskPhotos.vue'
 import HandoverDialog from './HandoverDialog.vue'
 import TransText from './TransText.vue'
+import TaskLogs from './TaskLogs.vue'
 import TranslationEditor from './TranslationEditor.vue'
 
 const props = defineProps({ taskId: { type: Number, default: null } })
@@ -187,6 +188,8 @@ function histText(h) {
     return `${fieldLabel(h.field + '_' + locale.value)}: ${fmtVal('', v[h.field + '_' + locale.value])}`
   }
   if (h.action === 'retranslate') return ''
+  if (h.action === 'log') return fmtVal('', h.new_value)
+  if (h.action === 'log_delete') return fmtVal('', h.old_value)
   if (h.action === 'receive') {
     const v = parse(h.new_value) || {}
     return `${teamLabel(v.from_team_id)} → ${teamLabel(v.to_team_id)}${v.note ? ' · ' + v.note : ''}`
@@ -271,6 +274,8 @@ function histText(h) {
       <h4>{{ t('photo.title') }} ({{ task.attachments.length }})</h4>
       <TaskPhotos :photos="task.attachments" :can-delete="(p) => p.can_delete" @delete="deletePhoto" />
       <PhotoPicker v-if="task.perms?.photo" class="mt" @pick="addPhotos" />
+
+      <TaskLogs :task="task" />
 
       <el-collapse class="mt" @change="(v) => (showHistory = v.includes('h'))">
         <el-collapse-item :title="t('task.history')" name="h">

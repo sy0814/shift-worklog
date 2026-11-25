@@ -83,7 +83,7 @@ def test_member_team_login_and_permissions(client, admin_h, teams, roles):
     assert mine["perms"]["edit"] and mine["perms"]["status"]
     # 成员：能看本班组的，能开始 / 完成自己的，不能改、不能动别人的、不能新建
     seen = client.get(f"/api/tasks/{mine['id']}", headers=mh).json()
-    assert seen["perms"] == {"edit": False, "status": True, "handover": False, "discard": False, "photo": True, "correct": False}
+    assert seen["perms"] == {"edit": False, "status": True, "handover": False, "discard": False, "photo": True, "correct": False, "log": True}
     assert client.get(f"/api/tasks/{notmine['id']}", headers=mh).json()["perms"]["status"] is False
     assert client.post(f"/api/tasks/{notmine['id']}/status", headers=mh, json={"status": "in_progress"}).status_code == 403
     assert client.patch(f"/api/tasks/{mine['id']}", headers=mh, json={"content": "x"}).status_code == 403
