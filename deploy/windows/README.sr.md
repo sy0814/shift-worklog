@@ -288,6 +288,21 @@ Postoje dva servisa. **Sami se pokreću kada se računar uključi** i sami se po
 
 ### 9.3 Prelazak na novu verziju
 
+**Najlakše: automatsko preuzimanje i ažuriranje** (server mora imati internet). Otvorite PowerShell kao administrator (vidi 6.1) i ukucajte, jednu po jednu:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass -Force
+```
+
+```powershell
+C:\WorkRecord\app\deploy\windows\update.ps1 -Online
+```
+
+Skripta sama preuzima najnoviju verziju sa GitHub-a i zatim ažurira kao u tačkama 3 i 4 ispod. Sačekajte poruku 「更新完成」 („ažuriranje završeno”).
+(Pre prvog korišćenja `-Online` instaliranu verziju treba jednom ažurirati ručno kao ispod – starije verzije nemaju ovu opciju.)
+
+**Ručno preuzimanje:**
+
 1. Preuzmite novu verziju kao u koraku 3 i raspakujte je u **novu fasciklu**, npr. `D:\shift-worklog-new`.
 2. Otvorite PowerShell kao administrator (vidi 6.1) i ukucajte, jednu po jednu:
 

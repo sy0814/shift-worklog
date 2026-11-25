@@ -286,6 +286,21 @@ There are two services. They **start automatically when the PC starts** and rest
 
 ### 9.3 Update to a new version
 
+**Easiest: download and update automatically** (the server needs internet access). Open PowerShell as administrator (see 6.1) and type, one line at a time:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass -Force
+```
+
+```powershell
+C:\WorkRecord\app\deploy\windows\update.ps1 -Online
+```
+
+It downloads the latest version from GitHub and then updates as described in points 3 and 4 below. Wait for 「更新完成」 ("update finished").
+(Before you can use `-Online` the first time, update once manually as below – older versions do not have this option.)
+
+**Manual download:**
+
 1. Download the new version as in step 3 and extract it to a **new folder**, e.g. `D:\shift-worklog-new`.
 2. Open PowerShell as administrator (see 6.1) and type, one line at a time:
 
