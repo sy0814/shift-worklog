@@ -1,6 +1,8 @@
 # 工作记录系统
 
-需求与设计见 [CLAUDE.md](CLAUDE.md)。
+- **使用说明书**（给使用者）：[docs/USER_MANUAL.md](docs/USER_MANUAL.md)
+- **开发说明**（给 AI 和开发者）：[docs/AI_GUIDE.md](docs/AI_GUIDE.md)
+- 需求来历和每一轮修改的详细记录：[CLAUDE.md](CLAUDE.md)
 
 ## 开发
 

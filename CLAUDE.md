@@ -320,6 +320,7 @@
   - `assignable_ids`：班次主班组那一组还能分配「自己班组不上这个班、人被单独安排来上」的人（例如 4 班休息、人被叫来上白班却没写顶哪个班组）
   - `recording_slot` / `receiving_slot`：班组最近 30 天都没有班时归到当前班次，不再报错
   - **分两段上班**（例如 7-12、14-17）：按重叠最多的班算（白班），首页人员状态里只在一个班次出现一次（16:00 已是中班时段时出现在当前班，不会同时出现在白班和中班）；中间不在时间段里显示「不在上班时间」+「休息中，14:00 回来」/「07:00 上班」/「今天已下班」（`DutyWorker.back_at`），时间标签后面写出休息时间（`cycle.breaks`）
+- **说明书**（2026-11-25）：`docs/USER_MANUAL.md`（给使用者，按角色写，菜单名和按钮名要和界面一致）、`docs/AI_GUIDE.md`（给 AI / 开发者：结构、领域模型、不变量、加功能步骤、接口一览）。**用户能看到的功能或菜单名改了，要同步改 USER_MANUAL；结构、规则、接口改了，要同步改 AI_GUIDE**
 - 工厂时区由 `APP_TIMEZONE` 配置，默认 `Europe/Belgrade`
 - 排班推算是纯函数，在 `backend/app/shifts.py`，测试在 `backend/tests/test_shifts.py`
 - 留痕：业务代码统一调用 `app/audit.py` 的 `log()` / `log_changes()`；数据库触发器禁止对 `audit_log` 做 UPDATE / DELETE（SQLite、PostgreSQL 都已验证）
