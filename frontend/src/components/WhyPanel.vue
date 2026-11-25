@@ -14,7 +14,9 @@ const props = defineProps({
   type: { type: String, required: true }, // worker / team
   id: { type: Number, required: true },
   day: { type: String, required: true },
+  hide: { type: Array, default: () => [] }, // 不显示「去修改」的步骤（已经在那个地方了，例如出勤格子弹窗里的 attendance）
 })
+const emit = defineEmits(['navigate']) // 点了「去修改」：外面的弹窗关掉
 const { t } = useI18n()
 const auth = useAuth()
 const data = ref(null)
@@ -80,6 +82,29 @@ function text(s) {
     default: return s.code
   }
 }
+// 「去修改」：这一步是在哪里设的，直接打开那个地方（没权限的不显示）。目标页面按 query 打开对应的弹窗
+function link(s) {
+  if (props.hide.includes(s.code)) return null
+  const wid = props.type === 'worker' ? props.id : null
+  const go = (path, query, label) => ({ to: { path, query }, label })
+  switch (s.code) {
+    case 'membership': // 个人循环也在这里改（personal_cycle 那一步不重复给链接）
+      return wid && auth.deptOk('worker.manage') ? go('/workers', { schedule: wid }, 'person') : null
+    case 'team_cycle': case 'inactive':
+      return auth.deptOk('team.manage') ? go('/schedule', { tab: 'teams', team: s.team_id }, 'team') : null
+    case 'holiday': case 'workday':
+      return auth.isAdmin ? go('/schedule', { tab: 'holidays' }, 'holiday') : null
+    case 'team_override':
+      return auth.teamOk('schedule.team_shift', s.team_id) ? go('/schedule', { tab: 'calendar', shift: s.team_id, day: props.day }, 'override') : null
+    case 'attendance':
+      return wid && auth.can('attendance.edit') ? go('/attendance', { worker: wid, day: props.day }, 'attendance') : null
+    case 'member_shift': case 'member_ignored':
+      return auth.can('attendance.edit') ? go('/attendance', { team: s.team_id, month: props.day.slice(0, 7) }, 'members') : null
+    case 'overtime':
+      return wid && auth.can('overtime.edit') ? go('/attendance', { worker: wid, day: props.day }, 'overtime') : null
+    default: return null
+  }
+}
 // 会改变结果的步骤标颜色（覆盖了前面的）
 const STRONG = new Set(['team_override', 'attendance', 'holiday', 'workday', 'inactive', 'member_shift', 'cover', 'personal_cycle'])
 </script>
@@ -104,7 +129,7 @@ const STRONG = new Set(['team_override', 'attendance', 'holiday', 'workday', 'in
       </div>
       <ol class="steps">
         <li v-for="(s, i) in data.steps" :key="i" :class="{ strong: STRONG.has(s.code) }">
-          <div>{{ text(s) }}</div>
+          <div>{{ text(s) }}<router-link v-if="link(s)" :to="link(s).to" class="fix" @click="emit('navigate')">{{ t('why.fix.' + link(s).label) }} →</router-link></div>
           <div v-if="s.by_name || s.note" class="meta muted">
             <span v-if="s.by_name">{{ t('why.by', { name: s.by_name, at: fmtFull(s.at) }) }}</span>
             <span v-if="s.note">{{ t('why.note', { note: s.note }) }}</span>
@@ -122,6 +147,7 @@ const STRONG = new Set(['team_override', 'attendance', 'holiday', 'workday', 'in
 .steps { margin: 0 0 8px; padding-left: 22px; }
 .steps li { margin: 4px 0; line-height: 1.5; }
 .steps li.strong { color: var(--el-color-warning-dark-2); }
+.fix { margin-left: 8px; font-size: 12px; color: var(--el-color-primary); text-decoration: none; white-space: nowrap; }
 .meta { font-size: 12px; display: flex; flex-wrap: wrap; gap: 0 12px; }
 .small { font-size: 12px; }
 </style>

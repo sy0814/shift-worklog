@@ -187,3 +187,28 @@ def test_team_override_beats_members(client, admin_h):
         sched = load_schedule(db)
         main = sched.main_team_on(d, "day")
         assert w["id"] in assignable_ids(db, sched, main.id, d, "day")
+
+
+def test_team_shift_unaffected(client, admin_h):
+    """班组调班时，哪些人不受影响：按个人循环的、那天有出勤记录的。"""
+    d = D + timedelta(days=60)
+    t = client.post("/api/teams", headers=admin_h, json={"name_zh": "提示组", "kind": "cycle", "pattern": ["day"],
+                                                         "cycle_start": str(d), "is_main": False,
+                                                         "active_from": str(d), "active_to": str(d + timedelta(days=2))}).json()
+    mk = lambda n: client.post("/api/workers", headers=admin_h, json={"name": n, "team_id": t["id"]}).json()
+    follow, own, leave = mk("Follows Team"), mk("Own Cycle"), mk("On Leave")
+    r = client.put(f"/api/workers/{own['id']}/schedule", headers=admin_h, json={
+        "effective_from": str(d), "team_id": t["id"], "personal": True, "pattern": ["night"], "cycle_start": str(d)})
+    assert r.status_code == 200, r.text
+    client.put("/api/attendance", headers=admin_h, json={"worker_id": leave["id"], "day": str(d + timedelta(days=1)), "status": "leave"})
+    r = client.get("/api/team-shifts/unaffected", headers=admin_h,
+                   params={"team_id": t["id"], "start": str(d), "end": str(d + timedelta(days=2))})
+    assert r.status_code == 200, r.text
+    got = {(x["name"], x["reason"]): x["days"] for x in r.json()}
+    assert got == {("Own Cycle", "personal"): [str(d), str(d + timedelta(days=1)), str(d + timedelta(days=2))],
+                   ("On Leave", "attendance"): [str(d + timedelta(days=1))]}
+    # 和实际结果一致：调成休息后，按个人循环的人照常上夜班，跟班组的人休息
+    client.put("/api/team-shifts", headers=admin_h, json={"team_id": t["id"], "start": str(d), "end": str(d), "shift_kind": "off"})
+    g = client.get("/api/attendance", headers=admin_h, params={"start": str(d), "end": str(d), "team_id": t["id"]}).json()
+    assert g["cells"][str(own["id"])][str(d)]["shift_kind"] == "night"
+    assert g["cells"][str(follow["id"])][str(d)]["status"] == "off"

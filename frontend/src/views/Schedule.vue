@@ -1,7 +1,7 @@
 <script setup>
 import RowActions from '../components/RowActions.vue'
 import { useActionsWidth } from '../rowActions'
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import dayjs from 'dayjs'
@@ -15,7 +15,7 @@ import TriNames from '../components/TriNames.vue'
 import WhyPanel from '../components/WhyPanel.vue'
 import WhyDialog from '../components/WhyDialog.vue'
 import ScheduleGuide from '../components/ScheduleGuide.vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { fullHours, shortEntry, splitHours } from '../cycle'
 
 const { t, tm, locale } = useI18n()
@@ -24,10 +24,29 @@ const actW2 = useActionsWidth(() => [t('common.edit'), t('common.delete')])
 const actW3 = useActionsWidth(() => [t('common.delete')])
 const auth = useAuth()
 const route = useRoute()
-// 「怎么改排班？」里的链接用 ?tab=teams 直接打开班组管理
-const tabFor = (v) => (v === 'teams' && auth.deptOk('team.manage') ? 'teams' : 'calendar')
+const router = useRouter()
+// 从「怎么改排班？」「为什么？」的链接进来：?tab=teams|holidays|calendar；
+// &team=班组 id（打开这个班组的修改弹窗）；&shift=班组 id&day=日期（打开这天的班组调班）
+const tabFor = (v) => (v === 'teams' && auth.deptOk('team.manage') ? 'teams' : v === 'holidays' && auth.isAdmin ? 'holidays' : 'calendar')
 const tab = ref(tabFor(route.query.tab))
-watch(() => route.query.tab, (v) => { if (v) tab.value = tabFor(v) })
+async function applyQuery(q) {
+  if (q.tab) tab.value = tabFor(q.tab)
+  if (q.team && tab.value === 'teams') {
+    await nextTick()
+    const team = auth.teams.find((x) => x.id === Number(q.team))
+    if (team) openTeam(team)
+  }
+  if (q.shift && q.day) {
+    tab.value = 'calendar'
+    if (month.value !== q.day.slice(0, 7)) {
+      month.value = q.day.slice(0, 7)
+      await loadCalendar()
+    }
+    openTeamShift(Number(q.shift), q.day)
+  }
+  if (q.team || q.shift) router.replace({ query: { tab: tab.value } }) // 刷新页面时不再自动弹出
+}
+watch(() => route.query, (q) => applyQuery(q))
 
 const month = ref(dayjs().format('YYYY-MM'))
 const days = ref([])
@@ -100,13 +119,23 @@ async function saveTeamShift() {
   }
   tsOpen.value = false
   await loadCalendar()
-  await warnCoverage(start, end)
+  await warnAfterSave(start, end, ts.mode === 'swap' ? [ts.team_id, ts.team_b] : [ts.team_id])
 }
-// 保存后检查这几天有没有班次没人上（月份外的日子也查）
-async function warnCoverage(start, end) {
-  const probs = (await api.get('/shifts/coverage', { params: { start, end } })).data
-  if (!probs.length) return ElMessage.success(t('common.saved'))
-  ElMessageBox.alert(probs.map(covText).join('\n'), t('schedule.covAfter'), { type: 'warning', customStyle: { whiteSpace: 'pre-line' } })
+// 保存后提醒：这几天有没有班次没人上（月份外的日子也查）；哪些人不受这次调班影响（个人循环 / 有出勤记录）
+async function warnAfterSave(start, end, teamIds) {
+  const [cov, ...un] = await Promise.all([api.get('/shifts/coverage', { params: { start, end } }),
+    ...teamIds.map((id) => api.get('/team-shifts/unaffected', { params: { team_id: id, start, end } }))])
+  const probs = cov.data
+  const people = un.flatMap((r) => r.data)
+  if (!probs.length && !people.length) return ElMessage.success(t('common.saved'))
+  const days = (ds) => ds.map((d) => d.slice(5)).join('、')
+  const parts = []
+  if (people.length) {
+    parts.push([t('schedule.unaffected'), ...people.map((p) => '· ' + t(p.reason === 'personal' ? 'schedule.unPersonal' : 'schedule.unAttendance',
+      { name: p.name, days: days(p.days) }))].join('\n'))
+  }
+  if (probs.length) parts.push([t('schedule.covAfter'), ...probs.map(covText)].join('\n'))
+  ElMessageBox.alert(parts.join('\n\n'), t('schedule.savedNote'), { type: 'warning', customStyle: { whiteSpace: 'pre-line' } })
 }
 async function restoreTeamShift(teamId, start, end) {
   await api.delete('/team-shifts', { params: { team_id: teamId, start, end } })
@@ -190,6 +219,7 @@ watch(year, loadHolidays)
 
 onMounted(async () => {
   await loadCalendar()
+  applyQuery(route.query)
   if (auth.isAdmin) await Promise.all([loadConfig(), loadHolidays()])
 })
 </script>
@@ -240,7 +270,7 @@ onMounted(async () => {
           <p class="muted">{{ t('schedule.teamShiftHint') }}</p>
           <template v-if="ts.why">
             <el-button link type="primary" size="small" @click="tsWhyOpen = !tsWhyOpen">{{ t('why.button') }} {{ localName(auth.teamById(ts.why.team)) }} · {{ ts.why.day }} {{ tsWhyOpen ? '▴' : '▾' }}</el-button>
-            <div v-if="tsWhyOpen" class="why-box"><WhyPanel type="team" :id="ts.why.team" :day="ts.why.day" /></div>
+            <div v-if="tsWhyOpen" class="why-box"><WhyPanel type="team" :id="ts.why.team" :day="ts.why.day" :hide="['team_override']" @navigate="tsOpen = false" /></div>
           </template>
           <el-form label-width="auto">
             <el-form-item>
