@@ -1,7 +1,7 @@
 <script setup>
-// 首页：未闭环警示 → 当前在班 / 下一个接班（含在岗人数，点开看人员状态）→ 交接班（合并在首页）→ 今日排班（默认收起，
-// 点里面的班组 = 在上面看它的交接班）
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+// 首页：未闭环警示 → 当前在班 / 下一个接班（含在岗人数，点开看人员状态）→ 今日排班（默认收起，
+// 点里面的班组 = 在下面看它的交接班）→ 交接班（合并在首页）
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import dayjs from 'dayjs'
 import api from '../api'
@@ -51,10 +51,12 @@ const mainTeam = (s) => [...s.team_ids].sort((a, b) => !!auth.teamById(b)?.is_ma
   .map((id) => localName(auth.teamById(id))).join(' + ')
 // 交接班看哪个班组：0 = 默认；在「今日排班」里点班组切换
 const boardTeam = ref(0)
-const todayOpen = ref([])
+// 今日排班展开 / 收起：记在本机
+const readOpen = () => { try { return localStorage.getItem('home_today_open') === '1' ? ['today'] : [] } catch { return [] } }
+const todayOpen = ref(readOpen())
+watch(todayOpen, (v) => { try { localStorage.setItem('home_today_open', v.length ? '1' : '0') } catch { /* 存不了就算了 */ } })
 function viewTeam(id) {
   boardTeam.value = id
-  document.querySelector('.hb')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 const cards = computed(() => now.value && [
   { key: 'current', s: now.value.current, d: duty.value.current },
@@ -121,8 +123,6 @@ function open(id) {
       </el-card>
     </div>
 
-    <HandoverBoard ref="boardRef" :team-id="boardTeam" @changed="load" @reset="boardTeam = 0" />
-
     <el-collapse v-if="today" v-model="todayOpen" class="today">
       <el-collapse-item name="today">
         <template #title><b>{{ t('home.today') }} · {{ today.day }}</b></template>
@@ -136,6 +136,9 @@ function open(id) {
         </div>
       </el-collapse-item>
     </el-collapse>
+
+    <HandoverBoard ref="boardRef" :team-id="boardTeam" @changed="load" @reset="boardTeam = 0" />
+
 
     <DutyDrawer ref="drawerRef" v-model="dutyOpen" :which="dutyWhich" @add="quickAdd" @open-task="open"
                 @loaded="(w, d) => (duty[w] = d)" />
@@ -163,7 +166,7 @@ function open(id) {
 .cnt.idle { color: #529b2e; }
 .cnt.absent { color: #909399; }
 .hint { margin-left: auto; color: #409eff; font-size: 12px; }
-.today { margin-top: 16px; background: #fff; border-radius: 4px; padding: 0 16px; border: 1px solid var(--el-border-color-lighter); }
+.today { margin: 12px 0 4px; background: #fff; border-radius: 4px; padding: 0 16px; border: 1px solid var(--el-border-color-lighter); }
 .today :deep(.el-collapse-item__header), .today :deep(.el-collapse-item__wrap) { border-bottom: 0; }
 .muted { color: #909399; }
 .small { font-size: 12px; margin-bottom: 8px; }
