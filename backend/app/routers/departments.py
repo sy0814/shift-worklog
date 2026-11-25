@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from .. import audit, translation_service
 from ..db import Base, get_db
 from ..departments import all_departments
-from ..models import Department, User
+from ..models import Department, Team, User
 from ..schedule_service import load_schedule, local_now
 from ..schemas import DepartmentOut
 from ..security import require_admin
@@ -16,9 +16,17 @@ from ..security import require_admin
 router = APIRouter(prefix="/api/departments", tags=["departments"])
 
 
+class TeamName(BaseModel):
+    id: int
+    name_zh: str
+    name_sr: str
+    name_en: str
+
+
 class PortalDept(DepartmentOut):
     teams: int  # 有几个班组
     on_duty_team_ids: list[int]  # 此刻在班的班组（主班组在前）
+    on_duty_teams: list[TeamName]  # 同上，带名字（导航页没登录，拿不到班组列表）
 
 
 class PortalOut(BaseModel):
@@ -31,13 +39,16 @@ def portal(db: Session = Depends(get_db)):
     """导航页：所有车间（含停用的，前端只显示在用的）和此刻各车间在班的班组。不需要登录。"""
     sched = load_schedule(db)
     d, k = sched.shift_at(local_now())
+    names = {t.id: t for t in db.scalars(select(Team))}
     out = []
     for dep in all_departments(db):
         on = sched.teams_on(d, k, dep.id)
         on.sort(key=lambda t: not t.is_main)
         out.append(PortalDept(**DepartmentOut.model_validate(dep).model_dump(),
                               teams=sum(1 for t in sched.teams if t.dept == dep.id),
-                              on_duty_team_ids=[t.id for t in on]))
+                              on_duty_team_ids=[t.id for t in on],
+                              on_duty_teams=[TeamName(id=t.id, name_zh=names[t.id].name_zh, name_sr=names[t.id].name_sr,
+                                                      name_en=names[t.id].name_en) for t in on]))
     return PortalOut(shift_kind=k, departments=out)
 
 

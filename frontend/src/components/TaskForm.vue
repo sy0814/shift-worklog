@@ -20,6 +20,8 @@ const visible = defineModel({ type: Boolean })
 const emit = defineEmits(['saved'])
 const { t, locale } = useI18n()
 const auth = useAuth()
+// 选班组：管理员、车间管理员（新建任务范围是本车间 / 全厂）、当前车间里没有自己班组的人
+const chooseTeam = computed(() => auth.isAdmin || !auth.hasOwnTeamHere || auth.wide('task.create'))
 const outbox = useOutbox()
 
 const workers = ref([])
@@ -54,7 +56,7 @@ async function init() {
     Object.assign(form, {
       client_id: uuid(), content: '', leftover: '', status: 'not_started',
       worker_ids: [...(props.preset?.worker_ids || [])], lead_worker_id: props.preset?.lead_worker_id ?? null,
-      equipment_id: props.preset?.equipment_id ?? null, start_at: null, end_at: null, team_id: props.preset?.team_id ?? auth.user.team_id ?? auth.teams[0]?.id,
+      equipment_id: props.preset?.equipment_id ?? null, start_at: null, end_at: null, team_id: props.preset?.team_id ?? (auth.hasOwnTeamHere ? auth.user.team_id : auth.teams[0]?.id),
     })
   }
   workers.value = await loadWorkers()
@@ -165,7 +167,7 @@ async function saveNew() {
     equipment_id: form.equipment_id || null,
     end_at: form.end_at || null, leftover: form.leftover?.trim() || null,
     recorded_at: new Date().toISOString(),
-    ...(auth.isAdmin ? { team_id: form.team_id } : {}),
+    ...(chooseTeam.value ? { team_id: form.team_id } : {}),
   }
   const task = await outbox.submitTask(body, photos.value)
   visible.value = false
@@ -218,7 +220,7 @@ async function saveEdit() {
   <el-dialog v-model="visible" :title="task ? t('task.edit') : t('task.new')" :fullscreen="fullscreen"
              width="min(640px, 96vw)" :close-on-click-modal="false" append-to-body>
     <el-form label-position="top" @submit.prevent>
-      <el-form-item v-if="!task && auth.isAdmin" :label="t('task.team')">
+      <el-form-item v-if="!task && chooseTeam" :label="t('task.team')">
         <el-select v-model="form.team_id">
           <el-option v-for="tm in auth.teams" :key="tm.id" :label="localName(tm)" :value="tm.id" />
         </el-select>

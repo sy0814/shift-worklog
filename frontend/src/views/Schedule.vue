@@ -60,7 +60,7 @@ function openTeamShift(teamId, day) {
   if (!canShiftAny.value) return
   const d = day || todayStr
   const cur = days.value.find((x) => x.day === d)
-  const team = teamId ?? (auth.isAdmin ? auth.teams[0]?.id : auth.user.team_id)
+  const team = teamId ?? (auth.hasOwnTeamHere ? auth.user.team_id : auth.teams[0]?.id)
   const curHours = cur && teamId && cur.hours?.[teamId]
   Object.assign(ts, { mode: 'set', team_id: team, team_b: null, range: [d, d],
     shift_kind: curHours ? 'hours' : (cur && teamId && cur.shifts[teamId]) || 'day', note: '',
@@ -223,7 +223,7 @@ onMounted(async () => {
               </el-radio-group>
             </el-form-item>
             <el-form-item :label="t('task.team')">
-              <el-select v-model="ts.team_id" :disabled="auth.scope('schedule.team_shift') !== 'all'"><el-option v-for="tm2 in auth.teams" :key="tm2.id" :label="localName(tm2)" :value="tm2.id" /></el-select>
+              <el-select v-model="ts.team_id" :disabled="!auth.wide('schedule.team_shift')"><el-option v-for="tm2 in auth.teams" :key="tm2.id" :label="localName(tm2)" :value="tm2.id" /></el-select>
             </el-form-item>
             <el-form-item v-if="ts.mode === 'swap'" :label="t('schedule.teamB')">
               <el-select v-model="ts.team_b"><el-option v-for="tm2 in auth.teams.filter((x) => x.id !== ts.team_id)" :key="tm2.id" :label="localName(tm2)" :value="tm2.id" /></el-select>
@@ -257,7 +257,7 @@ onMounted(async () => {
         </el-dialog>
       </el-tab-pane>
 
-      <el-tab-pane v-if="auth.isAdmin" lazy :label="t('schedule.teams')">
+      <el-tab-pane v-if="auth.deptOk('team.manage')" lazy :label="t('schedule.teams')">
         <div class="toolbar"><el-button type="primary" @click="openTeam(null)">{{ t('schedule.addTeam') }}</el-button></div>
         <!-- 列宽都固定：切到这个标签时表格不用再算一次列宽（否则会左右跳一下） -->
         <el-table :data="auth.teams" size="small" border class="teams-table">

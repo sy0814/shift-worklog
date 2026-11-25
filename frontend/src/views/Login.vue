@@ -9,6 +9,7 @@ import { Lock } from '@element-plus/icons-vue'
 import api from '../api'
 import { localName } from '../i18n'
 import { useAuth } from '../stores/auth'
+import { getDept } from '../dept'
 import LangSwitch from '../components/LangSwitch.vue'
 import WorkerAvatar from '../components/WorkerAvatar.vue'
 
@@ -55,8 +56,18 @@ const people = ref([])
 const person = ref(null)
 const pin = ref('')
 const pinInput = ref()
+// 多个车间时：显示从导航页选的车间，班组账号只列这个车间的班组
+const dept = ref(getDept())
+onMounted(async () => {
+  try {
+    auth.departments = (await api.get('/departments', { silent: true })).data.departments
+  } catch { /* 断网 */ }
+  if (mode.value === 'team') loadTeams()
+})
+const deptObj = computed(() => (auth.multiDept ? auth.departments.find((d) => d.id === dept.value) : null))
 async function loadTeams() {
-  teams.value = (await api.get('/auth/teams', { silent: true })).data
+  const params = auth.multiDept && dept.value ? { department_id: dept.value } : {}
+  teams.value = (await api.get('/auth/teams', { params, silent: true })).data
   if (teamId.value && !teams.value.some((x) => x.id === teamId.value)) teamId.value = null
   if (teamId.value) loadPeople()
 }
@@ -66,7 +77,6 @@ async function loadPeople() {
 }
 watch(teamId, (v) => { if (v) save('login_team', String(v)); loadPeople() })
 watch(mode, (v) => { if (v === 'team' && !teams.value.length) loadTeams() })
-onMounted(() => { if (mode.value === 'team') loadTeams() })
 async function pick(p) {
   if (p.locked) return ElMessage.warning(t('login.locked', { n: 10 }))
   person.value = p
@@ -98,6 +108,10 @@ const teamLabel = computed(() => teams.value.find((x) => x.id === teamId.value))
       <div class="login-head">
         <h2>{{ appTitle(locale) }}</h2>
         <LangSwitch />
+      </div>
+      <div v-if="auth.multiDept" class="dept-line">
+        <span>{{ deptObj ? localName(deptObj) : t('dept.choose') }}</span>
+        <router-link :to="{ name: 'portal' }">{{ t('dept.switch') }}</router-link>
       </div>
       <el-segmented v-model="mode" :options="[{ value: 'personal', label: t('login.personal') }, { value: 'team', label: t('login.team') }]"
                     block size="large" class="modes" />
@@ -147,6 +161,9 @@ const teamLabel = computed(() => teams.value.find((x) => x.id === teamId.value))
 .login-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .login-head h2 { margin: 0; font-size: 20px; }
 .modes { margin-bottom: 14px; }
+.dept-line { display: flex; justify-content: space-between; align-items: center; background: #f4f8fd; border-radius: 6px;
+  padding: 6px 10px; margin-bottom: 12px; font-weight: 600; color: #303133; }
+.dept-line a { font-weight: normal; font-size: 13px; color: #409eff; text-decoration: none; }
 .muted { color: #909399; }
 .small { font-size: 12px; margin: 10px 0 6px; }
 .teams { display: flex; flex-wrap: wrap; gap: 8px; }

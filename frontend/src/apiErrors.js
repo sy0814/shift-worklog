@@ -1,5 +1,14 @@
 // 把服务器返回的英文错误说明翻译成界面语言（只翻用户操作会碰到的；其他的原样显示）
 const T = {
+  dept_name: ['请填车间名称', 'Unesite naziv pogona', 'Workshop name is required'],
+  not_dept: ['只能管理本车间', 'Samo za vaš pogon', 'Your own workshop only'],
+  dept_used: ['车间里已经有班组、员工或设备，不能删除，请改为停用', 'Pogon ima ekipe, radnike ili opremu; označite ga kao neaktivan', 'The workshop is in use; deactivate it instead'],
+  dept_keep: ['至少要保留一个在用的车间', 'Mora ostati bar jedan aktivan pogon', 'Keep at least one active workshop'],
+  dept_404: ['车间不存在', 'Pogon ne postoji', 'Workshop not found'],
+  dept_noteams: ['这个车间还没有班组，请先在「排班 → 班组管理」里添加', 'Pogon još nema ekipa; dodajte ih u „Raspored → Ekipe”', 'This workshop has no teams yet; add them under “Schedule → Teams”'],
+  wide_role: ['不能设置「全厂」范围的角色，请找系统管理员', 'Ne možete dodeliti ulogu za celu fabriku; obratite se administratoru', 'You cannot assign a plant-wide role; ask the system administrator'],
+  wide_acc: ['这个人的角色是「全厂」范围的，只有系统管理员能改', 'Ova osoba ima ulogu za celu fabriku; menja je samo administrator', 'This person has a plant-wide role; only the system administrator can change it'],
+  other_dept: ['{x} 属于别的车间', '{x} pripada drugom pogonu', '{x} belongs to another workshop'],
   team_off: ['这个班组那天休息，请选一个班次', 'Ekipa tog dana ne radi; izaberite smenu', 'The team is off that day; choose a shift'],
   worker_off: ['{x} 那天不上班，请选一个班次', '{x} tog dana ne radi; izaberite smenu', '{x} is not on duty that day; choose a shift'],
   ot_long: ['加班时间太长（下班后最多 {x} 小时）', 'Prekovremeni rad je predug (najviše {x} h posle smene)', 'Overtime is too long (at most {x} h after the shift)'],
@@ -76,6 +85,15 @@ const T = {
   self: ['不能降级或停用自己', 'Ne možete sebi oduzeti prava', 'You cannot demote or disable yourself'],
 }
 const RULES = [
+  [/^not your department/, 'not_dept'],
+  [/^department name required/, 'dept_name'],
+  [/^department in use/, 'dept_used'],
+  [/^keep at least one active department/, 'dept_keep'],
+  [/^department not found/, 'dept_404'],
+  [/^no teams in this department/, 'dept_noteams'],
+  [/^cannot assign a factory-wide role/, 'wide_role'],
+  [/^cannot edit a factory-wide account/, 'wide_acc'],
+  [/^(?:\d+: )?(.+) belongs to another department/, 'other_dept'],
   [/^team is off that day/, 'team_off'],
   [/^(.+) is not on duty that day/, 'worker_off'],
   [/^overtime must end within (\d+)/, 'ot_long'],

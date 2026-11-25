@@ -70,7 +70,7 @@ const form = reactive({})
 const blank = () => ({
   name: '', content: '', lang: locale.value, enabled: true, kind: 'daily', at_time: '08:00', every_n: 1,
   weekdays: [], month_days: [], year_dates: [], shift_kinds: [], start_date: dayjs().format('YYYY-MM-DD'),
-  ...(auth.scope('inspection.manage') === 'all' ? { assign: 'on_duty', team_id: null } : { assign: 'fixed', team_id: auth.user.team_id }), worker_ids: [],
+  ...(auth.wide('inspection.manage') ? { assign: 'on_duty', team_id: null } : { assign: 'fixed', team_id: auth.user.team_id }), worker_ids: [],
   transferable: true, subs: [],
 })
 // 小项目：表单里用 { content, target: { mode: default / team / person, team_id, worker_id } }，提交时转成 sub_items
@@ -285,14 +285,14 @@ const runType = { created: 'success', manual: 'primary', skipped: 'info', failed
           </el-form-item>
 
           <el-form-item :label="t('insp.assign')">
-            <el-radio-group v-model="form.assign" :disabled="auth.scope('inspection.manage') !== 'all'">
+            <el-radio-group v-model="form.assign" :disabled="!auth.wide('inspection.manage')">
               <el-radio value="on_duty">{{ t('insp.onDuty') }}</el-radio>
               <el-radio value="fixed">{{ t('insp.fixed') }}</el-radio>
             </el-radio-group>
           </el-form-item>
           <template v-if="form.assign === 'fixed'">
             <el-form-item :label="t('insp.team')">
-              <el-select v-model="form.team_id" :disabled="auth.scope('inspection.manage') !== 'all'" style="width: 160px">
+              <el-select v-model="form.team_id" :disabled="!auth.wide('inspection.manage')" style="width: 160px">
                 <el-option v-for="tm2 in auth.teams" :key="tm2.id" :label="localName(tm2)" :value="tm2.id" />
               </el-select>
               <div class="muted small">{{ t('insp.fixedHint') }}</div>

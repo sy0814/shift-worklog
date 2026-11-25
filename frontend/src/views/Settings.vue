@@ -6,6 +6,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api'
 import TriNames from '../components/TriNames.vue'
 import StorageCard from '../components/StorageCard.vue'
+import DepartmentsCard from '../components/DepartmentsCard.vue'
 import { LANGS, i18n } from '../i18n'
 import { branding, loadBranding } from '../branding'
 
@@ -122,6 +123,8 @@ onMounted(async () => {
         <el-form-item><el-button type="primary" @click="saveName">{{ t('common.save') }}</el-button></el-form-item>
       </el-form>
     </el-card>
+
+    <DepartmentsCard />
 
     <!-- 新员工默认密码 -->
     <el-card shadow="never" class="mb">

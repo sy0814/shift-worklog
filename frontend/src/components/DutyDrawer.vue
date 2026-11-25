@@ -67,7 +67,7 @@ function offText(r) {
 
 function addTask() {
   // 管理员默认派给这个班次的倒班班组；班长派给自己的班组
-  const team = auth.isAdmin ? data.value.main_team_id : auth.user.team_id
+  const team = auth.hasOwnTeamHere ? auth.user.team_id : data.value.main_team_id
   emit('add', { worker_ids: [...picked.value], team_id: team })
   visible.value = false
 }

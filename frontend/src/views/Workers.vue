@@ -1,5 +1,5 @@
 <script setup>
-// 员工名册（管理员）：像表格一样点格子直接改（改完马上保存、留痕）、加行、加自定义列、Excel 导入导出
+// 员工名册（系统管理员；车间管理员管本车间）：像表格一样点格子直接改（改完马上保存、留痕）、加行、加自定义列、Excel 导入导出
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -32,8 +32,9 @@ const timer = setInterval(() => { if (!editing.key && !draft.value) load() }, 30
 onUnmounted(() => clearInterval(timer))
 
 // 班长（有「重设成员个人密码」权限）也能进来：只读，只看本班组，只能给班组账号的成员重设个人密码
-const readonly = computed(() => !auth.isAdmin)
+const readonly = computed(() => !auth.deptOk('worker.manage'))
 const shown = computed(() => rows.value.filter((w) => (!teamFilter.value || w.team_id === teamFilter.value)
+  && (!auth.multiDept || w.department_id === auth.dept) // 多个车间时只列当前车间的人
   && (!readonly.value || auth.inGroup(w.team_id))))
 // 角色
 const roles = ref([])
@@ -41,7 +42,10 @@ api.get('/roles').then((r) => { roles.value = r.data }).catch(() => {})
 const memberRole = computed(() => roles.value.find((r) => r.code === 'member'))
 const roleOf = (w) => roles.value.find((r) => r.id === (w.role_id ?? memberRole.value?.id))
 const roleLabel = (w) => { const r = roleOf(w); return r ? r[`name_${locale.value}`] : '' }
-const canAccount = (w) => auth.isAdmin || (roleOf(w)?.login_mode === 'pin' && auth.teamOk('worker.pin', w.team_id))
+const canAccount = (w) => !readonly.value || (roleOf(w)?.login_mode === 'pin' && auth.teamOk('worker.pin', w.team_id))
+// 车间管理员不能给人设「全厂」范围的角色
+const assignableRoles = computed(() => roles.value.filter((r) => auth.isAdmin || auth.scope('worker.manage') === 'all'
+  || !Object.values(r.permissions || {}).includes('all')))
 const accOpen = ref(false)
 const accWorker = ref(null)
 function openAccount(w) { accWorker.value = w; accOpen.value = true }
@@ -243,7 +247,8 @@ async function saveBulk() {
             <th class="c-ws">{{ t('acc.btn') }}</th>
             <th v-if="!readonly" class="c-ws">{{ t('schedule.cycleCol') }}</th>
             <th v-for="f in fields" :key="f.id" class="xcol">
-              <el-dropdown trigger="click" @command="(c) => colCommand(f, c)">
+              <span v-if="!auth.isAdmin" class="colhead">{{ f.label }}</span>
+              <el-dropdown v-else trigger="click" @command="(c) => colCommand(f, c)">
                 <span class="colhead">{{ f.label }} ▾</span>
                 <template #dropdown>
                   <el-dropdown-menu>
@@ -253,7 +258,7 @@ async function saveBulk() {
                 </template>
               </el-dropdown>
             </th>
-            <th v-if="!readonly" class="addcol"><el-button link type="primary" :icon="Plus" @click="addCol">{{ t('workers.addCol') }}</el-button></th>
+            <th v-if="auth.isAdmin" class="addcol"><el-button link type="primary" :icon="Plus" @click="addCol">{{ t('workers.addCol') }}</el-button></th>
           </tr>
         </thead>
         <tbody>
@@ -288,7 +293,7 @@ async function saveBulk() {
             <td :class="['c-role', { ok: flashed === `${w.id}|role_id` }]">
               <span v-if="readonly">{{ roleLabel(w) }}</span>
               <el-select v-else :model-value="w.role_id ?? memberRole?.id" size="small" class="rolesel" @change="(v) => setRole(w, v)">
-                <el-option v-for="r in roles" :key="r.id" :value="r.id" :label="r[`name_${locale}`]" />
+                <el-option v-for="r in assignableRoles" :key="r.id" :value="r.id" :label="r[`name_${locale}`]" />
               </el-select>
             </td>
             <td :class="['cell', 'c-act', { ok: flashed === `${w.id}|is_active` }]">
@@ -301,7 +306,7 @@ async function saveBulk() {
                         @blur="commit" @keydown="onKey" />
               <span :class="{ ghost: isEditing(w, 'x' + f.id) }">{{ w.extra?.[String(f.id)] }}</span>
             </td>
-            <td v-if="!readonly" />
+            <td v-if="auth.isAdmin" />
           </tr>
           <!-- 新增的一行 -->
           <tr v-if="draft" class="draft">

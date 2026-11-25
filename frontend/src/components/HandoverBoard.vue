@@ -92,7 +92,7 @@ const sections = computed(() => board.value && [
     <div class="toolbar">
       <h2 class="title">{{ t('nav2.board') }}</h2>
       <el-radio-group v-model="teamId" size="small">
-        <el-radio-button :value="0">{{ auth.isAdmin ? t('shift.current') : t('home.myTeam') }}</el-radio-button>
+        <el-radio-button :value="0">{{ auth.hasOwnTeamHere ? t('home.myTeam') : t('shift.current') }}</el-radio-button>
         <el-radio-button v-for="tm in switchTeams" :key="tm.id" :value="tm.id">{{ localName(tm) }}</el-radio-button>
       </el-radio-group>
     </div>

@@ -56,7 +56,7 @@ const formOpen = ref(false)
 const form = reactive({})
 const blankSub = () => ({ content: '', target: { mode: 'team', team_id: auth.user?.team_id ?? null, worker_id: null } })
 function openCreate() {
-  Object.assign(form, { name: '', transferable: true, deadline: null, team_id: auth.user?.team_id ?? auth.teams[0]?.id, subs: [blankSub()] })
+  Object.assign(form, { name: '', transferable: true, deadline: null, team_id: auth.hasOwnTeamHere ? auth.user.team_id : auth.teams[0]?.id, subs: [blankSub()] })
   loadPeople()
   formOpen.value = true
 }
@@ -65,7 +65,7 @@ const subOk = (s) => s.content.trim() && (s.target.mode === 'team' ? s.target.te
 const formOk = computed(() => form.name?.trim() && form.subs?.length && form.subs.every(subOk))
 async function create() {
   const body = { name: form.name.trim(), lang: locale.value, transferable: form.transferable, deadline: form.deadline || null,
-    subs: form.subs.map(subBody), ...(auth.scope('project.manage') === 'all' ? { team_id: form.team_id } : {}) }
+    subs: form.subs.map(subBody), ...(auth.wide('project.manage') || !auth.hasOwnTeamHere ? { team_id: form.team_id } : {}) }
   const p = (await api.post('/projects', body)).data
   formOpen.value = false
   ElMessage.success(t('common.saved'))
@@ -161,7 +161,7 @@ const open = (s) => ['not_started', 'in_progress'].includes(s.status)
     <el-dialog v-model="formOpen" :title="t('proj.add')" width="min(760px, 96vw)" :fullscreen="isNarrow()" append-to-body :close-on-click-modal="false">
       <el-form label-width="auto">
         <el-form-item :label="t('proj.name')"><el-input v-model="form.name" maxlength="200" /></el-form-item>
-        <el-form-item v-if="auth.scope('project.manage') === 'all'" :label="t('proj.team')">
+        <el-form-item v-if="auth.wide('project.manage') || !auth.hasOwnTeamHere" :label="t('proj.team')">
           <el-select v-model="form.team_id" style="width: 160px"><el-option v-for="tm in auth.teams" :key="tm.id" :label="localName(tm)" :value="tm.id" /></el-select>
         </el-form-item>
         <el-form-item :label="t('proj.transferable')">

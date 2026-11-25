@@ -63,7 +63,7 @@ async function unlock() {
       <div v-else class="muted mb">{{ t('acc.none') }}</div>
       <el-form label-position="top" @submit.prevent>
         <el-form-item v-if="!pin" :label="t('users.username')">
-          <el-input v-model="form.username" :disabled="!auth.isAdmin" autocomplete="off" />
+          <el-input v-model="form.username" :disabled="!auth.deptOk('worker.manage')" autocomplete="off" />
         </el-form-item>
         <el-form-item :label="acc.user_id ? t('acc.newSecret') : (pin ? t('acc.pin') : t('users.password'))">
           <el-input v-model="form.password" type="password" show-password autocomplete="new-password" :inputmode="pin ? 'numeric' : 'text'"
