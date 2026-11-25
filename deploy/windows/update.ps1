@@ -30,6 +30,11 @@ Build-App $python $npm
 Invoke-Migrate
 
 Write-Step '4/4 启动服务'
+# 服务配置按新版本重写（现在直接用基础 Python 运行，停服务时不会再留下进程占着 8000 端口）
+if (Get-Service -Name $SvcApp -ErrorAction SilentlyContinue) {
+    Write-Utf8NoBom (Join-Path $ToolsDir "$SvcApp.xml") (Get-AppServiceXml (Get-PgServiceName))
+    Write-Ok "已更新服务配置 $SvcApp.xml"
+}
 Start-AppServices
 Wait-Health
 Register-Watchdog

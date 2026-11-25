@@ -18,6 +18,7 @@ $BackupCfg = Join-Path $DataDir 'backup-target.txt'
 $Backend   = Join-Path $AppDir 'backend'
 $Frontend  = Join-Path $AppDir 'frontend'
 $VenvPy    = Join-Path $Backend '.venv\Scripts\python.exe'
+$RunServer = Join-Path $Backend 'run_server.py'   # 服务的启动入口（见 Get-AppServiceXml）
 $EnvFile   = Join-Path $Backend '.env'
 $SvcApp    = 'WorkRecordApp'
 $SvcCaddy  = 'WorkRecordCaddy'
@@ -196,17 +197,82 @@ function Invoke-WinSW([string]$Name, [string]$Command) {
     $global:LASTEXITCODE = 0
 }
 
+# 基础 Python（venv 是从它建的，写在 .venv\pyvenv.cfg 的 home 里）
+function Get-BasePython {
+    $cfg = Join-Path $Backend '.venv\pyvenv.cfg'
+    if (Test-Path $cfg) {
+        foreach ($line in (Get-Content -Path $cfg -Encoding UTF8)) {
+            if ($line -match '^\s*home\s*=\s*(.+?)\s*$') {
+                $exe = Join-Path $Matches[1] 'python.exe'
+                if (Test-Path $exe) { return $exe }
+            }
+        }
+    }
+    return $VenvPy
+}
+
+# 程序服务的 WinSW 配置。直接用基础 Python 运行 run_server.py，不用 .venv\Scripts\python.exe：
+# 后者只是个转接程序，会再启动一个真正的 Python；停服务时真正的那个可能留下来一直占着 8000 端口，
+# 之后服务就再也启动不了（日志里报 10048）。install、update 都用这里生成，update 会覆盖旧配置。
+function Get-AppServiceXml([string]$PgService) {
+    $py = Get-BasePython
+    $depend = ''
+    if ($PgService) { $depend = "  <depend>$PgService</depend>" }
+    return @"
+<service>
+  <id>$SvcApp</id>
+  <name>WorkRecord App</name>
+  <description>工作记录系统（交接班 / 工作安排）后台程序</description>
+  <executable>$py</executable>
+  <arguments>"$RunServer" app.main:app --host 127.0.0.1 --port 8000 --proxy-headers --forwarded-allow-ips 127.0.0.1</arguments>
+  <workingdirectory>$Backend</workingdirectory>
+  <startmode>Automatic</startmode>
+$depend
+  <onfailure action="restart" delay="10 sec"/>
+  <onfailure action="restart" delay="30 sec"/>
+  <resetfailure>1 hour</resetfailure>
+  <stoptimeout>15 sec</stoptimeout>
+  <env name="PYTHONIOENCODING" value="utf-8"/>
+  <env name="PYTHONUTF8" value="1"/>
+  <logpath>$LogDir</logpath>
+  <log mode="roll-by-size"><sizeThreshold>10240</sizeThreshold><keepFiles>8</keepFiles></log>
+</service>
+"@
+}
+
+# 服务已经停了、8000 端口却还被 Python 占着（以前的版本停服务后会留下这种进程）：结束它。
+# 不是 Python 的程序占着就只提示，不动它。
+function Stop-StaleApp {
+    $ErrorActionPreference = 'Continue'
+    foreach ($c in @(Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue)) {
+        $p = Get-Process -Id $c.OwningProcess -ErrorAction SilentlyContinue
+        if (-not $p) { continue }
+        if ($p.ProcessName -like 'python*') {
+            Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+            Write-Note "已结束占着 8000 端口的残留进程 $($p.ProcessName)（$($p.Id)）"
+        } else {
+            Write-Note "8000 端口被 $($p.ProcessName)（$($p.Id)）占用，不是本系统的程序，请手动处理"
+        }
+    }
+}
+
 function Stop-AppServices {
     foreach ($n in @($SvcCaddy, $SvcApp)) {
         $s = Get-Service -Name $n -ErrorAction SilentlyContinue
         if ($s -and $s.Status -ne 'Stopped') { Write-Ok "停止服务 $n"; Stop-Service -Name $n -Force }
+    }
+    if (Get-Service -Name $SvcApp -ErrorAction SilentlyContinue) {
+        Start-Sleep -Seconds 2
+        Stop-StaleApp
     }
 }
 
 function Start-AppServices {
     foreach ($n in @($SvcApp, $SvcCaddy)) {
         $s = Get-Service -Name $n -ErrorAction SilentlyContinue
-        if ($s) { Write-Ok "启动服务 $n"; Start-Service -Name $n }
+        if (-not $s) { continue }
+        if ($n -eq $SvcApp -and $s.Status -ne 'Running') { Stop-StaleApp }
+        Write-Ok "启动服务 $n"; Start-Service -Name $n
     }
 }
 

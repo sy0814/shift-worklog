@@ -143,6 +143,7 @@
 - 目录 `C:\WorkRecord\`：`app`（程序，更新时覆盖，保留 `.venv`、`.env`）、`data`、`tools`、`logs`、`backups`。服务 `WorkRecordApp`（uvicorn 只听 127.0.0.1:8000）、`WorkRecordCaddy`（80/443，内部 CA 签 HTTPS；80 端口只提供根证书 `/ca.crt` 和三语安装说明 `/install`）。
 - 每天 03:40 计划任务备份（pg_dump 保留 30 天 + 图片 + 证书 + 配置，可再复制一份到另一个目录）；备份位置在「系统设置 → 存储与备份」改。
 - **看门狗** `watchdog.ps1`（计划任务 WorkRecordWatchdog，每 5 分钟）：服务停了先自动启动再报警，系统不响应、备份失败 / 超过 26 小时没成功、磁盘少于 5 GB 或 10% 都报警；报警 = 服务器弹窗 + Windows 事件日志 + `logs\watchdog.log`（用户选的，不发邮件），同一问题 60 分钟一次。备份和磁盘问题网页首页也给管理员显示（`GET /api/alerts`，阈值和脚本一致）。更新时先暂停、完成后重新打开
+- 程序服务直接用**基础 Python** 运行 `backend/run_server.py`（不用 venv 的 python.exe 转接程序，否则停服务会留下进程占着 8000 端口，报 10048）；配置由 `common.ps1` 的 `Get-AppServiceXml` 生成，update 时重写；停 / 启服务和看门狗会清掉残留的 Python
 - 改访问地址：`set-address.ps1 <IP>`（根证书不变，手机不用重装）。
 - 脚本规则（UTF-8 BOM + CRLF、PowerShell 5.1 的引号和错误处理坑、icacls 用 SID、`alembic.ini` 纯 ASCII）见 AI_GUIDE 不变量 9 和常见坑。`backup.ps1` 没法在容器里检查语法，改了要请用户在服务器上跑一次留意输出。
 

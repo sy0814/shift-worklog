@@ -58,6 +58,7 @@ foreach ($name in @($SvcApp, $SvcCaddy)) {
     $svc = Get-Service -Name $name -ErrorAction SilentlyContinue
     if (-not $svc) { continue }   # 没装这个服务（例如还没运行 install.ps1）
     if ($svc.Status -ne 'Running') {
+        if ($name -eq $SvcApp) { Stop-StaleApp }   # 残留进程占着 8000 端口时，不先结束它就启动不了
         try { Start-Service -Name $name -ErrorAction Stop; Start-Sleep -Seconds 10 } catch { }
         $svc = Get-Service -Name $name -ErrorAction SilentlyContinue
         if ($svc -and $svc.Status -eq 'Running') {
@@ -66,6 +67,29 @@ foreach ($name in @($SvcApp, $SvcCaddy)) {
             $problems["svc:$name"] = "服务 $name 停了，自动启动失败。请在「服务」里手动启动，并查看日志 $LogDir\$name.err.log"
         }
     }
+}
+
+# 8000 端口被不是本服务启动的 Python 占着（以前的版本停服务后会留下这种进程，服务就一直启动失败、日志报 10048）：
+# 停服务、结束它、再启动。本服务启动的进程，往上两层之内能找到 WorkRecordApp.exe（WinSW）。
+function Test-FromService([int]$ProcId) {
+    $cur = $ProcId
+    for ($i = 0; $i -lt 3; $i++) {
+        $pr = Get-CimInstance Win32_Process -Filter "ProcessId=$cur" -ErrorAction SilentlyContinue
+        if (-not $pr) { return $false }
+        if ($pr.Name -eq "$SvcApp.exe") { return $true }
+        $cur = [int]$pr.ParentProcessId
+    }
+    return $false
+}
+foreach ($c in @(Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue)) {
+    $pr = Get-Process -Id $c.OwningProcess -ErrorAction SilentlyContinue
+    if (-not $pr -or $pr.ProcessName -notlike 'python*') { continue }
+    if (Test-FromService $pr.Id) { continue }
+    try { Stop-Service -Name $SvcApp -Force -ErrorAction Stop } catch { }
+    Stop-StaleApp
+    try { Start-Service -Name $SvcApp -ErrorAction Stop; Start-Sleep -Seconds 10 } catch { }
+    Send-Alert "8000 端口被残留的旧进程占着（$($pr.ProcessName) $($pr.Id)），已结束它并重新启动服务 $SvcApp" $true
+    break
 }
 
 $app = Get-Service -Name $SvcApp -ErrorAction SilentlyContinue

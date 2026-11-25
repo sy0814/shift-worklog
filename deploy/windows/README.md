@@ -440,6 +440,7 @@ Start-Service WorkRecordApp, WorkRecordCaddy
 
 | 现象 | 原因和处理 |
 |---|---|
+| 服务启动不了，日志 `logs\WorkRecordApp.err.log` 里一直报 `10048`（「每个套接字地址只允许使用一次」） | 8000 端口被以前留下的旧进程占着（旧版本停服务时可能留下）。运行一次 `update.ps1` 就会修好：之后停服务不会再留下进程，看门狗和更新脚本也会自动清掉残留进程。急用时手动处理：管理员 PowerShell 运行 `Get-NetTCPConnection -LocalPort 8000 -State Listen` 查到进程号，确认是 python 后 `Stop-Process -Id 进程号 -Force`，再启动服务。 |
 | 运行脚本时提示「无法加载文件……因为在此系统上禁止运行脚本」 | 没有先运行 `Set-ExecutionPolicy -Scope Process Bypass -Force`，或者是在另一个窗口运行的。在同一个窗口里先运行这一行。 |
 | 提示「请右键以管理员身份运行 PowerShell」 | 没有用管理员身份打开，按 6.1 重新打开。 |
 | 提示「没有找到 PostgreSQL」 | 第 4 步没装，或装的不是默认位置。按第 4 步安装。 |

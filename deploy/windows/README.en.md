@@ -461,6 +461,7 @@ Start-Service WorkRecordApp, WorkRecordCaddy
 
 | What you see | Cause and fix |
 |---|---|
+| The service will not start; `logs\WorkRecordApp.err.log` keeps showing error `10048` ("only one usage of each socket address") | Port 8000 is held by a leftover old process (older versions could leave one behind when the service was stopped). Run `update.ps1` once to fix it for good: stopping the service no longer leaves a process, and the watchdog and update script clean up leftovers automatically. Quick manual fix: in an administrator PowerShell run `Get-NetTCPConnection -LocalPort 8000 -State Listen` to get the process id, check it is python, run `Stop-Process -Id <id> -Force`, then start the service. |
 | "…cannot be loaded because running scripts is disabled on this system" | You did not run `Set-ExecutionPolicy -Scope Process Bypass -Force` first, or ran it in another window. Run it in the same window first. |
 | Message「请右键以管理员身份运行 PowerShell」 | "Run PowerShell as administrator." Reopen it as in 6.1. |
 | Message「没有找到 PostgreSQL」 | "PostgreSQL not found." Install it (step 2), using the default location. |

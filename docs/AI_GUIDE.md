@@ -245,6 +245,8 @@ npm run build    # 输出到 backend/static
 
 ## 9. 常见坑（都踩过）
 
+- **Windows 上 venv 的 `Scripts\python.exe` 是转接程序**，会再启动一个基础 Python。WinSW 停服务时只结束了转接程序，真正的进程留下来占着 8000 端口，服务就一直报 10048 启动不了（2026-11-25 用户实际遇到）。现在服务直接用基础 Python 运行 `backend/run_server.py`（它把 `.venv` 的包加进来再启动 uvicorn），配置由 `common.ps1` 的 `Get-AppServiceXml` 生成，install / update 都用它；另外 `Stop-AppServices`、`Start-AppServices`、看门狗会结束占着 8000 端口的残留 Python（`Stop-StaleApp`；看门狗用 `Test-FromService` 看进程往上几层是不是 `WorkRecordApp.exe`）
+
 - 中文 Windows 默认 GBK：`.env` 按 UTF-8 读、服务设 `PYTHONUTF8=1`、`alembic.ini` 纯 ASCII、PowerShell 读 txt 要 `-Encoding UTF8`。
 - vue-i18n 消息里的反斜杠会被吃掉一个，路径示例尽量别放在 i18n 文案里。
 - Element Plus 弹窗会给 body 减滚动条宽度，和 `scrollbar-gutter` 叠加会跳——已在 `style.css` 统一处理，新类型的浮层要检查。

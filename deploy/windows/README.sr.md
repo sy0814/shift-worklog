@@ -463,6 +463,7 @@ Start-Service WorkRecordApp, WorkRecordCaddy
 
 | Šta vidite | Uzrok i rešenje |
 |---|---|
+| Servis neće da se pokrene; `logs\WorkRecordApp.err.log` stalno prijavljuje grešku `10048` (svaka adresa soketa sme da se koristi samo jednom) | Port 8000 drži zaostali stari proces (starije verzije su ga mogle ostaviti pri zaustavljanju servisa). Pokrenite `update.ps1` jednom i problem je trajno rešen: zaustavljanje servisa više ne ostavlja proces, a čuvar i skripta za ažuriranje sami čiste zaostale procese. Brzo ručno rešenje: u administratorskom PowerShell-u pokrenite `Get-NetTCPConnection -LocalPort 8000 -State Listen` da dobijete broj procesa, proverite da je python, pokrenite `Stop-Process -Id <broj> -Force`, pa pokrenite servis. |
 | „…cannot be loaded because running scripts is disabled on this system” | Niste prvo pokrenuli `Set-ExecutionPolicy -Scope Process Bypass -Force`, ili ste je pokrenuli u drugom prozoru. Pokrenite je prvo u istom prozoru. |
 | Poruka „请右键以管理员身份运行 PowerShell” | „Pokrenite PowerShell kao administrator.” Otvorite ga ponovo kao u 6.1. |
 | Poruka „没有找到 PostgreSQL” | „PostgreSQL nije pronađen.” Instalirajte ga (korak 2) na podrazumevano mesto. |
