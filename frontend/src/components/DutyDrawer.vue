@@ -9,6 +9,7 @@ import { useAuth } from '../stores/auth'
 import ShiftTag from './ShiftTag.vue'
 import WorkerAvatar from './WorkerAvatar.vue'
 import OvertimeDialog from './OvertimeDialog.vue'
+import WhyDialog from './WhyDialog.vue'
 import { breaks, fullHours, splitHours } from '../cycle'
 import dayjs from 'dayjs'
 
@@ -38,6 +39,12 @@ async function load() {
 }
 watch(visible, (v) => { if (v) { picked.value = []; load() } })
 defineExpose({ load })
+
+// 「为什么？」：这个人这个班次日的排班是怎么来的
+const why = ref({ open: false, id: 0, title: '' })
+function openWhy(w) {
+  why.value = { open: true, id: w.id, title: `${w.name} · ${data.value.shift_date}` }
+}
 
 const teamName = (id) => localName(auth.teamById(id))
 const ST_TYPE = { busy: 'warning', idle: 'success', leave: 'info', sick: 'info', absent: 'danger', off: 'info', off_hours: 'info' }
@@ -99,6 +106,7 @@ function addTask() {
             <div class="info">
               <div class="name">
                 <b>{{ r.worker.name }}</b>
+                <el-button link type="primary" size="small" class="why" :title="t('why.title')" @click="openWhy(r.worker)">{{ t('why.button') }}</el-button>
                 <el-tag size="small" type="primary" effect="plain">{{ roleName(r.role_id) }}</el-tag>
                 <el-tag size="small" effect="plain" type="info">{{ teamName(r.team_id) }}</el-tag>
                 <el-tag :type="ST_TYPE[r.status]" size="small" effect="dark">{{ t('duty.st.' + r.status) }}</el-tag>
@@ -125,6 +133,7 @@ function addTask() {
             <div class="info">
               <div class="name">
                 <b>{{ r.worker.name }}</b>
+                <el-button link type="primary" size="small" class="why" :title="t('why.title')" @click="openWhy(r.worker)">{{ t('why.button') }}</el-button>
                 <el-tag :type="ST_TYPE[r.status]" size="small" effect="dark">{{ t('duty.st.' + r.status) }}</el-tag>
                 <el-tag v-if="r.status === 'off_hours'" size="small" type="info" effect="plain">{{ offText(r) }}</el-tag>
                 <el-tag v-if="r.overlap_until" size="small" type="primary" effect="plain" :title="t('duty.untilHint', { t: hm(r.overlap_until) })">{{ t('duty.untilT', { t: hm(r.overlap_until) }) }}</el-tag>
@@ -149,11 +158,13 @@ function addTask() {
       </div>
     </template>
     <OvertimeDialog v-model="otOpen" :preset="otPreset" @saved="load" />
+    <WhyDialog v-model="why.open" type="worker" :id="why.id" :day="data?.shift_date || ''" :title="why.title" />
   </el-drawer>
 </template>
 
 <style scoped>
 .foot { display: flex; gap: 8px; }
+.why { font-size: 12px; padding: 0; height: auto; }
 .foot .grow { flex: 1; }
 .counts { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
 .muted { color: #909399; }

@@ -85,6 +85,7 @@ deploy/Caddyfile, deploy/install/install.html
 - `kind`：`cycle`（有循环）/ `manual`（不固定，平时休息）。`is_main`：主班组（1～4 班）单独显示；其他班组（常白班、临时组）**合并**到同一班次的第一个主班组（`group_of`）。
 - 优先级：`active_from/to` 有效期 → **班组调班**（`team_shift_overrides`，可为时间段）→ 循环 → 若是非主班组且结果为休息，再看**成员带出来的班次**（`member_fn`，有成员被单独安排上班就算在班）。
 - 区分两类函数：`shift_of`（班组算不算在班，含成员带出来的）和 `team_entry`（班组自己的排班，**成员默认出勤只能用它**，否则一个人上班会把全组都算成上班）。
+- **推理过程（「为什么？」）**：`Cycle.planned`、`cycle_entry`、`team_entry`、`shift_of`、`worker_entry`、`entry_kind_traced` 和 `attendance_service.default_for` / `resolve` 都带可选参数 `trace: list`，按判定顺序追加 `{"code": ..., ...}`（`shifts.note()`）。不传时行为完全不变。`app/explain.py` 调同一批函数拿到 trace，再补「谁、什么时候设的」；code 的含义写在 `explain.py` 开头，前端 `components/WhyPanel.vue` 按 code 翻成三语句子。**改排班 / 出勤规则时：在改动的地方加 `note(trace, ...)`，在 `explain.py` 开头和 `WhyPanel.vue` 的 `text()`、`i18n.js` 的 `why` 里补上新 code**；`tests/test_explain.py` 有随机排班下「带 trace 和不带结果一致」的测试。
 - 常用：`shift_at(dt)`、`main_team_on(d,k)`、`teams_on`、`group_of`、`recording_slot`（录入的任务归哪个班）、`receiving_slot`（移交过去归哪个班）、`next_shift_of_team`（找不到会抛 ValueError，调用方要兜底）、`coverage_problems`。
 - 测试里构造班组用 `rotating(id, offset)` / `day_team(id)`。基准：2026-11-21 应为 1 班白、2 班中、3 班夜、4 班休。
 
@@ -105,6 +106,7 @@ deploy/Caddyfile, deploy/install/install.html
 
 ### 3.3 出勤（`attendance_service.effective`）
 - **默认不存库**，按当天有效的排班推算；`attendance` 表只存例外（请假 / 病假 / 缺勤 / 休息 / 调班 / 顶班）。
+- 某人某天的判定只在 `attendance_service.resolve(sched, entry, 例外记录, d, trace=None)` 一处：先 `default_for`（排班），再叠例外。`effective` 逐天调它；不要在别处另写一份。
 - 返回 `DayAttendance(status, shift_kind, team_id, source, note, hours)`。在岗、可分配人员、工时、导出、AI 分析都从这里取。
 - 加班 `overtime`：某班次后加班到几点（`overtime_service.expand`）。
 
@@ -210,6 +212,7 @@ npm run build    # 输出到 backend/static
 | 交接班 | `GET /board`、`GET /handover/default`、`POST /handover`、`POST /tasks/{id}/discard`、`GET /overdue`、`GET /duty?which=current\|next` |
 | 翻译 | `PUT /tasks/{id}/translation`、`POST /tasks/{id}/retranslate`、`POST /translate`、`GET /translation/status`、`POST /translation/retry-failed`、术语表 `/glossary*` |
 | 排班 | `GET /shifts/now`、`GET /shifts/calendar`、`GET /shifts/coverage`、`GET/PUT /shifts/config`（班次时间）、`/teams`（增删改）、`/team-shifts`（调班、`/swap` 互换）、`/holidays/{day}` |
+| 为什么？ | `GET /explain/worker/{id}?day=`、`GET /explain/team/{id}?day=`：`{day, result, steps[]}`（登录即可看） |
 | 出勤 | `GET/PUT /attendance`、`PUT /attendance/batch`、`POST /attendance/swap`、`GET /attendance/template`、`POST /attendance/import`、`GET /workers/{id}/day`、`/overtime` |
 | 员工 / 账号 | `/workers`（增改、Excel 导入导出、自定义列、头像、`/{id}/schedule`、`/{id}/account`、`/accounts/open-all`）、`/users`、`/roles` |
 | 项目 / 巡查 | `/projects`（`/subs`、`/subs/{id}/assign`、`/people`）、`/inspections`（`/preview`、`/{id}/run-now`、`/{id}/runs`） |
