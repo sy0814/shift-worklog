@@ -388,4 +388,6 @@
   - CI：`.github/workflows/ci.yml`（后端 SQLite / PostgreSQL 16、前端构建、`scripts/check_ps1.py` 检查 .ps1 的 BOM + CRLF 和 alembic.ini 纯 ASCII）
   - 班次日志：表 `task_logs`（迁移 0019）、`routers/task_logs.py`、`TaskLogs.vue`；用户选「多条记录」。翻译队列加 `("log", id)`；离线发件箱加 type `log`；导出加「班次日志」表；`task_perms` 加 `log`。坑：i18n 的 `log` 已被操作记录页用了，日志的文案放在 `tlog`
   - 报警：用户选「服务器弹窗和日志」（不发邮件 / webhook）。`deploy/windows/watchdog.ps1` + 计划任务 WorkRecordWatchdog（install / update 注册，update 期间暂停，uninstall 删除）；`app/alerts.py` + `GET /api/alerts` 给管理员首页显示备份、磁盘问题。**watchdog.ps1 没法在容器里检查语法**，要请用户在服务器上跑 update.ps1 后看 `logs\watchdog.log` 和任务计划程序里 WorkRecordWatchdog 的「上次运行结果」
+- 2026-11-25 **点「完成」时写班次日志**：任务详情点「完成」的确认窗口里加选填的班次日志（`TaskDetail.vue` 的 `askDone` / `confirmDone`）；写了就先走发件箱存日志（自动翻译、导出「班次日志」表里有），再改成已完成；日志存失败时不关窗口、不改状态
+- 2026-11-25 **任务类型 + 设备统计**：用户选「加任务类型」「先不加 AI 总结」。`tasks.kind`（迁移 0020，已有巡查任务设为 inspection）；`app/equipment_stats.py` + `/api/equipment-stats`（汇总、时间线、导出）；`EquipmentStats.vue`（四个数字、故障前 10 条形图、全部设备表、时间线抽屉）。坑：移交会复制开始时间，处理用时不能把链上各条相加；统计路由单独用前缀 `/api/equipment-stats`，放在 `/api/equipment/...` 下会和 `/{eid}` 冲突
 

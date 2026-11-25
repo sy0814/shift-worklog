@@ -249,7 +249,7 @@ def task_out(task: Task, user: User, ctx: OutCtx) -> TaskOut:
         can_correct=perms["correct"],
         perms=perms,
         project=ctx.projects.get(task.project_id),
-        equipment=ctx.equipment.get(task.equipment_id), transferable=can_transfer(task),
+        equipment=ctx.equipment.get(task.equipment_id), transferable=can_transfer(task), kind=task.kind or "other",
         chain_started_at=task.chain_started_at, handover_count=task.handover_count,
         age_hours=round(age, 1), overdue=overdue,
         handover_in=_ho_info(ctx.ho_to.get(task.id), True, names),
@@ -518,7 +518,7 @@ def create_task(body: TaskCreate, db: Session = Depends(get_db),
         confirmed_by=user.id if body.status == "done" else None,
         confirmed_at=now if body.status == "done" else None,
         created_by=user.id, updated_by=user.id, recorded_at=recorded, created_at=now, updated_at=now,
-        translation_status="pending", chain_started_at=recorded, handover_count=0,
+        translation_status="pending", chain_started_at=recorded, handover_count=0, kind=body.kind,
     )
     setattr(task, f"content_{body.lang}", body.content.strip())
     if body.leftover and body.leftover.strip():
@@ -537,6 +537,7 @@ def create_task(body: TaskCreate, db: Session = Depends(get_db),
     audit.log(db, user_id=user.id, action="create", entity="task", entity_id=task.id, new={
         "content": body.content.strip(), "lang": body.lang, "team_id": team_id,
         "status": body.status, "worker_ids": member_ids, "lead_worker_id": lead_id, "equipment_id": body.equipment_id,
+        "kind": body.kind,
         "transferable": body.transferable,
         "start_at": start_at, "end_at": end_at, "leftover": task.leftover_source_lang and body.leftover.strip(),
         "recorded_at": recorded, "shift": f"{shift_date} {shift_kind}",
@@ -576,6 +577,8 @@ def update_task(task_id: int, body: TaskUpdate, db: Session = Depends(get_db),
         changes["equipment_id"] = data["equipment_id"]
     if data.get("transferable") is not None:
         changes["transferable"] = data["transferable"]
+    if data.get("kind") is not None:
+        changes["kind"] = data["kind"]
     _check_times(changes.get("start_at", task.start_at), changes.get("end_at", task.end_at))
 
     changed = audit.log_changes(db, task, changes, user_id=user.id, entity="task", entity_id=task.id)

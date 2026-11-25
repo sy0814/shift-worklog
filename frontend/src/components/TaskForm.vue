@@ -48,7 +48,7 @@ async function init() {
     const l = pick(tk.leftover, tk.leftover_source_lang)
     original = {
       content: c.text, contentLang: c.lang, leftover: l.text, leftoverLang: l.lang,
-      worker_ids: tk.workers.map((w) => w.id), lead_worker_id: tk.lead?.id ?? null, equipment_id: tk.equipment?.id ?? null, transferable: tk.transferable !== false,
+      worker_ids: tk.workers.map((w) => w.id), lead_worker_id: tk.lead?.id ?? null, equipment_id: tk.equipment?.id ?? null, kind: tk.kind || 'other', transferable: tk.transferable !== false,
       start_at: toLocal(tk.start_at), end_at: toLocal(tk.end_at),
     }
     Object.assign(form, { ...original, worker_ids: [...original.worker_ids] })
@@ -56,7 +56,7 @@ async function init() {
     Object.assign(form, {
       client_id: uuid(), content: '', leftover: '', status: 'not_started',
       worker_ids: [...(props.preset?.worker_ids || [])], lead_worker_id: props.preset?.lead_worker_id ?? null,
-      equipment_id: props.preset?.equipment_id ?? null, transferable: true, start_at: null, end_at: null, team_id: props.preset?.team_id ?? (auth.hasOwnTeamHere ? auth.user.team_id : auth.teams[0]?.id),
+      equipment_id: props.preset?.equipment_id ?? null, kind: props.preset?.kind || 'other', transferable: true, start_at: null, end_at: null, team_id: props.preset?.team_id ?? (auth.hasOwnTeamHere ? auth.user.team_id : auth.teams[0]?.id),
     })
   }
   workers.value = await loadWorkers()
@@ -164,7 +164,7 @@ async function saveNew() {
   const body = {
     client_id: form.client_id, content: form.content.trim(), lang: locale.value,
     worker_ids: form.worker_ids, lead_worker_id: form.lead_worker_id || null, status: form.status, start_at: form.start_at || null,
-    equipment_id: form.equipment_id || null, transferable: form.transferable,
+    equipment_id: form.equipment_id || null, kind: form.kind, transferable: form.transferable,
     end_at: form.end_at || null, leftover: form.leftover?.trim() || null,
     recorded_at: new Date().toISOString(),
     ...(chooseTeam.value ? { team_id: form.team_id } : {}),
@@ -191,6 +191,7 @@ async function saveEdit() {
   if ((form.lead_worker_id || null) !== (o.lead_worker_id || null)) patch.lead_worker_id = form.lead_worker_id || null
   if ((form.equipment_id || null) !== (o.equipment_id || null)) patch.equipment_id = form.equipment_id || null
   if (form.transferable !== o.transferable) patch.transferable = form.transferable
+  if (form.kind !== o.kind) patch.kind = form.kind
   if (form.start_at !== o.start_at) patch.start_at = form.start_at || null
   if (form.end_at !== o.end_at) patch.end_at = form.end_at || null
   // 改了原文、且这段有人工校对过的译文：问是重新翻译还是保留
@@ -229,6 +230,11 @@ async function saveEdit() {
       <el-form-item :label="t('task.content')" required>
         <el-input v-model="form.content" type="textarea" :autosize="{ minRows: 3, maxRows: 10 }"
                   :placeholder="t('task.contentPh')" maxlength="5000" />
+      </el-form-item>
+      <el-form-item :label="t('task.kind')">
+        <el-radio-group v-model="form.kind" size="small">
+          <el-radio-button v-for="k in ['fault', 'maintenance', 'inspection', 'other']" :key="k" :value="k">{{ t('task.kinds.' + k) }}</el-radio-button>
+        </el-radio-group>
       </el-form-item>
       <el-form-item :label="t('eq.one')">
         <el-select v-model="form.equipment_id" filterable clearable :placeholder="t('eq.pick')" style="width: 100%">

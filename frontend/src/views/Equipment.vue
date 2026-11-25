@@ -14,11 +14,15 @@ import { translateError } from '../apiErrors'
 import TriNames from '../components/TriNames.vue'
 import TaskCard from '../components/TaskCard.vue'
 import TaskDetail from '../components/TaskDetail.vue'
+import EquipmentStats from '../components/EquipmentStats.vue'
 
 const { t, locale } = useI18n()
 const actW = useActionsWidth(() => [t('common.edit')])
 const auth = useAuth()
 const canManage = computed(() => auth.can('equipment.manage'))
+// 设备统计：能看本车间所有任务的人、能管设备的人（和后端 equipment_stats._check 一致）
+const canStats = computed(() => auth.isAdmin || ['dept', 'all'].includes(auth.scope('task.view')) || auth.can('equipment.manage'))
+const view = ref('list')
 const list = ref([])
 const loading = ref(false)
 const q = ref('')
@@ -130,8 +134,17 @@ const fileInput = ref(null)
 
 <template>
   <div class="page">
+    <div class="eq-head">
+      <h1 class="page-title" style="margin: 0">{{ t('eq.title') }}</h1>
+      <el-radio-group v-if="canStats" v-model="view" size="small">
+        <el-radio-button value="list">{{ t('eqs.list') }}</el-radio-button>
+        <el-radio-button value="stats">{{ t('eqs.title') }}</el-radio-button>
+      </el-radio-group>
+    </div>
+    <EquipmentStats v-if="view === 'stats'" />
+    <template v-else>
     <div class="toolbar">
-      <h1 class="page-title" style="margin: 0; flex: 1">{{ t('eq.title') }}</h1>
+      <span class="spacer" />
       <el-input v-model="q" :placeholder="t('eq.search')" clearable style="width: 200px" @input="onSearch" @clear="load" />
       <el-checkbox v-model="showInactive" @change="load">{{ t('eq.showInactive') }}</el-checkbox>
       <el-button @click="download('/equipment/export/xlsx', { lang: locale }, 'equipment.xlsx')">{{ t('eq.export') }}</el-button>
@@ -211,11 +224,14 @@ const fileInput = ref(null)
       <div v-if="!tasks.length" class="muted">{{ t('eq.noTasks') }}</div>
       <TaskCard v-for="task in tasks" :key="task.id" :task="task" class="tc" @click="openTask(task)" />
     </el-drawer>
+    </template>
     <TaskDetail v-model="detailOpen" :task-id="detailId" @changed="taskChanged" />
   </div>
 </template>
 
 <style scoped>
+.eq-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+.spacer { flex: 1; }
 .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; flex-wrap: wrap; }
 .muted { color: #909399; }
 .small { font-size: 12px; }
