@@ -36,6 +36,8 @@ class DutyWorker(BaseModel):
     role_id: int | None = None
     status: str  # busy（手上有未完成的任务：未开始或进行中）/ idle（空闲）/ leave / sick / absent / off（本该上班但请假等）
     #            / off_hours（有自定义上班时间，现在不在上班时间里，例如午休）
+    #  算在别的班、但自定义上班时间有一段落在这个班次里的人（例如白班 07-12、14-17 的人在中班的前两小时）也列出来，
+    #  照常算忙碌 / 空闲、计入在岗，另外给出 overlap_from / overlap_until（到几点）
     support: bool  # 是不是从其他班组来支援的
     tasks: list[DutyTask]
     overtime_until: datetime | None = None  # 加班到几点（本地时间）
@@ -43,6 +45,8 @@ class DutyWorker(BaseModel):
     hours: str | None = None  # 自定义上班时间，例如 "07:00-12:00,14:00-17:00"
     # 不在上班时间（off_hours）时：下一段几点开始（午休后回来 / 还没到点）；为空 = 今天的时间段都结束了
     back_at: datetime | None = None
+    overlap_from: datetime | None = None  # overlap：在这个班次里从几点到几点还在上班（本地时间）
+    overlap_until: datetime | None = None
 
 
 class DutyTeam(BaseModel):
@@ -85,6 +89,20 @@ def _next_start(sched, hours: str, d, now):
     return min(starts) if starts else None
 
 
+def _overlap(sched, row: dict, d, k, start, end, now):
+    """有自定义上班时间、算在别的班（不是 k），但时间段有一部分落在班次 [start, end) 里的那一天的出勤
+    （看当天和前一天）。now 给了（当前班次）就只看还没结束的部分。返回 (出勤, 从, 到) 或 None。"""
+    for day in (d, d - timedelta(days=1)):
+        a = row.get(day)
+        if a is None or a.status != "present" or not a.hours or a.shift_kind == k:
+            continue
+        parts = [(max(x, start, now or start), min(y, end)) for x, y in sched.entry_hours(a.hours, day)]
+        parts = [(x, y) for x, y in parts if x < y]
+        if parts:
+            return a, min(x for x, _ in parts), max(y for _, y in parts)
+    return None
+
+
 def _working_now(sched, row: dict, d, now):
     """有自定义上班时间、而且现在正在时间段里的那一天的出勤（看当天和前一天）；没有返回 None。"""
     for day in (d, d - timedelta(days=1)):
@@ -114,6 +132,7 @@ def duty(which: str = Query(default="current", pattern="^(current|next)$"), db: 
     rows: dict[int, list[tuple[Worker, str, bool]]] = {}
     hours_of: dict[int, str | None] = {}
     back_of: dict[int, datetime] = {}
+    overlap_of: dict[int, tuple[datetime, datetime]] = {}
     # 加班：本班次的人加班到几点；当前班次还要算上上个班留下来加班、还没到点的人
     now = local_now()
     pd, pk = sched.prev_shift(d, k)
@@ -147,6 +166,13 @@ def duty(which: str = Query(default="current", pattern="^(current|next)$"), db: 
             rows.setdefault(team, []).append((w, "on", team != w.team_id))
         elif w.team_id in slot_ids and a.status in ("leave", "sick", "absent", "off") and a.source != "default":
             rows.setdefault(w.team_id, []).append((w, a.status, False))  # 本该上这个班，但请假 / 调走了
+        elif (x := _overlap(sched, eff[w.id], d, k, start, end, now if which == "current" else None)) is not None:
+            # 算在别的班（例如白班 07-12、14-17），但有一段时间落在这个班次里：也列出来、计入在岗，写明到几点
+            a2, ov_from, ov_until = x
+            team = a2.team_id or w.team_id
+            hours_of[w.id] = a2.hours
+            overlap_of[w.id] = (ov_from, ov_until)
+            rows.setdefault(team, []).append((w, "on", team != w.team_id))
 
     rows = {tid: rs for tid, rs in rows.items() if tid in dept_ids}  # 只列本车间班组的（含借调来的人）
     ids = [w.id for rs in rows.values() for w, _s, _x in rs]
@@ -179,6 +205,8 @@ def duty(which: str = Query(default="current", pattern="^(current|next)$"), db: 
             (top if on_top(w) else out).append(DutyWorker(
                 hours=hours_of.get(w.id),
                 back_at=back_of[w.id].replace(tzinfo=get_settings().tz) if w.id in back_of else None,
+                overlap_from=overlap_of[w.id][0].replace(tzinfo=get_settings().tz) if w.id in overlap_of else None,
+                overlap_until=overlap_of[w.id][1].replace(tzinfo=get_settings().tz) if w.id in overlap_of else None,
                 worker=WorkerOut.model_validate(w), status=st, support=support, team_id=tid, role_id=w.role_id or member,
                 overtime_until=ot[w.id][0].replace(tzinfo=get_settings().tz) if w.id in ot else None,
                 overtime_prev=ot.get(w.id, (None, False))[1],

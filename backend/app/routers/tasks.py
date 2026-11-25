@@ -311,10 +311,22 @@ def assignable_ids(db: Session, sched, team_id: int, d, k: str) -> set[int]:
     slot_group = {t.id for t in sched.group_of(main, d, k)} if main else set()
     on_ids = {t.id for t in sched.teams_on(d, k)}  # 所有车间此刻在班的班组（被单独叫来的人不能是这些班组的）
     workers = list(db.scalars(select(Worker).where(Worker.is_active.is_(True))))
-    eff = att.effective(db, workers, d, d, sched)
-    return {w.id for w in workers
-            if (a := eff[w.id][d]).status == "present" and a.shift_kind == k
-            and (a.team_id in group or (team_id in slot_group and a.team_id not in on_ids))}
+    eff = att.effective(db, workers, d - timedelta(days=1), d, sched)
+    out = {w.id for w in workers
+           if (a := eff[w.id][d]).status == "present" and a.shift_kind == k
+           and (a.team_id in group or (team_id in slot_group and a.team_id not in on_ids))}
+    # 算在别的班、但自定义上班时间有一段落在这个班次里的人（例如白班 07-12、14-17 的人在中班的前两小时），
+    # 这个班次的主班组那一组也能给他安排任务（首页中班名单里也列着他）
+    if team_id in slot_group:
+        from .duty import _overlap
+
+        start, end = sched.shift_window(d, k)
+        for w in workers:
+            if w.id not in out and (x := _overlap(sched, eff[w.id], d, k, start, end, None)) is not None \
+                    and sched.team(x[0].team_id or w.team_id) is not None \
+                    and sched.team(x[0].team_id or w.team_id).dept == dept:
+                out.add(w.id)
+    return out
 
 
 def unrestricted(w: "permissions.Who") -> bool:
