@@ -1,6 +1,8 @@
 """从数据库读取配置，构造 shifts.Schedule。"""
 
-from datetime import date, datetime
+import dataclasses
+from collections import Counter
+from datetime import date, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -8,10 +10,44 @@ from sqlalchemy.orm import Session
 from .config import get_settings
 from .models import Holiday, ShiftConfig, Team, TeamShiftOverride
 from .schemas import ShiftSlot
-from .shifts import Cycle, Schedule, TeamInfo
+from .shifts import ORDER, Cycle, Schedule, TeamInfo
 
 
 def load_schedule(db: Session) -> Schedule:
+    base = _load_base(db)
+    if not any(not t.is_main for t in base.teams):
+        return base
+    own = base  # 算成员出勤时用不带「成员带出来的班次」的排班，避免互相依赖
+    return dataclasses.replace(base, member_fn=lambda d: member_days(db, own, d), _member_cache={})
+
+
+def member_days(db: Session, own: Schedule, d: date) -> dict:
+    """非主班组的成员被单独安排上班的日子：{日期: {班组 id: 班次}}（一次算 d 前 3 天到后 31 天）。
+    同一天成员上不同的班时，取人最多的那个班。"""
+    from . import attendance_service
+    from .models import Attendance, Worker, WorkerSchedule
+
+    start, end = d - timedelta(days=3), d + timedelta(days=31)
+    days = {start + timedelta(days=i): {} for i in range((end - start).days + 1)}
+    nonmain = [t.id for t in own.teams if not t.is_main]
+    ids = set(db.scalars(select(Worker.id).where(Worker.team_id.in_(nonmain))))
+    ids |= set(db.scalars(select(WorkerSchedule.worker_id).where(WorkerSchedule.team_id.in_(nonmain))))
+    ids |= set(db.scalars(select(Attendance.worker_id).where(Attendance.team_id.in_(nonmain),
+                                                             Attendance.day >= start, Attendance.day <= end)))
+    if not ids:
+        return days
+    workers = list(db.scalars(select(Worker).where(Worker.id.in_(ids), Worker.is_active.is_(True))))
+    votes: dict = {}
+    for row in attendance_service.effective(db, workers, start, end, own).values():
+        for day, a in row.items():
+            if a.status == "present" and a.shift_kind and a.team_id in nonmain:
+                votes.setdefault((day, a.team_id), Counter())[a.shift_kind] += 1
+    for (day, tid), c in votes.items():
+        days[day][tid] = max(c, key=lambda k: (c[k], -ORDER.index(k)))
+    return days
+
+
+def _load_base(db: Session) -> Schedule:
     cfg = db.get(ShiftConfig, 1)
     teams = db.scalars(select(Team).order_by(Team.sort_order)).all()
     rows = db.execute(select(Holiday.day, Holiday.kind)).all()

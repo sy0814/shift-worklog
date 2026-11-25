@@ -314,6 +314,12 @@
   - 改动后在 PostgreSQL 16 上跑过全部测试：172 个通过（PG 测试库要先清空：`DROP/CREATE DATABASE wrtest、wrmig`）
   - **备份脚本没法在容器里用 PowerShell 检查语法**（下载 pwsh 被拦），是人工检查的；用户第一次在服务器上跑 backup.ps1 时留意输出
   - **离线能打开任务详情**：联网时首页（警示 + 交接班）和任务列表会顺便把未完成任务的详情读一遍（`offline.warmTasks`，每条 10 分钟一次、最多 40 条），Service Worker 缓存下来
+- [x] 用户反馈第十轮修改（2026-11-25）：**不固定班组的人单独安排上班 + 分两段上班的提示**
+  - 问题：不固定班组（以及其他非主班组）班组本身一直「休息」，成员被单独安排上班（出勤页安排 / 个人循环）时，班组不算在班 → 不合并进那个班次、班长分配任务时选不到他；给这种班组建任务还会报错（`next_shift_of_team` 找不到班次）
+  - **成员带出来的班次**（`Schedule.member_fn` / `member_shift`，`schedule_service.member_days`）：非主班组本身这天休息、但有成员当天出勤上某个班 → `shift_of` 返回那个班（人最多的那个），所以合并显示、交接班、权限、分配任务都算上它。按需计算并缓存（一次算前 3 天到后 31 天）；算的时候用不带这一条的排班，避免循环。**只影响班组的「在不在班」，不影响其他成员的默认出勤**（`worker_entry` / `worker_shift` 用班组自己的排班 `team_entry`）。排班日历里这种格子标「按人员」（`CalendarDay.by_members`）
+  - `assignable_ids`：班次主班组那一组还能分配「自己班组不上这个班、人被单独安排来上」的人（例如 4 班休息、人被叫来上白班却没写顶哪个班组）
+  - `recording_slot` / `receiving_slot`：班组最近 30 天都没有班时归到当前班次，不再报错
+  - **分两段上班**（例如 7-12、14-17）：按重叠最多的班算（白班），首页人员状态里只在一个班次出现一次（16:00 已是中班时段时出现在当前班，不会同时出现在白班和中班）；中间不在时间段里显示「不在上班时间」+「休息中，14:00 回来」/「07:00 上班」/「今天已下班」（`DutyWorker.back_at`），时间标签后面写出休息时间（`cycle.breaks`）
 - 工厂时区由 `APP_TIMEZONE` 配置，默认 `Europe/Belgrade`
 - 排班推算是纯函数，在 `backend/app/shifts.py`，测试在 `backend/tests/test_shifts.py`
 - 留痕：业务代码统一调用 `app/audit.py` 的 `log()` / `log_changes()`；数据库触发器禁止对 `audit_log` 做 UPDATE / DELETE（SQLite、PostgreSQL 都已验证）

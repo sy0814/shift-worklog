@@ -132,6 +132,20 @@ class Schedule:
     extra_workdays: frozenset[date] = frozenset()  # 调休上班的周末
     # 班组整体调班：(班组 id, 日期) → 当天改上的班（day / middle / night / off），优先于循环推算
     overrides: dict = field(default_factory=dict, hash=False, compare=False)
+    # 非主班组（不固定班组、常白班型）班组本身这天休息、但有成员被单独安排上班（出勤页安排 / 个人循环）时，
+    # 这个班组当天也算在上那个班（合并显示、交接班、能分配任务都按它算）。
+    # member_fn(日期) → {日期: {班组 id: 班次}}（一次算一段日期，结果缓存）；为 None 时不算这一条
+    member_fn: object = field(default=None, hash=False, compare=False)
+    _member_cache: dict = field(default_factory=dict, hash=False, compare=False)
+
+    def member_shift(self, team_id: int, d: date) -> str | None:
+        """成员单独安排上班带出来的班组班次（只对非主班组、班组本身休息的日子有意义）。"""
+        if self.member_fn is None:
+            return None
+        if d not in self._member_cache:
+            self._member_cache.update(self.member_fn(d))
+            self._member_cache.setdefault(d, {})
+        return self._member_cache[d].get(team_id)
 
     # ---- 单个班组 ----
     def team(self, team_id: int | None) -> TeamInfo | None:
@@ -199,9 +213,10 @@ class Schedule:
         if not team.active_on(d):
             return OFF
         o = self.overrides.get((team.id, d))
-        if o is not None:
-            return self.entry_kind(o)
-        return self.planned_shift_of(team, d)
+        k = self.entry_kind(o) if o is not None else self.planned_shift_of(team, d)
+        if k == OFF and not team.is_main:
+            k = self.member_shift(team.id, d) or OFF  # 成员被单独安排上班 → 班组也算在班
+        return k
 
     def planned_entry(self, team: TeamInfo, d: date) -> str:
         """不考虑整体调班时，循环里这一天写的（班次或时间段）。"""
@@ -309,7 +324,10 @@ class Schedule:
         d, k = self.shift_at(now)
         if self.is_on(team, d, k):
             return d, k
-        return self.next_shift_of_team(team, d, k)
+        try:
+            return self.next_shift_of_team(team, d, k)
+        except ValueError:  # 不固定班组最近没安排班：归到当前班次
+            return d, k
 
     # ---- 合并显示（原「常白班搭班」）----
     def group_of(self, team: TeamInfo, d: date, kind: str | None = None) -> list[TeamInfo]:
@@ -333,7 +351,7 @@ class Schedule:
         """员工某天该上的班：有个人循环按个人的（不受班组整体调班影响），否则跟班组。"""
         if personal is not None:
             return self.cycle_shift(personal, d)
-        return self.shift_of(team, d) if team else OFF
+        return self.entry_kind(self.team_entry(team, d)) if team else OFF  # 班组自己的排班（不算成员带出来的）
 
     def recording_slot(self, team: TeamInfo, now: datetime, grace_hours: float = 2) -> tuple[date, str]:
         """班组录入任务时，任务归属哪个班次：
@@ -350,7 +368,10 @@ class Schedule:
                 if now - self.shift_window(pd, pk)[1] <= timedelta(hours=grace_hours):
                     return pd, pk
                 break
-        return self.next_shift_of_team(team, d, k)
+        try:
+            return self.next_shift_of_team(team, d, k)
+        except ValueError:  # 不固定班组最近没安排班：归到当前班次
+            return d, k
 
 
 def coverage_problems(sched: Schedule, start: date, end: date) -> list[tuple[date, str, str, list[int]]]:

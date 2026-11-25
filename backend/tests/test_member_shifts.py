@@ -1,0 +1,77 @@
+"""不固定班组：成员被单独安排上班时，班组当天也算在班（合并显示、能分配任务）；其他成员不受影响。
+自定义上班时间分两段的人：只在一个班次里显示，中间休息有提示。"""
+
+from datetime import datetime, timedelta
+
+from app.db import SessionLocal
+from app.routers import duty as duty_router
+from app.schedule_service import load_schedule
+
+D = datetime(2031, 3, 5).date()  # 一个普通的周三
+
+
+def _main_on(kind):
+    with SessionLocal() as db:
+        return load_schedule(db).main_team_on(D, kind).id
+
+
+def test_manual_team_member_scheduled(client, admin_h, monkeypatch):
+    t = client.post("/api/teams", headers=admin_h, json={"name_zh": "抢修组", "kind": "manual", "is_main": False}).json()
+    a = client.post("/api/workers", headers=admin_h, json={"name": "Called In", "team_id": t["id"]}).json()
+    b = client.post("/api/workers", headers=admin_h, json={"name": "Stays Home", "team_id": t["id"]}).json()
+    # 没安排任何人：班组当天休息；给这个班组建任务也不会出错（归到当前班次）
+    cal = lambda: client.get("/api/shifts/calendar", headers=admin_h, params={"start": str(D), "end": str(D)}).json()[0]
+    assert cal()["shifts"][str(t["id"])] == "off"
+    r = client.get("/api/assignable", headers=admin_h, params={"team_id": t["id"]})
+    assert r.status_code == 200
+    # 出勤页把一个人安排上白班
+    r = client.put("/api/attendance/batch", headers=admin_h, json={"worker_ids": [a["id"]], "start": str(D), "end": str(D),
+                                                                    "status": "present", "shift_kind": "day"})
+    assert r.status_code == 200
+    c = cal()
+    assert c["shifts"][str(t["id"])] == "day" and t["id"] in c["by_members"]
+    # 另一个成员不会因此被算成上班
+    g = client.get("/api/attendance", headers=admin_h, params={"start": str(D), "end": str(D), "team_id": t["id"]}).json()
+    assert g["cells"][str(a["id"])][str(D)]["status"] == "present"
+    assert g["cells"][str(b["id"])][str(D)]["status"] == "off"
+    # 白班的主班组那一组能分配到他；交接班里合并显示
+    with SessionLocal() as db:
+        sched = load_schedule(db)
+        main = sched.main_team_on(D, "day")
+        assert t["id"] in {x.id for x in sched.group_of(main, D, "day")}
+    from app.routers.tasks import assignable_ids
+    with SessionLocal() as db:
+        ids = assignable_ids(db, load_schedule(db), main.id, D, "day")
+    assert a["id"] in ids and b["id"] not in ids
+    # 首页人员状态（白班 10:00）：在他自己的班组下面
+    monkeypatch.setattr(duty_router, "local_now", lambda: datetime.combine(D, datetime.min.time()) + timedelta(hours=10))
+    du = client.get("/api/duty", headers=admin_h).json()
+    names = {x["team_id"]: [y["worker"]["name"] for y in x["workers"]] for x in du["teams"]}
+    assert names.get(t["id"]) == ["Called In"]
+
+
+def test_split_hours_shown_once_with_break(client, admin_h, monkeypatch):
+    t = client.post("/api/teams", headers=admin_h, json={"name_zh": "分段组", "kind": "manual", "is_main": False}).json()
+    w = client.post("/api/workers", headers=admin_h, json={"name": "Split Hours", "team_id": t["id"]}).json()
+    start = D - timedelta(days=2)
+    r = client.put(f"/api/workers/{w['id']}/schedule", headers=admin_h, json={
+        "effective_from": str(start), "team_id": t["id"], "personal": True,
+        "pattern": ["07:00-12:00,14:00-17:00"] * 7, "cycle_start": str(start)})
+    assert r.status_code == 200, r.text
+
+    def at(h, which="current"):
+        monkeypatch.setattr(duty_router, "local_now", lambda: datetime.combine(D, datetime.min.time()) + timedelta(hours=h))
+        du = client.get("/api/duty", headers=admin_h, params={"which": which}).json()
+        rows = [y for x in du["teams"] for y in x["workers"] if y["worker"]["id"] == w["id"]]
+        rows += [y for y in du["top"] if y["worker"]["id"] == w["id"]]
+        return du["shift_kind"], rows
+
+    k, rows = at(9)
+    assert k == "day" and [r["status"] for r in rows] == ["idle"]
+    assert not at(9, "next")[1]  # 不会同时出现在下一个班（中班）里
+    k, rows = at(13)  # 午休
+    assert rows[0]["status"] == "off_hours" and rows[0]["back_at"].startswith(f"{D}T14:00")
+    k, rows = at(16)  # 已经是中班时段，他 14-17 还在上班：只在当前班（中班）里出现一次
+    assert k == "middle" and len(rows) == 1 and rows[0]["status"] == "idle"
+    k, rows = at(18)  # 下班了
+    assert k == "middle" and not rows

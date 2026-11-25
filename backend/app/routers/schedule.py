@@ -54,7 +54,9 @@ def shifts_calendar(start: date, end: date, db: Session = Depends(get_db),
                                shifts={t.id: sched.shift_of(t, d) for t in sched.teams},
                                hours={t.id: e for t in sched.teams if parse_hours(e := sched.team_entry(t, d))},
                                changed={t.id: sched.planned_shift_of(t, d) for t in sched.teams
-                                        if (t.id, d) in sched.overrides}))
+                                        if (t.id, d) in sched.overrides},
+                               by_members=[t.id for t in sched.teams if sched.entry_kind(sched.team_entry(t, d)) == "off"
+                                           and sched.shift_of(t, d) != "off"]))
         d += timedelta(days=1)
     return out
 

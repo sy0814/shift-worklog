@@ -195,6 +195,7 @@ onMounted(async () => {
                 <ShiftTag v-if="teamActive(team, row.day)" :kind="row.shifts[team.id]" />
                 <small v-else class="muted">{{ t('schedule.inactive') }}</small>
                 <small v-if="row.hours?.[team.id]" class="hrs" :title="fullHours(row.hours[team.id])">{{ shortEntry(row.hours[team.id], t) }}</small>
+                <small v-if="row.by_members?.includes(team.id)" class="was" :title="t('schedule.byMembersHint')">{{ t('schedule.byMembers') }}</small>
                 <small v-if="row.changed?.[team.id]" class="was">{{ t('schedule.changedFrom', { s: t('shift.' + row.changed[team.id]) }) }}</small>
               </span>
             </template>

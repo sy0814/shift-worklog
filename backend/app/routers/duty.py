@@ -40,6 +40,8 @@ class DutyWorker(BaseModel):
     overtime_until: datetime | None = None  # 加班到几点（本地时间）
     overtime_prev: bool = False  # 上一个班留下来加班的
     hours: str | None = None  # 自定义上班时间，例如 "07:00-12:00,14:00-17:00"
+    # 不在上班时间（off_hours）时：下一段几点开始（午休后回来 / 还没到点）；为空 = 今天的时间段都结束了
+    back_at: datetime | None = None
 
 
 class DutyTeam(BaseModel):
@@ -76,6 +78,12 @@ def _in_hours(sched, hours: str, d, now) -> bool:
     return any(a <= now < b for a, b in sched.entry_hours(hours, d))
 
 
+def _next_start(sched, hours: str, d, now):
+    """自定义上班时间里，now 之后最近一段的开始时间（本地 naive）；没有了返回 None。"""
+    starts = [a for a, _b in sched.entry_hours(hours, d) if a > now]
+    return min(starts) if starts else None
+
+
 def _working_now(sched, row: dict, d, now):
     """有自定义上班时间、而且现在正在时间段里的那一天的出勤（看当天和前一天）；没有返回 None。"""
     for day in (d, d - timedelta(days=1)):
@@ -102,6 +110,7 @@ def duty(which: str = Query(default="current", pattern="^(current|next)$"), db: 
     eff = att.effective(db, workers, d - timedelta(days=1), d)
     rows: dict[int, list[tuple[Worker, str, bool]]] = {}
     hours_of: dict[int, str | None] = {}
+    back_of: dict[int, datetime] = {}
     # 加班：本班次的人加班到几点；当前班次还要算上上个班留下来加班、还没到点的人
     now = local_now()
     pd, pk = sched.prev_shift(d, k)
@@ -124,6 +133,8 @@ def duty(which: str = Query(default="current", pattern="^(current|next)$"), db: 
             st = "on"
             if which == "current" and a.hours and not _in_hours(sched, a.hours, d, now):
                 st = "off_hours"  # 自定义上班时间：现在不在时间段里（例如午休、还没到点）
+                if (nx := _next_start(sched, a.hours, d, now)) is not None:
+                    back_of[w.id] = nx
             hours_of[w.id] = a.hours
             rows.setdefault(team, []).append((w, st, team != w.team_id))
         elif which == "current" and (x := _working_now(sched, eff[w.id], d, now)) is not None:
@@ -163,6 +174,7 @@ def duty(which: str = Query(default="current", pattern="^(current|next)$"), db: 
                 counts["absent"] += 1
             (top if on_top(w) else out).append(DutyWorker(
                 hours=hours_of.get(w.id),
+                back_at=back_of[w.id].replace(tzinfo=get_settings().tz) if w.id in back_of else None,
                 worker=WorkerOut.model_validate(w), status=st, support=support, team_id=tid, role_id=w.role_id or member,
                 overtime_until=ot[w.id][0].replace(tzinfo=get_settings().tz) if w.id in ot else None,
                 overtime_prev=ot.get(w.id, (None, False))[1],

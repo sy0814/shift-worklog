@@ -18,3 +18,9 @@ export function shortEntry(k, t) {
 export function fullHours(k) {
   return splitHours(k).map(([a, b]) => `${a}–${b}`).join('、')
 }
+
+/** 两段之间的休息时间：「07:00-12:00,14:00-17:00」→ [['12:00', '14:00']] */
+export function breaks(k) {
+  const iv = splitHours(k)
+  return iv.slice(1).map(([a], i) => [iv[i][1], a]).filter(([a, b]) => a !== b)
+}

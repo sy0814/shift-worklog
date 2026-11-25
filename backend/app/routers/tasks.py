@@ -299,10 +299,16 @@ def assignable_ids(db: Session, sched, team_id: int, d, k: str) -> set[int]:
     team = sched.team(team_id)
     group = {t.id for t in sched.group_of(team, d, k)} if team else {team_id}
     group.add(team_id)
+    # 这个班次的主班组那一组，还要算上「班组自己今天不上这个班、但人被单独安排来上」的人
+    # （例如 4 班休息、人被叫来上白班却没写顶哪个班组）
+    main = sched.main_team_on(d, k)
+    slot_group = {t.id for t in sched.group_of(main, d, k)} if main else set()
+    on_ids = {t.id for t in sched.teams_on(d, k)}
     workers = list(db.scalars(select(Worker).where(Worker.is_active.is_(True))))
     eff = att.effective(db, workers, d, d, sched)
     return {w.id for w in workers
-            if (a := eff[w.id][d]).status == "present" and a.shift_kind == k and a.team_id in group}
+            if (a := eff[w.id][d]).status == "present" and a.shift_kind == k
+            and (a.team_id in group or (team_id in slot_group and a.team_id not in on_ids))}
 
 
 def _check_assignable(db: Session, w: "permissions.Who", team_id: int, d, k: str, new_ids: set[int]) -> None:

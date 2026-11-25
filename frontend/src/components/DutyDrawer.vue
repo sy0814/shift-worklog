@@ -9,7 +9,7 @@ import { useAuth } from '../stores/auth'
 import ShiftTag from './ShiftTag.vue'
 import WorkerAvatar from './WorkerAvatar.vue'
 import OvertimeDialog from './OvertimeDialog.vue'
-import { fullHours } from '../cycle'
+import { breaks, fullHours, splitHours } from '../cycle'
 import dayjs from 'dayjs'
 
 const props = defineProps({ which: { type: String, default: 'current' } })
@@ -56,6 +56,14 @@ function addOvertime() {
   otOpen.value = true
 }
 const hm = (iso) => dayjs(iso.slice(0, 16)).format('HH:mm') // 服务器给的是工厂本地时间
+// 自定义上班时间：「07:00–12:00、14:00–17:00（12:00–14:00 休息）」
+const hoursText = (h) => fullHours(h) + (breaks(h).length ? t('duty.breaks', { b: breaks(h).map(([a, b]) => `${a}–${b}`).join('、') }) : '')
+// 不在上班时间：午休中几点回来 / 还没到点几点上班 / 今天已经下班
+function offText(r) {
+  if (!r.back_at) return t('duty.doneToday')
+  const at = hm(r.back_at)
+  return at === splitHours(r.hours)[0]?.[0] ? t('duty.startsAt', { t: at }) : t('duty.backAt', { t: at })
+}
 
 function addTask() {
   // 管理员默认派给这个班次的倒班班组；班长派给自己的班组
@@ -93,7 +101,8 @@ function addTask() {
                 <el-tag size="small" type="primary" effect="plain">{{ roleName(r.role_id) }}</el-tag>
                 <el-tag size="small" effect="plain" type="info">{{ teamName(r.team_id) }}</el-tag>
                 <el-tag :type="ST_TYPE[r.status]" size="small" effect="dark">{{ t('duty.st.' + r.status) }}</el-tag>
-                <el-tag v-if="r.hours" size="small" effect="plain" class="hrs">⏱ {{ fullHours(r.hours) }}</el-tag>
+                <el-tag v-if="r.status === 'off_hours'" size="small" type="info" effect="plain">{{ offText(r) }}</el-tag>
+                <el-tag v-if="r.hours" size="small" effect="plain" class="hrs">⏱ {{ hoursText(r.hours) }}</el-tag>
                 <el-tag v-if="r.overtime_until" size="small" type="warning" effect="plain">⏱ {{ t(r.overtime_prev ? 'ot.prevTag' : 'ot.untilTag', { t: hm(r.overtime_until) }) }}</el-tag>
               </div>
               <div v-for="task in r.tasks" :key="task.id" class="task" @click="emit('open-task', task.id)">
@@ -115,7 +124,8 @@ function addTask() {
               <div class="name">
                 <b>{{ r.worker.name }}</b>
                 <el-tag :type="ST_TYPE[r.status]" size="small" effect="dark">{{ t('duty.st.' + r.status) }}</el-tag>
-                <el-tag v-if="r.hours" size="small" effect="plain" class="hrs">⏱ {{ fullHours(r.hours) }}</el-tag>
+                <el-tag v-if="r.status === 'off_hours'" size="small" type="info" effect="plain">{{ offText(r) }}</el-tag>
+                <el-tag v-if="r.hours" size="small" effect="plain" class="hrs">⏱ {{ hoursText(r.hours) }}</el-tag>
                 <el-tag v-if="r.support" size="small" effect="plain">{{ t('duty.support') }} · {{ teamName(r.worker.team_id) }}</el-tag>
                 <el-tag v-if="r.overtime_until" size="small" type="warning" effect="plain">⏱ {{ t(r.overtime_prev ? 'ot.prevTag' : 'ot.untilTag', { t: hm(r.overtime_until) }) }}</el-tag>
               </div>
