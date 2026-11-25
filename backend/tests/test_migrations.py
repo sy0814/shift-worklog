@@ -78,10 +78,13 @@ def test_audit_trigger_installed_by_migration(engine):
 
 
 def _seed(c):
+    if not c.execute(text("SELECT count(*) FROM departments")).scalar():  # 迁移 0017 会建默认车间；create_all 不会
+        c.execute(text("INSERT INTO departments (id, code, name_zh, name_sr, name_en, sort_order, is_active, created_at) "
+                       "VALUES (1, 'D1', '车间', 'Pogon', 'Workshop', 0, true, CURRENT_TIMESTAMP)"))
     c.execute(text("INSERT INTO teams (id, code, name_zh, name_sr, name_en, kind, pattern, cycle_start, holiday_off, "
-                   "is_main, sort_order) VALUES (1, 'T1', '1班', 'Smena 1', 'Team 1', 'cycle', "
+                   "is_main, sort_order, department_id) VALUES (1, 'T1', '1班', 'Smena 1', 'Team 1', 'cycle', "
                    "'[\"day\",\"day\",\"middle\",\"middle\",\"night\",\"night\",\"off\",\"off\"]', "
-                   "'2026-10-28', false, true, 0)"))
+                   "'2026-10-28', false, true, 0, 1)"))
     c.execute(text("INSERT INTO users (id, username, password_hash, full_name, role, team_id, lang, is_active, created_at) "
                    "VALUES (1, 'u', 'h', 'U', 'leader', 1, 'zh', true, CURRENT_TIMESTAMP)"))
     c.execute(text("INSERT INTO workers (id, name, team_id, is_active, created_at) VALUES (1, 'Petar', 1, true, CURRENT_TIMESTAMP)"))
@@ -184,6 +187,39 @@ def test_0009_converts_old_teams(engine):
                 assert new.shift_of(teams[code], d) == old.shift_of(ot, d), (code, d)
         row = db.execute(text("SELECT worker_id, effective_from, team_id FROM worker_schedules")).one()
         assert row[0] == 1 and str(row[1]) == "2000-01-01" and row[2] == 2
+
+
+def test_0017_departments(engine):
+    """0017：已有的班组、员工都归默认车间；角色里的「全部」改成「本车间」，加新权限；退回去也能恢复。"""
+    import json
+
+    cfg = migrate.alembic_config()
+    with engine.begin() as c:
+        cfg.attributes["connection"] = c
+        command.upgrade(cfg, "0016")
+        c.execute(text("INSERT INTO teams (id, code, name_zh, name_sr, name_en, kind, pattern, cycle_start, holiday_off, "
+                       "is_main, sort_order) VALUES (1, 'T1', '1班', 'S1', 'T1', 'cycle', '[\"day\"]', '2026-11-01', "
+                       "false, true, 0)"))
+        c.execute(text("INSERT INTO workers (id, name, team_id, is_active, created_at, extra) "
+                       "VALUES (1, 'Petar', 1, true, CURRENT_TIMESTAMP, '{}')"))
+        c.execute(text("INSERT INTO workers (id, name, team_id, is_active, created_at, extra) "
+                       "VALUES (2, 'Ana', NULL, true, CURRENT_TIMESTAMP, '{}')"))
+    migrate.upgrade(engine)
+    with engine.connect() as c:
+        assert c.execute(text("SELECT id, code FROM departments")).all() == [(1, "D1")]
+        assert c.execute(text("SELECT department_id FROM teams")).scalar() == 1
+        assert {r[0] for r in c.execute(text("SELECT department_id FROM workers"))} == {1}
+        perms = c.execute(text("SELECT permissions FROM roles WHERE code = 'leader'")).scalar()
+        perms = json.loads(perms) if isinstance(perms, str) else perms
+        assert perms["task.view"] == "dept" and perms["task.create"] == "team" and perms["worker.manage"] == "none"
+    with engine.begin() as c:
+        cfg.attributes["connection"] = c
+        command.downgrade(cfg, "0016")
+    with engine.connect() as c:
+        perms = c.execute(text("SELECT permissions FROM roles WHERE code = 'leader'")).scalar()
+        perms = json.loads(perms) if isinstance(perms, str) else perms
+        assert perms["task.view"] == "all" and "worker.manage" not in perms
+        assert "department_id" not in {x["name"] for x in inspect(c).get_columns("teams")}
 
 
 def test_alembic_ini_is_ascii():

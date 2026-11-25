@@ -18,6 +18,8 @@ from ..db import get_db
 from ..models import Overtime, Team, User, Worker, utcnow
 from ..overtime_service import expand, to_local
 from ..schedule_service import load_schedule
+from ..departments import get_dept
+from .. import departments
 from ..schemas import UTCDateTime
 from ..security import get_current_user
 
@@ -83,7 +85,8 @@ def _out(db: Session, rows: list[Overtime]) -> list[OvertimeOut]:
 
 @router.get("", response_model=list[OvertimeOut])
 def list_overtime(start: date, end: date, team_id: int | None = None, db: Session = Depends(get_db),
-                  _: User = Depends(get_current_user)):
+                  _: User = Depends(get_current_user), dept: int | None = Depends(get_dept)):
+    """加班记录：某个班组的，或者（不指定班组）当前车间的。"""
     if end < start or (end - start).days > 92:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "range must be 0..92 days")
     q = select(Overtime).where(Overtime.day >= start, Overtime.day <= end)
@@ -91,6 +94,10 @@ def list_overtime(start: date, end: date, team_id: int | None = None, db: Sessio
     if team_id:
         ws = {w.id: w.team_id for w in db.scalars(select(Worker))}
         rows = [r for r in rows if r.team_id == team_id or ws.get(r.worker_id) == team_id]
+    else:
+        tids = departments.team_ids(db, dept)
+        wd = {w.id: w.department_id for w in db.scalars(select(Worker))}
+        rows = [r for r in rows if r.team_id in tids or (r.worker_id and wd.get(r.worker_id) == dept)]
     return _out(db, rows)
 
 

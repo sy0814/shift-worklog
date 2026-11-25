@@ -14,7 +14,8 @@ from fastapi.responses import FileResponse
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
-from .. import app_settings, audit, permissions, translation_service
+from .. import app_settings, audit, departments, permissions, translation_service
+from ..departments import get_dept
 from ..config import get_settings
 from ..db import get_db
 from ..images import InvalidImage, parse_exif_datetime, process_upload
@@ -301,9 +302,10 @@ def assignable_ids(db: Session, sched, team_id: int, d, k: str) -> set[int]:
     group.add(team_id)
     # 这个班次的主班组那一组，还要算上「班组自己今天不上这个班、但人被单独安排来上」的人
     # （例如 4 班休息、人被叫来上白班却没写顶哪个班组）
-    main = sched.main_team_on(d, k)
+    dept = team.dept if team else sched.depts()[0]
+    main = sched.main_team_on(d, k, dept)
     slot_group = {t.id for t in sched.group_of(main, d, k)} if main else set()
-    on_ids = {t.id for t in sched.teams_on(d, k)}
+    on_ids = {t.id for t in sched.teams_on(d, k)}  # 所有车间此刻在班的班组（被单独叫来的人不能是这些班组的）
     workers = list(db.scalars(select(Worker).where(Worker.is_active.is_(True))))
     eff = att.effective(db, workers, d, d, sched)
     return {w.id for w in workers
@@ -311,9 +313,14 @@ def assignable_ids(db: Session, sched, team_id: int, d, k: str) -> set[int]:
             and (a.team_id in group or (team_id in slot_group and a.team_id not in on_ids))}
 
 
+def unrestricted(w: "permissions.Who") -> bool:
+    """管理员、车间管理员（新建和修改任务的范围都是本车间或全厂）可以把任务分给任何人。"""
+    return w.scope("task.edit") in ("dept", "all") and w.scope("task.create") in ("dept", "all")
+
+
 def _check_assignable(db: Session, w: "permissions.Who", team_id: int, d, k: str, new_ids: set[int]) -> None:
-    """班长只能把任务分给同一班次在岗的人（管理员 / 范围是「全部班组」的不限）。"""
-    if not new_ids or w.scope("task.edit") == "all" and w.scope("task.create") == "all":
+    """班长只能把任务分给同一班次在岗的人（管理员 / 车间管理员不限）。"""
+    if not new_ids or unrestricted(w):
         return
     bad = new_ids - assignable_ids(db, load_schedule(db), team_id, d, k)
     if bad:
@@ -379,7 +386,7 @@ def assignable(team_id: int | None = None, task_id: int | None = None, db: Sessi
         if team is None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "team not found")
         d, k = sched.recording_slot(team, local_now())
-    restricted = not (w.scope("task.edit") == "all" and w.scope("task.create") == "all")
+    restricted = not unrestricted(w)
     return AssignableOut(shift_date=d, shift_kind=k, restricted=restricted,
                          worker_ids=sorted(assignable_ids(db, sched, team_id, d, k)))
 
@@ -388,6 +395,7 @@ def assignable(team_id: int | None = None, task_id: int | None = None, db: Sessi
 @router.get("/tasks", response_model=TaskPage)
 def list_tasks(
     team_id: int | None = None,
+    all_departments: bool = False,  # 不限当前车间（能看全厂的人用）
     status_: list[str] | None = Query(default=None, alias="status"),
     date_from: str | None = None,
     date_to: str | None = None,
@@ -399,13 +407,16 @@ def list_tasks(
     offset: int = 0,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
+    dept: int | None = Depends(get_dept),
 ):
     query = select(Task)
     w = permissions.who(db, user)
     vis = w.visible_team_ids()
-    if vis is not None:  # 只能看本班组（和合并班组）的任务，外加自己参与的
+    if vis is not None:  # 只能看本班组（和合并班组）/ 本车间的任务，外加自己参与的
         mine = Task.workers.any(Worker.id == w.worker_id) if w.worker_id else False
         query = query.where(or_(Task.team_id.in_(vis), mine) if w.worker_id else Task.team_id.in_(vis))
+    elif not team_id and not all_departments:  # 能看全厂的人：默认只列当前车间
+        query = query.where(Task.team_id.in_(departments.team_ids(db, dept)))
     if team_id:
         query = query.where(Task.team_id == team_id)
     if status_:
@@ -460,7 +471,7 @@ def create_task(body: TaskCreate, db: Session = Depends(get_db),
         if db.get(Team, body.team_id) is None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "team_id required")
         team_id = body.team_id
-    elif user.role == "admin":
+    elif user.role == "admin" or user.team_id is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "team_id required")
     else:
         team_id = user.team_id

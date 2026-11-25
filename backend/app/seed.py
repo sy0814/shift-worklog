@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from . import audit
 from .config import get_settings
 from . import worker_history
-from .models import AppSetting, Role, ShiftConfig, Team, User, Worker
+from .models import AppSetting, Department, Role, ShiftConfig, Team, User, Worker
 from .permissions import ensure_builtin_roles
 from .security import hash_password
 from .shifts import CYCLE, WEEKDAYS
@@ -49,13 +49,26 @@ LEADERS = [
 ]
 
 
+def ensure_default_department(db: Session) -> Department:
+    """至少要有一个车间（迁移 0017 会建好；这里兜底）。"""
+    d = db.scalar(select(Department).order_by(Department.sort_order, Department.id).limit(1))
+    if d is None:
+        d = Department(code="D1", name_zh="默认车间", name_sr="Podrazumevani pogon", name_en="Default workshop",
+                       sort_order=0)
+        db.add(d)
+        db.flush()
+    return d
+
+
 def seed(db: Session) -> None:
     if db.scalar(select(Team).limit(1)) is not None:
         return
     s = get_settings()
+    dept = ensure_default_department(db)
     teams: dict[str, Team] = {}
     for i, (code, zh, sr, en, kind, off) in enumerate(TEAMS):
-        t = Team(code=code, name_zh=zh, name_sr=sr, name_en=en, sort_order=i, **team_cycle(kind, off))
+        t = Team(code=code, name_zh=zh, name_sr=sr, name_en=en, sort_order=i, department_id=dept.id,
+                 **team_cycle(kind, off))
         db.add(t)
         teams[code] = t
     db.add(ShiftConfig(id=1, day_start=time(7), middle_start=time(15), night_start=time(23)))

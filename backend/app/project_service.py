@@ -18,6 +18,7 @@ from . import audit, translation_service
 from .db import SessionLocal
 from .models import Project, Task, Worker, utcnow
 from .schedule_service import load_schedule, local_now
+from .shifts import ALL
 from .worker_history import Timelines
 
 OPEN = ("not_started", "in_progress")
@@ -134,15 +135,16 @@ def due_for_auto_handover(db: Session, now_local: datetime) -> list[Task]:
 
 
 def auto_handover(db: Session, now_local: datetime | None = None) -> list[Task]:
-    """把到时间的子项目移交给此刻在班的主班组（不 commit 之外的事都在这里做完；返回新任务）。"""
+    """把到时间的子项目移交给它所在车间此刻在班的主班组（不 commit 之外的事都在这里做完；返回新任务）。"""
     from .routers.handover import perform_handover
 
     now_local = now_local or local_now()
     sched = load_schedule(db)
     d, k = sched.shift_at(now_local)
-    target = sched.main_team_on(d, k)
     created = []
     for t in due_for_auto_handover(db, now_local):
+        team = sched.team(t.team_id)
+        target = sched.main_team_on(d, k, team.dept if team else ALL)
         if target is None or target.id == t.team_id:
             continue
         actor = t.project.updated_by if t.project else t.updated_by

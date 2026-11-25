@@ -21,6 +21,7 @@ from ..db import get_db
 from ..models import Equipment, Task, User, utcnow
 from ..schemas import Lang, Trilingual, UTCDateTime
 from ..security import get_current_user
+from ..departments import get_dept
 
 router = APIRouter(prefix="/api/equipment", tags=["equipment"])
 LANGS = ("zh", "sr", "en")
@@ -54,18 +55,23 @@ class EquipmentOut(BaseModel):
     last_task_date: str | None = None
     updated_at: UTCDateTime
     can_manage: bool = False
+    department_id: int | None = None  # 空 = 全厂共用
 
 
 def _tri(e: Equipment, f: str) -> Trilingual:
     return Trilingual(**{l: getattr(e, f"{f}_{l}") for l in LANGS})
 
 
-def _out(e: Equipment, stats: dict, can: bool) -> EquipmentOut:
+def _out(e: Equipment, stats: dict, can) -> EquipmentOut:
+    """can：True / False，或 Who（按这台设备的车间判断）。"""
+    if not isinstance(can, bool):
+        can = can.dept_ok("equipment.manage", e.department_id)
     total, open_, last = stats.get(e.id, (0, 0, None))
     return EquipmentOut(id=e.id, code=e.code, name=_tri(e, "name"), area=_tri(e, "area"), note=_tri(e, "note"),
                         model=e.model or "", source_lang=e.source_lang, translation_status=e.translation_status,
                         is_active=e.is_active, tasks_total=total, tasks_open=open_,
-                        last_task_date=str(last) if last else None, updated_at=e.updated_at, can_manage=can)
+                        last_task_date=str(last) if last else None, updated_at=e.updated_at, can_manage=can,
+                        department_id=e.department_id)
 
 
 def _stats(db: Session, ids: list[int] | None = None) -> dict:
@@ -86,12 +92,20 @@ def _stats(db: Session, ids: list[int] | None = None) -> dict:
     return {k: tuple(v) for k, v in out.items()}
 
 
-def _can(db: Session, user: User) -> bool:
-    return permissions.who(db, user).has("equipment.manage")
+def _can(db: Session, user: User, dept_id: int | None) -> bool:
+    """能不能管这个车间的设备（全厂共用的设备 = 只有全厂范围的人能管）。"""
+    return permissions.who(db, user).dept_ok("equipment.manage", dept_id)
 
 
-def _require(db: Session, user: User) -> None:
-    permissions.require(_can(db, user), "no permission to manage equipment")
+def _require(db: Session, user: User, dept_id: int | None) -> None:
+    permissions.require(_can(db, user, dept_id), "no permission to manage equipment")
+
+
+def _in_dept(query, dept: int | None, all_departments: bool = False):
+    """当前车间的设备 + 全厂共用的。"""
+    if all_departments:
+        return query
+    return query.where(or_(Equipment.department_id == dept, Equipment.department_id.is_(None)))
 
 
 def _clean_code(code: str | None) -> str:
@@ -130,8 +144,10 @@ def _apply(e: Equipment, body: EquipmentIn, creating: bool) -> tuple[dict, bool]
 
 @router.get("", response_model=list[EquipmentOut])
 def list_equipment(q: str | None = Query(default=None, max_length=100), include_inactive: bool = False,
-                   db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    query = select(Equipment)
+                   all_departments: bool = False, db: Session = Depends(get_db),
+                   user: User = Depends(get_current_user), dept: int | None = Depends(get_dept)):
+    """当前车间的设备和全厂共用的设备（all_departments = 全部车间，例如看跨车间任务关联的设备）。"""
+    query = _in_dept(select(Equipment), dept, all_departments)
     if not include_inactive:
         query = query.where(Equipment.is_active.is_(True))
     if q and q.strip():
@@ -140,8 +156,8 @@ def list_equipment(q: str | None = Query(default=None, max_length=100), include_
                                 *[getattr(Equipment, f"{f}_{l}").ilike(like) for f in ("name", "area") for l in LANGS]))
     rows = db.scalars(query.order_by(Equipment.code)).all()
     stats = _stats(db)
-    can = _can(db, user)
-    return [_out(e, stats, can) for e in rows]
+    who = permissions.who(db, user)
+    return [_out(e, stats, who) for e in rows]
 
 
 @router.get("/{eid}", response_model=EquipmentOut)
@@ -149,31 +165,33 @@ def get_equipment(eid: int, db: Session = Depends(get_db), user: User = Depends(
     e = db.get(Equipment, eid)
     if e is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
-    return _out(e, _stats(db, [eid]), _can(db, user))
+    return _out(e, _stats(db, [eid]), permissions.who(db, user))
 
 
 @router.post("", response_model=EquipmentOut, status_code=201)
-def create_equipment(body: EquipmentIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    _require(db, user)
+def create_equipment(body: EquipmentIn, db: Session = Depends(get_db), user: User = Depends(get_current_user),
+                     dept: int | None = Depends(get_dept)):
+    """新设备属于当前车间。"""
+    _require(db, user, dept)
     code = _clean_code(body.code)
     if db.scalar(select(Equipment.id).where(Equipment.code == code)):
         raise HTTPException(status.HTTP_409_CONFLICT, "equipment code already exists")
     if body.name is None or not any((getattr(body.name, l) or "").strip() for l in LANGS):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "equipment name required")
-    e = _create(db, user, code, body)
+    e = _create(db, user, code, body, dept)
     db.commit()
     translation_service.enqueue_equipment(e.id)
     db.refresh(e)
     return _out(e, {}, True)
 
 
-def _create(db: Session, user: User, code: str, body: EquipmentIn) -> Equipment:
+def _create(db: Session, user: User, code: str, body: EquipmentIn, dept: int | None) -> Equipment:
     now = utcnow()
     name = body.name or Trilingual()
     src = body.lang if (getattr(name, body.lang) or "").strip() else next(
         (l for l in LANGS if (getattr(name, l) or "").strip()), body.lang)
     e = Equipment(code=code, model=(body.model or "").strip(), source_lang=src, translation_status="pending",
-                  is_active=True if body.is_active is None else body.is_active,
+                  is_active=True if body.is_active is None else body.is_active, department_id=dept,
                   created_by=user.id, updated_by=user.id, created_at=now, updated_at=now)
     changes, need = _apply(e, body, creating=True)
     for k, v in changes.items():
@@ -188,10 +206,10 @@ def _create(db: Session, user: User, code: str, body: EquipmentIn) -> Equipment:
 
 @router.patch("/{eid}", response_model=EquipmentOut)
 def update_equipment(eid: int, body: EquipmentIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    _require(db, user)
     e = db.get(Equipment, eid)
     if e is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
+    _require(db, user, e.department_id)
     changes = _update(db, e, body)
     if audit.log_changes(db, e, changes, user_id=user.id, entity="equipment", entity_id=e.id):
         e.updated_by, e.updated_at = user.id, utcnow()
@@ -224,10 +242,10 @@ def _update(db: Session, e: Equipment, body: EquipmentIn) -> dict:
 @router.delete("/{eid}", status_code=204)
 def delete_equipment(eid: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """只能删没关联过任务的设备；关联过的请停用。"""
-    _require(db, user)
     e = db.get(Equipment, eid)
     if e is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
+    _require(db, user, e.department_id)
     if db.scalar(select(func.count()).select_from(Task).where(Task.equipment_id == eid)):
         raise HTTPException(status.HTTP_409_CONFLICT, "equipment has tasks; deactivate it instead")
     audit.log(db, user_id=user.id, action="delete", entity="equipment", entity_id=e.id,
@@ -269,7 +287,9 @@ def _header_key(h: str) -> tuple[str, str | None] | None:
 
 
 @router.get("/export/xlsx")
-def export_equipment(lang: Lang = "zh", db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def export_equipment(lang: Lang = "zh", db: Session = Depends(get_db), user: User = Depends(get_current_user),
+                     dept: int | None = Depends(get_dept)):
+    """导出当前车间的设备和全厂共用的设备。"""
     i = LANGS.index(lang)
     wb = Workbook()
     ws = wb.active
@@ -277,7 +297,7 @@ def export_equipment(lang: Lang = "zh", db: Session = Depends(get_db), user: Use
     cols = [("code", None)] + [(f, l) for f in ("name", "area") for l in LANGS] + [("model", None)] + \
         [("note", l) for l in LANGS] + [("active", None)]
     ws.append([HEAD[k][i] + (f" {l}" if l else "") for k, l in cols])
-    for e in db.scalars(select(Equipment).order_by(Equipment.code)).all():
+    for e in db.scalars(_in_dept(select(Equipment), dept).order_by(Equipment.code)).all():
         row = []
         for k, l in cols:
             if k == "code":
@@ -316,9 +336,12 @@ class ImportResult(BaseModel):
 
 @router.post("/import/xlsx", response_model=ImportResult)
 async def import_equipment(file: UploadFile = File(...), lang: Lang = Form("zh"), dry_run: bool = Form(True),
-                           db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    """按设备编号合并：编号已有 → 更新填了的格子；没有 → 新增。有一行错就全不导入。dry_run = 只检查。"""
-    _require(db, user)
+                           db: Session = Depends(get_db), user: User = Depends(get_current_user),
+                           dept: int | None = Depends(get_dept)):
+    """按设备编号合并：编号已有 → 更新填了的格子；没有 → 新增到当前车间。有一行错就全不导入。dry_run = 只检查。
+    编号是别的车间（或全厂共用）、自己管不了的设备 → 这一行报错。"""
+    _require(db, user, dept)
+    who = permissions.who(db, user)
     data = await file.read()
     if not data:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "empty file")
@@ -372,6 +395,9 @@ async def import_equipment(file: UploadFile = File(...), lang: Lang = Form("zh")
             continue
         seen.add(code)
         e = existing.get(code)
+        if e is not None and not who.dept_ok("equipment.manage", e.department_id):
+            errors.append(ImportRowError(row=n, error=f"{code} belongs to another department"))
+            continue
         if e is None and not vals["name"]:
             errors.append(ImportRowError(row=n, error="equipment name required"))
             continue
@@ -389,7 +415,7 @@ async def import_equipment(file: UploadFile = File(...), lang: Lang = Form("zh")
         if e is None:
             created += 1
             if not dry_run:
-                touched.append(_create(db, user, code, body))
+                touched.append(_create(db, user, code, body, dept))
             continue
         changes = _update(db, e, body)
         changes = {k: v for k, v in changes.items() if getattr(e, k) != v}

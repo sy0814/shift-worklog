@@ -96,6 +96,9 @@ class Cycle:
         return k
 
 
+ALL = object()  # teams_on / main_team_on 的 dept 参数：不限车间
+
+
 @dataclass(frozen=True)
 class TeamInfo:
     id: int
@@ -103,6 +106,7 @@ class TeamInfo:
     is_main: bool = False
     active_from: date | None = None  # 临时班组：从哪天起有效（含）
     active_to: date | None = None  # 到哪天为止（含）；空 = 长期
+    dept: int | None = None  # 车间 id
 
     @property
     def kind(self) -> str:
@@ -246,16 +250,20 @@ class Schedule:
         return self.team_entry(team, d) if team else OFF
 
     # ---- 某天 / 某时刻 ----
-    def main_team_on(self, d: date, kind: str) -> TeamInfo | None:
-        """某班次的「主班组」：第一个上这个班的主班组；没有主班组上的话，用第一个上这个班的其他班组。"""
-        on = self.teams_on(d, kind)
+    def main_team_on(self, d: date, kind: str, dept=ALL) -> TeamInfo | None:
+        """某车间某班次的「主班组」：第一个上这个班的主班组；没有主班组上的话，用第一个上这个班的其他班组。"""
+        on = self.teams_on(d, kind, dept)
         return next((t for t in on if t.is_main), on[0] if on else None)
 
     rotating_team_on = main_team_on  # 旧名字
 
-    def teams_on(self, d: date, kind: str) -> list[TeamInfo]:
-        """某班次日某班次在班的所有班组（白班时可能包含常白班）。"""
-        return [t for t in self.teams if self.shift_of(t, d) == kind]
+    def teams_on(self, d: date, kind: str, dept=ALL) -> list[TeamInfo]:
+        """某班次日某班次在班的所有班组（白班时可能包含常白班）。dept 给了就只看这个车间。"""
+        return [t for t in self.teams if (dept is ALL or t.dept == dept) and self.shift_of(t, d) == kind]
+
+    def depts(self) -> list:
+        """排班里出现的车间（按班组顺序）。"""
+        return list(dict.fromkeys(t.dept for t in self.teams))
 
     def shift_at(self, dt: datetime) -> tuple[date, str]:
         """本地时间 dt 属于哪个班次日的哪个班次。"""
@@ -284,9 +292,9 @@ class Schedule:
         return start, datetime.combine(nd, end_t)
 
     def handover_target(self, team: TeamInfo, d: date, kind: str) -> TeamInfo | None:
-        """默认移交对象：下一个班次的主班组（常白班 07-15 下班 → 当天中班）。"""
+        """默认移交对象：本车间下一个班次的主班组（常白班 07-15 下班 → 当天中班）。"""
         nd, nk = self.next_shift(d, kind)
-        return self.main_team_on(nd, nk)
+        return self.main_team_on(nd, nk, team.dept)
 
     def next_shift_of_team(self, team: TeamInfo, after: date, kind: str) -> tuple[date, str]:
         """班组在 (after, kind) 之后的下一个上班班次（最多向后找 30 天）。"""
@@ -312,12 +320,12 @@ class Schedule:
         """移交时默认的接收班组。
 
         班组正在上班：按交接顺序交给下一个班次（常白班交给当天中班）。
-        班组已下班（例如下班后才补录移交）：交给此刻在班的倒班班组。
+        班组已下班（例如下班后才补录移交）：交给本车间此刻在班的主班组。
         """
         d, k = self.shift_at(now)
         if self.is_on(team, d, k):
             return self.handover_target(team, d, k)
-        return self.rotating_team_on(d, k)
+        return self.main_team_on(d, k, team.dept)
 
     def receiving_slot(self, team: TeamInfo, now: datetime) -> tuple[date, str]:
         """接收班组拿到任务时归属的班次：正在上班则为当前班次，否则为它的下一个班次。"""
@@ -332,11 +340,11 @@ class Schedule:
     # ---- 合并显示（原「常白班搭班」）----
     def group_of(self, team: TeamInfo, d: date, kind: str | None = None) -> list[TeamInfo]:
         """班次 (d, kind) 里和 team 合并在一起的班组，主班组排第一。kind 默认是 team 当天的班。
-        非主班组合并到这个班次的第一个主班组；没有主班组时，非主班组之间合在一起。"""
+        非主班组合并到同一车间这个班次的第一个主班组；没有主班组时，非主班组之间合在一起。"""
         kind = kind or self.shift_of(team, d)
         if kind == OFF or not self.is_on(team, d, kind):
             return [team]
-        on = self.teams_on(d, kind)
+        on = self.teams_on(d, kind, team.dept)
         mains = [t for t in on if t.is_main]
         others = [t for t in on if not t.is_main]
         if team.is_main:
@@ -374,15 +382,15 @@ class Schedule:
             return d, k
 
 
-def coverage_problems(sched: Schedule, start: date, end: date) -> list[tuple[date, str, str, list[int]]]:
-    """检查一段日期里每个班次有没有人上：(日期, 班次, 问题, 班组 id)。
+def coverage_problems(sched: Schedule, start: date, end: date, dept=ALL) -> list[tuple[date, str, str, list[int]]]:
+    """检查某个车间一段日期里每个班次有没有人上：(日期, 班次, 问题, 班组 id)。dept 不给 = 所有班组当成一个车间。
     none = 没有任何班组上；nomain = 只有非主班组上（首页会单独显示它）；
     multiple = 两个以上主班组同时上同一个班（可能是有意的，只提示）。"""
     out = []
     d = start
     while d <= end:
         for k in ORDER:
-            on = sched.teams_on(d, k)
+            on = sched.teams_on(d, k, dept)
             mains = [t for t in on if t.is_main]
             if not on:
                 out.append((d, k, "none", []))

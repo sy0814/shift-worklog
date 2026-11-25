@@ -40,7 +40,7 @@ def to_utc(local: datetime) -> datetime:
 def rule_of(t: InspectionTemplate) -> Rule:
     return Rule(kind=t.kind, at_time=t.at_time, every_n=t.every_n, weekdays=list(t.weekdays or []),
                 month_days=list(t.month_days or []), year_dates=list(t.year_dates or []), shift_kinds=list(t.shift_kinds or []),
-                start_date=t.start_date, assign=t.assign, team_id=t.team_id)
+                start_date=t.start_date, assign=t.assign, team_id=t.team_id, dept=t.department_id)
 
 
 def schedule_next(db: Session, t: InspectionTemplate, after_local: datetime | None = None) -> None:

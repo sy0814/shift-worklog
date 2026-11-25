@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from .config import get_settings
 from .models import Holiday, ShiftConfig, Team, TeamShiftOverride
 from .schemas import ShiftSlot
-from .shifts import ORDER, Cycle, Schedule, TeamInfo
+from .shifts import ALL, ORDER, Cycle, Schedule, TeamInfo
 
 
 def load_schedule(db: Session) -> Schedule:
@@ -69,7 +69,7 @@ def _load_base(db: Session) -> Schedule:
 def team_info(t: Team) -> TeamInfo:
     cycle = Cycle(tuple(t.pattern), t.cycle_start, bool(t.holiday_off)) \
         if t.kind == "cycle" and t.pattern and t.cycle_start else None
-    return TeamInfo(t.id, cycle, bool(t.is_main), t.active_from, t.active_to)
+    return TeamInfo(t.id, cycle, bool(t.is_main), t.active_from, t.active_to, t.department_id)
 
 
 def local_now() -> datetime:
@@ -77,7 +77,7 @@ def local_now() -> datetime:
     return datetime.now(get_settings().tz).replace(tzinfo=None)
 
 
-def slot(sched: Schedule, d: date, kind: str) -> ShiftSlot:
+def slot(sched: Schedule, d: date, kind: str, dept=ALL) -> ShiftSlot:
     tz = get_settings().tz
     start, end = sched.shift_window(d, kind)
     return ShiftSlot(
@@ -85,5 +85,5 @@ def slot(sched: Schedule, d: date, kind: str) -> ShiftSlot:
         kind=kind,
         start=start.replace(tzinfo=tz),
         end=end.replace(tzinfo=tz),
-        team_ids=[t.id for t in sched.teams_on(d, kind)],
+        team_ids=[t.id for t in sched.teams_on(d, kind, dept)],
     )

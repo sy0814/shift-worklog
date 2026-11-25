@@ -1,4 +1,5 @@
-"""员工名册：所有人可查看，管理员维护（网页上逐格修改、加行加列、Excel 导入导出）。"""
+"""员工名册：所有人可查看；系统管理员维护全厂，有「员工名册」权限（worker.manage）的车间管理员维护本车间
+（网页上逐格修改、加行、Excel 导入导出）。自定义列只有系统管理员能加减（全厂共用）。"""
 
 import io
 import re
@@ -11,10 +12,11 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .. import app_settings, audit, permissions, worker_history
+from .. import app_settings, audit, departments, permissions, worker_history
+from ..departments import get_dept
 from ..schedule_service import local_now
 from ..db import get_db
-from ..models import Role, Team, User, Worker, WorkerField, WorkerSchedule, utcnow
+from ..models import Department, Role, Team, User, Worker, WorkerField, WorkerSchedule, utcnow
 from ..schemas import WorkerBulkCreate, WorkerCreate, WorkerOut, WorkerUpdate
 from ..config import get_settings
 from ..images import InvalidImage, process_avatar
@@ -32,6 +34,41 @@ def _check(db: Session, team_id: int | None, employee_no: str | None, exclude_id
             q = q.where(Worker.id != exclude_id)
         if db.scalar(q):
             raise HTTPException(status.HTTP_409_CONFLICT, "employee_no exists")
+
+
+def _manager(db: Session, user: User, dept_id: int | None) -> "permissions.Who":
+    """能不能维护这个车间的名册（系统管理员：任何车间；车间管理员：本车间）。"""
+    w = permissions.who(db, user)
+    if not w.dept_ok("worker.manage", dept_id):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "not your department")
+    return w
+
+
+def _team_dept(db: Session, team_id: int | None, fallback: int | None) -> int | None:
+    """员工属于哪个车间：有班组 = 班组的车间，否则 fallback。"""
+    if team_id is not None:
+        t = db.get(Team, team_id)
+        if t is None:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "team not found")
+        return t.department_id
+    if fallback is not None and db.get(Department, fallback) is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "department not found")
+    return fallback
+
+
+def _role_ok(db: Session, who: "permissions.Who", role_id: int | None) -> None:
+    """车间管理员不能给人设「全厂」范围的角色（只有系统管理员 / 全厂范围的人能设）。"""
+    if role_id is None or who.scope("worker.manage") == "all":
+        return
+    r = db.get(Role, role_id)
+    if r is not None and "all" in (r.permissions or {}).values():
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "cannot assign a factory-wide role")
+
+
+def _wide(db: Session, w: Worker) -> bool:
+    """这个人的角色有没有「全厂」范围的权限（这种人只有全厂范围的管理者能管账号）。"""
+    r = permissions.role_of(db, w)
+    return r is not None and "all" in (r.permissions or {}).values()
 
 
 def _clean_extra(db: Session, extra: dict[str, str], current: dict | None = None) -> dict:
@@ -143,10 +180,14 @@ def list_workers(include_inactive: bool = False, db: Session = Depends(get_db),
 
 
 @router.post("", response_model=WorkerOut, status_code=201)
-def create_worker(body: WorkerCreate, db: Session = Depends(get_db), admin: User = Depends(require_admin)):
+def create_worker(body: WorkerCreate, db: Session = Depends(get_db), admin: User = Depends(get_current_user),
+                  dept: int | None = Depends(get_dept)):
     no = (body.employee_no or "").strip() or None
     _check(db, body.team_id, no)
-    w = Worker(name=body.name.strip(), employee_no=no, team_id=body.team_id, extra=_clean_extra(db, body.extra))
+    dept_id = _team_dept(db, body.team_id, body.department_id or dept)
+    _manager(db, admin, dept_id)
+    w = Worker(name=body.name.strip(), employee_no=no, team_id=body.team_id, department_id=dept_id,
+               extra=_clean_extra(db, body.extra))
     db.add(w)
     db.flush()
     worker_history.ensure_baseline(db, w, w.team_id)
@@ -158,12 +199,15 @@ def create_worker(body: WorkerCreate, db: Session = Depends(get_db), admin: User
 
 
 @router.post("/bulk", response_model=list[WorkerOut], status_code=201)
-def bulk_create(body: WorkerBulkCreate, db: Session = Depends(get_db), admin: User = Depends(require_admin)):
+def bulk_create(body: WorkerBulkCreate, db: Session = Depends(get_db), admin: User = Depends(get_current_user),
+                dept: int | None = Depends(get_dept)):
     """一次粘贴多个名字（每行一个）。"""
     _check(db, body.team_id, None)
+    dept_id = _team_dept(db, body.team_id, dept)
+    _manager(db, admin, dept_id)
     out = []
     for name in dict.fromkeys(n.strip() for n in body.names if n.strip()):
-        w = Worker(name=name[:100], team_id=body.team_id)
+        w = Worker(name=name[:100], team_id=body.team_id, department_id=dept_id)
         db.add(w)
         db.flush()
         worker_history.ensure_baseline(db, w, w.team_id)
@@ -177,11 +221,20 @@ def bulk_create(body: WorkerBulkCreate, db: Session = Depends(get_db), admin: Us
 
 @router.patch("/{worker_id}", response_model=WorkerOut)
 def update_worker(worker_id: int, body: WorkerUpdate, db: Session = Depends(get_db),
-                  admin: User = Depends(require_admin)):
+                  admin: User = Depends(get_current_user)):
     w = db.get(Worker, worker_id)
     if w is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
+    who = _manager(db, admin, w.department_id)
+    if _wide(db, w) and who.scope("worker.manage") != "all":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "cannot edit a factory-wide account")
     changes = body.model_dump(exclude_unset=True)
+    if "team_id" in changes or "department_id" in changes:  # 换到别的车间：那个车间也要能管
+        new_dept = _team_dept(db, changes.get("team_id", w.team_id), changes.get("department_id") or w.department_id)
+        _manager(db, admin, new_dept)
+        changes["department_id"] = new_dept
+        if new_dept == w.department_id:
+            changes.pop("department_id")
     if "employee_no" in changes:
         changes["employee_no"] = (changes["employee_no"] or "").strip() or None
     if "name" in changes:
@@ -189,6 +242,8 @@ def update_worker(worker_id: int, body: WorkerUpdate, db: Session = Depends(get_
     extra = changes.pop("extra", None)
     if "role_id" in changes and changes["role_id"] is not None and db.get(Role, changes["role_id"]) is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "role not found")
+    if "role_id" in changes:
+        _role_ok(db, who, changes["role_id"])
     _check(db, changes.get("team_id", w.team_id), changes.get("employee_no"), exclude_id=w.id)
     new_team = changes.pop("team_id", w.team_id)
     audit.log_changes(db, w, changes, user_id=admin.id, entity="worker", entity_id=w.id)
@@ -269,12 +324,19 @@ def _account_out(db: Session, w: Worker) -> AccountOut:
 
 
 def _can_manage_account(db: Session, user: User, w: Worker) -> bool:
-    """管理员：任何人；有「重设成员个人密码」权限的班长：本班组用班组账号登录的人。"""
+    """系统管理员：任何人；车间管理员（员工名册权限）：本车间的人（全厂范围角色的人除外）；
+    有「重设成员个人密码」权限的班长：本班组用班组账号登录的人。"""
     if user.role == "admin":
         return True
+    who = permissions.who(db, user)
+    if who.dept_ok("worker.manage", w.department_id) and (who.scope("worker.manage") == "all" or not _wide(db, w)):
+        return True
     role = permissions.role_of(db, w)
-    return (role is not None and role.login_mode == "pin"
-            and permissions.who(db, user).team_ok("worker.pin", w.team_id))
+    return (role is not None and role.login_mode == "pin" and who.team_ok("worker.pin", w.team_id))
+
+
+def _can_rename_account(db: Session, user: User, w: Worker) -> bool:
+    return user.role == "admin" or permissions.who(db, user).dept_ok("worker.manage", w.department_id)
 
 
 @router.get("/{worker_id}/account", response_model=AccountOut)
@@ -300,7 +362,7 @@ def put_account(worker_id: int, body: AccountIn, db: Session = Depends(get_db), 
     u = db.scalar(select(User).where(User.worker_id == w.id))
     if mode == "password":
         if body.username and body.username != (u.username if u else None):
-            if user.role != "admin":
+            if not _can_rename_account(db, user, w):
                 raise HTTPException(status.HTTP_403_FORBIDDEN, "admin only")
             if db.scalar(select(User).where(User.username == body.username)):
                 raise HTTPException(status.HTTP_409_CONFLICT, "username exists")
@@ -403,9 +465,10 @@ YES = {"是", "在职", "1", "y", "yes", "true", "da", "√", "✓"}
 NO = {"否", "离职", "停用", "0", "n", "no", "false", "ne", "×"}
 
 
-def _team_lookup(db: Session) -> dict[str, int]:
+def _team_lookup(db: Session, dept_id: int | None) -> dict[str, int]:
+    """班组名 → id（只认这个车间的班组：各车间可能都有「1班」）。"""
     out = {}
-    for t in db.scalars(select(Team)):
+    for t in db.scalars(select(Team).where(Team.department_id == dept_id)):
         for n in (t.code, t.name_zh, t.name_sr, t.name_en):
             if n:
                 out[str(n).strip().lower()] = t.id
@@ -414,14 +477,17 @@ def _team_lookup(db: Session) -> dict[str, int]:
 
 @router.get("/export.xlsx", include_in_schema=False)
 def export_workers(lang: str = Query(default="zh", pattern="^(zh|sr|en)$"), include_inactive: bool = True,
-                   db: Session = Depends(get_db), admin: User = Depends(require_admin)):
+                   db: Session = Depends(get_db), admin: User = Depends(get_current_user),
+                   dept: int | None = Depends(get_dept)):
+    """导出当前车间的名册。"""
+    _manager(db, admin, dept)
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill
 
     H = HEAD[lang]
     fields = list(db.scalars(select(WorkerField).order_by(WorkerField.sort_order, WorkerField.id)))
     teams = {t.id: getattr(t, f"name_{lang}") for t in db.scalars(select(Team))}
-    q = select(Worker).order_by(Worker.team_id, Worker.name)
+    q = select(Worker).where(Worker.department_id == dept).order_by(Worker.team_id, Worker.name)
     if not include_inactive:
         q = q.where(Worker.is_active.is_(True))
     wb = Workbook()
@@ -456,11 +522,13 @@ class ImportResult(BaseModel):
 
 @router.post("/import", response_model=ImportResult)
 async def import_workers(file: UploadFile = File(...), dry_run: bool = False, db: Session = Depends(get_db),
-                         admin: User = Depends(require_admin)):
-    """导入员工名册：第一行是表头。按工号匹配（没有工号按姓名，重名报错），已有的更新、没有的新建；
-    不认识的表头当作自定义列（没有就自动加上）。整个文件先检查，有一行错就全不导入。不会删除表里没有的人。"""
+                         admin: User = Depends(get_current_user), dept: int | None = Depends(get_dept)):
+    """导入当前车间的员工名册：第一行是表头。按工号匹配（没有工号按本车间的姓名，重名报错），已有的更新、没有的新建；
+    班组按本车间的班组名认；不认识的表头当作自定义列（没有就自动加上，只有系统管理员能加列）。
+    整个文件先检查，有一行错就全不导入。不会删除表里没有的人。工号是别的车间的人时报错（换车间请在名册里改班组）。"""
     from openpyxl import load_workbook
 
+    who = _manager(db, admin, dept)
     data = await file.read(10 * 1024 * 1024 + 1)
     if len(data) > 10 * 1024 * 1024:
         raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "file too large")
@@ -494,12 +562,13 @@ async def import_workers(file: UploadFile = File(...), dry_run: bool = False, db
     if "name" not in cols:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "missing column: name / 姓名 / Ime")
 
-    teams = _team_lookup(db)
+    teams = _team_lookup(db, dept)
     existing = list(db.scalars(select(Worker)))
     by_no = {w.employee_no: w for w in existing if w.employee_no}
     by_name: dict[str, list[Worker]] = {}
     for w in existing:
-        by_name.setdefault(w.name, []).append(w)
+        if w.department_id == dept:
+            by_name.setdefault(w.name, []).append(w)
     fields = {f.label: f for f in db.scalars(select(WorkerField))}
 
     errors, plan, seen_no = [], [], set()
@@ -535,12 +604,18 @@ async def import_workers(file: UploadFile = File(...), dry_run: bool = False, db
                 errors.append(f"{n}: several workers named {name}, add employee no.")
                 continue
             target = same[0] if same and (not no or not same[0].employee_no) else None
+        if target is not None and target.department_id != dept:
+            errors.append(f"{n}: {no} belongs to another department")
+            continue
         extra = {custom[i]: s(r[i]) if i < len(r) else "" for i in custom}
         plan.append((target, name, no or None, team_id, active, extra))
     if errors:
         return ImportResult(created=0, updated=0, unchanged=0, columns_added=[], errors=errors)
 
     added = [lbl for lbl in dict.fromkeys(custom.values()) if lbl not in fields]
+    if added and not who.is_admin:
+        return ImportResult(created=0, updated=0, unchanged=0, columns_added=[],
+                            errors=[f"unknown column: {', '.join(added)}"])
     if dry_run:
         return ImportResult(created=sum(1 for p in plan if p[0] is None), updated=sum(1 for p in plan if p[0]),
                             unchanged=0, columns_added=added, errors=[])
@@ -550,8 +625,8 @@ async def import_workers(file: UploadFile = File(...), dry_run: bool = False, db
     for target, name, no, team_id, active, extra in plan:
         ex = {str(fields[k].id): v for k, v in extra.items()}
         if target is None:
-            w = Worker(name=name, employee_no=no, team_id=team_id, is_active=True if active is None else active,
-                       extra={k: v for k, v in ex.items() if v})
+            w = Worker(name=name, employee_no=no, team_id=team_id, department_id=dept,
+                       is_active=True if active is None else active, extra={k: v for k, v in ex.items() if v})
             db.add(w)
             db.flush()
             worker_history.ensure_baseline(db, w, w.team_id)
@@ -624,7 +699,7 @@ def get_schedule(worker_id: int, db: Session = Depends(get_db), _: User = Depend
 
 @router.put("/{worker_id}/schedule", response_model=list[ScheduleEntryOut])
 def put_schedule(worker_id: int, body: ScheduleEntryIn, db: Session = Depends(get_db),
-                 admin: User = Depends(require_admin)):
+                 admin: User = Depends(get_current_user)):
     """从某天起：属于哪个班组、跟班组排班还是按个人循环（例如每人休息日不同的一周排班）。
     同一天已有记录就覆盖。以前的出勤不受影响。"""
     from .schedule import check_cycle
@@ -633,8 +708,8 @@ def put_schedule(worker_id: int, body: ScheduleEntryIn, db: Session = Depends(ge
     w = db.get(Worker, worker_id)
     if w is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
-    if body.team_id is not None and db.get(Team, body.team_id) is None:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "team not found")
+    _manager(db, admin, w.department_id)
+    _manager(db, admin, _team_dept(db, body.team_id, w.department_id))
     cycle = None
     if body.personal:
         cycle = Cycle(tuple(check_cycle(body.pattern, body.cycle_start)), body.cycle_start, body.holiday_off)
@@ -648,11 +723,12 @@ def put_schedule(worker_id: int, body: ScheduleEntryIn, db: Session = Depends(ge
 
 @router.delete("/{worker_id}/schedule/{effective_from}", response_model=list[ScheduleEntryOut])
 def delete_schedule(worker_id: int, effective_from: date, db: Session = Depends(get_db),
-                    admin: User = Depends(require_admin)):
+                    admin: User = Depends(get_current_user)):
     """删掉某一次变更（最早那条不能删）。"""
     w = db.get(Worker, worker_id)
     if w is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
+    _manager(db, admin, w.department_id)
     if not worker_history.remove(db, w, effective_from, admin.id, local_now().date()):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "cannot delete this entry")
     db.commit()
@@ -665,10 +741,12 @@ class OpenAllOut(BaseModel):
 
 
 @router.post("/accounts/open-all", response_model=OpenAllOut)
-def open_all_accounts(db: Session = Depends(get_db), admin: User = Depends(require_admin)):
-    """给名册里还没有账号的在职员工都开账号（默认密码，第一次登录必须改）。"""
+def open_all_accounts(db: Session = Depends(get_db), admin: User = Depends(get_current_user),
+                      dept: int | None = Depends(get_dept)):
+    """给当前车间名册里还没有账号的在职员工都开账号（默认密码，第一次登录必须改）。"""
+    _manager(db, admin, dept)
     n = 0
-    for w in db.scalars(select(Worker).where(Worker.is_active.is_(True))):
+    for w in db.scalars(select(Worker).where(Worker.is_active.is_(True), Worker.department_id == dept)):
         if ensure_account(db, w, admin.id) is not None:
             n += 1
     db.commit()

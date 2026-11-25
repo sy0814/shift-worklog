@@ -45,9 +45,14 @@ def _text(t: Task, lang: str) -> str:
     return (getattr(t, f"content_{lang}") or src).replace("\n", " ")[:80]
 
 
-def build_stats(db: Session, start: date, end: date, team_id: int | None, lang: str) -> dict:
-    """按人、按班组汇总。时间段按班次日期；工时 = 完成 − 开始，多人参与时每人都计全部工时。"""
-    teams = {t.id: t for t in db.scalars(select(Team))}
+def build_stats(db: Session, start: date, end: date, team_id: int | None, lang: str,
+                dept_id: int | None = None) -> dict:
+    """按人、按班组汇总。时间段按班次日期；工时 = 完成 − 开始，多人参与时每人都计全部工时。
+    没选班组时：dept_id 给了就只算这个车间。"""
+    tq = select(Team)
+    if dept_id is not None and not team_id:
+        tq = tq.where(Team.department_id == dept_id)
+    teams = {t.id: t for t in db.scalars(tq)}
     tname = lambda tid: getattr(teams[tid], f"name_{lang}") if tid in teams else "-"
     now = utcnow()
     cfg_overdue = app_settings.get_all(db)
@@ -55,11 +60,15 @@ def build_stats(db: Session, start: date, end: date, team_id: int | None, lang: 
     q = select(Task).options(selectinload(Task.workers)).where(Task.shift_date >= start, Task.shift_date <= end)
     if team_id:
         q = q.where(Task.team_id == team_id)
+    elif dept_id is not None:
+        q = q.where(Task.team_id.in_(set(teams)))
     tasks = list(db.scalars(q))
 
     wq = select(Worker).where(Worker.is_active.is_(True))
     if team_id:
         wq = wq.where(Worker.team_id == team_id)
+    elif dept_id is not None:
+        wq = wq.where(Worker.department_id == dept_id)
     workers = {w.id: w for w in db.scalars(wq)}
     for t in tasks:  # 来帮忙的其他班组员工也算
         for w in t.workers:
@@ -241,7 +250,7 @@ def run_report(report_id: int) -> None:
         rep.status = "running"
         db.commit()
         try:
-            stats = build_stats(db, rep.start, rep.end, rep.team_id, rep.lang)
+            stats = build_stats(db, rep.start, rep.end, rep.team_id, rep.lang, rep.department_id)
             rep.stats = stats
             db.commit()
             if stats["totals"]["tasks"] == 0:

@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import app_settings, audit, permissions
+from .. import app_settings, audit, departments, permissions
 from ..db import get_db
 from ..models import Role, Team, User, Worker, utcnow
 from ..schemas import MeOut, MeUpdate, PasswordChange, RoleBrief, TokenOut
@@ -39,8 +39,10 @@ def me_out(db: Session, user: User) -> MeOut:
         r = permissions.role_of(db, db.get(Worker, user.worker_id) if user.worker_id else None)
         role = RoleBrief.model_validate(r, from_attributes=True) if r else None
     perms = {k: "all" for k in permissions.PERMS} if w.is_admin else w.perms
-    return MeOut(**MeOut.model_validate(user, from_attributes=True).model_dump(exclude={"role_info", "perms", "group_team_ids"}),
-                 role_info=role, perms=perms, group_team_ids=sorted(w.group or []))
+    return MeOut(**MeOut.model_validate(user, from_attributes=True).model_dump(
+        exclude={"role_info", "perms", "group_team_ids", "department_id", "can_switch_dept"}),
+                 role_info=role, perms=perms, group_team_ids=sorted(w.group or []), department_id=w.dept_id,
+                 can_switch_dept=departments.can_switch(db, user))
 
 
 def _check_password(db: Session, user: User | None, password: str) -> User:
@@ -85,6 +87,7 @@ def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get
 # ---------------- 班组公共账号 ----------------
 class TeamLoginTeam(BaseModel):
     id: int
+    department_id: int
     name_zh: str
     name_sr: str
     name_en: str
@@ -113,15 +116,18 @@ def _pin_accounts(db: Session, team_id: int | None = None) -> list[tuple[User, W
 
 
 @router.get("/teams", response_model=list[TeamLoginTeam])
-def login_teams(db: Session = Depends(get_db)):
-    """登录页「班组账号」：有成员开了账号的班组（不需要登录）。"""
+def login_teams(department_id: int | None = None, db: Session = Depends(get_db)):
+    """登录页「班组账号」：有成员开了账号的班组（不需要登录）。给了车间就只列这个车间的。"""
     counts: dict[int, int] = {}
     for _u, w in _pin_accounts(db):
         if w.team_id:
             counts[w.team_id] = counts.get(w.team_id, 0) + 1
-    teams = db.scalars(select(Team).order_by(Team.sort_order)).all()
-    return [TeamLoginTeam(id=t.id, name_zh=t.name_zh, name_sr=t.name_sr, name_en=t.name_en, people=counts[t.id])
-            for t in teams if counts.get(t.id)]
+    q = select(Team).order_by(Team.sort_order)
+    if department_id is not None:
+        q = q.where(Team.department_id == department_id)
+    return [TeamLoginTeam(id=t.id, department_id=t.department_id, name_zh=t.name_zh, name_sr=t.name_sr,
+                          name_en=t.name_en, people=counts[t.id])
+            for t in db.scalars(q) if counts.get(t.id)]
 
 
 @router.get("/teams/{team_id}/people", response_model=list[TeamLoginPerson])

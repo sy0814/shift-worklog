@@ -6,10 +6,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .. import audit, permissions, translation_service
+from .. import audit, departments, permissions, translation_service
+from ..departments import get_dept
 from ..db import get_db
 from ..db import Base
-from ..models import Holiday, ShiftConfig, Team, TeamShiftOverride, User, utcnow
+from ..models import Department, Holiday, ShiftConfig, Team, TeamShiftOverride, User, Worker, utcnow
 from ..schedule_service import load_schedule, local_now, slot
 from ..schemas import (
     CalendarDay,
@@ -29,33 +30,36 @@ router = APIRouter(prefix="/api", tags=["schedule"])
 
 @router.get("/teams", response_model=list[TeamOut])
 def list_teams(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+    """所有车间的班组（每个带 department_id；前端按当前车间筛，跨车间移交时列出别的车间）。"""
     return db.scalars(select(Team).order_by(Team.sort_order)).all()
 
 
 @router.get("/shifts/now", response_model=ShiftNow)
-def shifts_now(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+def shifts_now(db: Session = Depends(get_db), _: User = Depends(get_current_user), dept: int | None = Depends(get_dept)):
     sched = load_schedule(db)
     now = local_now()
     d, k = sched.shift_at(now)
     nd, nk = sched.next_shift(d, k)
-    return ShiftNow(now=now, current=slot(sched, d, k), next=slot(sched, nd, nk))
+    return ShiftNow(now=now, current=slot(sched, d, k, dept), next=slot(sched, nd, nk, dept))
 
 
 @router.get("/shifts/calendar", response_model=list[CalendarDay])
 def shifts_calendar(start: date, end: date, db: Session = Depends(get_db),
-                    _: User = Depends(get_current_user)):
+                    _: User = Depends(get_current_user), dept: int | None = Depends(get_dept)):
+    """当前车间的排班日历。"""
     if end < start or (end - start).days > 92:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "range must be 0..92 days")
     sched = load_schedule(db)
+    teams = [t for t in sched.teams if t.dept == dept]
     out = []
     d = start
     while d <= end:
         out.append(CalendarDay(day=d, workday=sched.is_workday(d),
-                               shifts={t.id: sched.shift_of(t, d) for t in sched.teams},
-                               hours={t.id: e for t in sched.teams if parse_hours(e := sched.team_entry(t, d))},
-                               changed={t.id: sched.planned_shift_of(t, d) for t in sched.teams
+                               shifts={t.id: sched.shift_of(t, d) for t in teams},
+                               hours={t.id: e for t in teams if parse_hours(e := sched.team_entry(t, d))},
+                               changed={t.id: sched.planned_shift_of(t, d) for t in teams
                                         if (t.id, d) in sched.overrides},
-                               by_members=[t.id for t in sched.teams if sched.entry_kind(sched.team_entry(t, d)) == "off"
+                               by_members=[t.id for t in teams if sched.entry_kind(sched.team_entry(t, d)) == "off"
                                            and sched.shift_of(t, d) != "off"]))
         d += timedelta(days=1)
     return out
@@ -145,9 +149,13 @@ def _range(start: date, end: date) -> list[date]:
 
 
 @router.get("/team-shifts", response_model=list[TeamShiftOut])
-def list_team_shifts(start: date, end: date, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+def list_team_shifts(start: date, end: date, db: Session = Depends(get_db), _: User = Depends(get_current_user),
+                     dept: int | None = Depends(get_dept)):
+    """当前车间各班组的整体调班。"""
     sched = load_schedule(db)
-    rows = db.scalars(select(TeamShiftOverride).where(TeamShiftOverride.day >= start, TeamShiftOverride.day <= end)
+    ids = departments.team_ids(db, dept)
+    rows = db.scalars(select(TeamShiftOverride).where(TeamShiftOverride.day >= start, TeamShiftOverride.day <= end,
+                                                      TeamShiftOverride.team_id.in_(ids))
                       .order_by(TeamShiftOverride.day, TeamShiftOverride.team_id)).all()
     return [_ts_out(sched, o) for o in rows]
 
@@ -170,7 +178,7 @@ def set_team_shift(body: TeamShiftIn, db: Session = Depends(get_db), admin: User
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "bad hours: format HH:MM-HH:MM")
     _apply_team_shift(db, team.id, _range(body.start, body.end), lambda _d: entry, body.note, admin.id)
     db.commit()
-    return list_team_shifts(body.start, body.end, db, admin)
+    return list_team_shifts(body.start, body.end, db, admin, team.department_id)
 
 
 def _require_team(db: Session, user: User, *team_ids: int) -> None:
@@ -231,7 +239,7 @@ def swap_team_shifts(body: TeamSwapIn, db: Session = Depends(get_db), user: User
     _apply_team_shift(db, a.id, days, lambda d: shift_b[d], body.note, user.id)
     _apply_team_shift(db, b.id, days, lambda d: shift_a[d], body.note, user.id)
     db.commit()
-    return list_team_shifts(body.start, body.end, db, user)
+    return list_team_shifts(body.start, body.end, db, user, a.dept)
 
 
 @router.delete("/team-shifts", status_code=204)
@@ -253,8 +261,9 @@ def clear_team_shift(team_id: int, start: date, end: date, db: Session = Depends
     db.commit()
 
 
-# ---------------- 班组管理（管理员）：新增长期 / 临时班组 ----------------
+# ---------------- 班组管理（管理员、有「班组管理」权限的车间管理员）：新增长期 / 临时班组 ----------------
 class TeamIn(BaseModel):
+    department_id: int | None = None  # 属于哪个车间（空 = 当前车间）
     name_zh: str = Field(default="", max_length=50)
     name_sr: str = Field(default="", max_length=50)
     name_en: str = Field(default="", max_length=50)
@@ -303,9 +312,19 @@ def _team_fields(db: Session, body: TeamIn) -> dict:
             "active_from": body.active_from, "active_to": body.active_to}
 
 
+def _require_team_manage(db: Session, user: User, dept_id: int | None) -> None:
+    if dept_id is None or db.get(Department, dept_id) is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "department not found")
+    if not permissions.who(db, user).dept_ok("team.manage", dept_id):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "not your department")
+
+
 @router.post("/teams", response_model=TeamOut, status_code=201)
-def create_team(body: TeamIn, db: Session = Depends(get_db), admin: User = Depends(require_admin)):
-    d = _team_fields(db, body)
+def create_team(body: TeamIn, db: Session = Depends(get_db), admin: User = Depends(get_current_user),
+                dept: int | None = Depends(get_dept)):
+    dept_id = body.department_id or dept
+    _require_team_manage(db, admin, dept_id)
+    d = _team_fields(db, body) | {"department_id": dept_id}
     n = (db.scalar(select(func.max(Team.id))) or 0) + 1
     code = f"X{n}"
     while db.scalar(select(Team.id).where(Team.code == code)):
@@ -321,11 +340,19 @@ def create_team(body: TeamIn, db: Session = Depends(get_db), admin: User = Depen
 
 
 @router.put("/teams/{team_id}", response_model=TeamOut)
-def update_team(team_id: int, body: TeamIn, db: Session = Depends(get_db), admin: User = Depends(require_admin)):
+def update_team(team_id: int, body: TeamIn, db: Session = Depends(get_db), admin: User = Depends(get_current_user)):
     t = db.get(Team, team_id)
     if t is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
-    audit.log_changes(db, t, _team_fields(db, body), user_id=admin.id, entity="team", entity_id=t.id)
+    _require_team_manage(db, admin, t.department_id)
+    dept_id = body.department_id or t.department_id
+    if dept_id != t.department_id:  # 换车间：两边都要能管
+        _require_team_manage(db, admin, dept_id)
+    audit.log_changes(db, t, _team_fields(db, body) | {"department_id": dept_id}, user_id=admin.id,
+                      entity="team", entity_id=t.id)
+    db.flush()
+    for w in db.scalars(select(Worker).where(Worker.team_id == t.id, Worker.department_id != dept_id)):
+        w.department_id = dept_id  # 员工跟着班组换车间
     db.commit()
     return t
 
@@ -343,11 +370,12 @@ def _team_refs(db: Session, team_id: int) -> int:
 
 
 @router.delete("/teams/{team_id}", status_code=204)
-def delete_team(team_id: int, db: Session = Depends(get_db), admin: User = Depends(require_admin)):
+def delete_team(team_id: int, db: Session = Depends(get_db), admin: User = Depends(get_current_user)):
     """只能删除没用过的班组（没有员工、账号、任务、出勤、加班、巡查……）；用过的请设置结束日期。"""
     t = db.get(Team, team_id)
     if t is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
+    _require_team_manage(db, admin, t.department_id)
     if _team_refs(db, team_id):
         raise HTTPException(status.HTTP_409_CONFLICT, "team in use; set an end date instead")
     for o in db.scalars(select(TeamShiftOverride).where(TeamShiftOverride.team_id == team_id)).all():
@@ -368,8 +396,10 @@ class CoverageProblem(BaseModel):
 
 
 @router.get("/shifts/coverage", response_model=list[CoverageProblem])
-def shifts_coverage(start: date, end: date, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+def shifts_coverage(start: date, end: date, db: Session = Depends(get_db), _: User = Depends(get_current_user),
+                    dept: int | None = Depends(get_dept)):
+    """当前车间的排班检查。"""
     if end < start or (end - start).days > 92:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "range must be 0..92 days")
     return [CoverageProblem(day=d, shift_kind=k, problem=p, team_ids=ids)
-            for d, k, p, ids in coverage_problems(load_schedule(db), start, end)]
+            for d, k, p, ids in coverage_problems(load_schedule(db), start, end, dept)]

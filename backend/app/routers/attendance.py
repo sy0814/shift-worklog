@@ -18,6 +18,7 @@ from ..db import get_db
 from ..models import Attendance, Task, Team, User, Worker, utcnow
 from ..schemas import TaskOut, WorkerOut
 from ..security import get_current_user, require_admin
+from ..departments import get_dept
 from .tasks import tasks_out
 
 router = APIRouter(prefix="/api", tags=["attendance"])
@@ -84,10 +85,12 @@ class PersonDay(BaseModel):
     tasks: list[TaskOut]
 
 
-def _workers(db: Session, team_id: int | None, include_inactive: bool = False) -> list[Worker]:
+def _workers(db: Session, team_id: int | None, include_inactive: bool = False, dept: int | None = None) -> list[Worker]:
     q = select(Worker).order_by(Worker.team_id, Worker.name)
     if team_id:
         q = q.where(Worker.team_id == team_id)
+    elif dept is not None:
+        q = q.where(Worker.department_id == dept)
     if not include_inactive:
         q = q.where(Worker.is_active.is_(True))
     return list(db.scalars(q))
@@ -95,11 +98,11 @@ def _workers(db: Session, team_id: int | None, include_inactive: bool = False) -
 
 @router.get("/attendance", response_model=AttendanceGrid)
 def grid(start: date, end: date, team_id: int | None = None, db: Session = Depends(get_db),
-         _: User = Depends(get_current_user)):
+         _: User = Depends(get_current_user), dept: int | None = Depends(get_dept)):
     if end < start or (end - start).days >= MAX_DAYS:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"range must be 1..{MAX_DAYS} days")
-    # 指定班组时：这段时间里属于过这个班组的人（换过班组的按变更记录，以前的出勤不变）
-    workers = worker_history.members(db, team_id, start, end) if team_id else _workers(db, None)
+    # 指定班组时：这段时间里属于过这个班组的人（换过班组的按变更记录，以前的出勤不变）；不指定 = 当前车间的人
+    workers = worker_history.members(db, team_id, start, end) if team_id else _workers(db, None, dept=dept)
     guests: list[Worker] = []
     if team_id:
         # 这段时间里来这个班组顶班的其他班组员工，也显示出来
@@ -282,15 +285,22 @@ def _parse_day(v) -> date | None:
 
 @router.post("/attendance/import", response_model=ImportOut)
 async def import_attendance(file: UploadFile = File(...), db: Session = Depends(get_db),
-                            admin: User = Depends(require_admin)):
-    """按模板导入。先全部校验，有任何一行出错就一行都不导入，返回错误清单。"""
+                            admin: User = Depends(get_current_user)):
+    """按模板导入（系统管理员：全厂；出勤权限为「本车间」的车间管理员：只能导本车间的人）。
+    先全部校验，有任何一行出错就一行都不导入，返回错误清单。"""
+    who = permissions.who(db, admin)
+    scope = who.scope("attendance.edit")
+    permissions.require(scope in ("dept", "all"))
     data = await file.read(10 * 1024 * 1024)
     try:
         ws = load_workbook(io.BytesIO(data), data_only=True).worksheets[0]
     except Exception:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "not an .xlsx file")
 
-    workers = list(db.scalars(select(Worker)))
+    wq = select(Worker)
+    if scope == "dept":
+        wq = wq.where(Worker.department_id == who.dept_id)
+    workers = list(db.scalars(wq))
     by_no = {w.employee_no.strip(): w for w in workers if w.employee_no}
     by_name: dict[str, list[Worker]] = {}
     for w in workers:

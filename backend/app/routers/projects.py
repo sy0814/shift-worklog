@@ -16,6 +16,8 @@ from .. import audit, permissions, project_service, translation_service
 from ..db import get_db
 from ..models import Project, Task, Team, User, Worker, utcnow
 from ..schedule_service import load_schedule, local_now
+from ..departments import get_dept
+from .. import departments
 from ..schemas import Lang, TaskOut, Trilingual, UTCDateTime
 from ..security import get_current_user
 from ..worker_history import Timelines
@@ -137,7 +139,8 @@ def _visible(db: Session, who, p: Project) -> bool:
 
 @router.get("", response_model=list[ProjectOut])
 def list_projects(state: str = Query(default="open", pattern="^(open|closed|all)$"), db: Session = Depends(get_db),
-                  user: User = Depends(get_current_user)):
+                  user: User = Depends(get_current_user), dept: int | None = Depends(get_dept)):
+    """当前车间的项目（项目属于本车间的班组，或者有子项目在本车间），再按能看的范围筛。"""
     who = permissions.who(db, user)
     q = select(Project)
     if state == "open":
@@ -145,10 +148,11 @@ def list_projects(state: str = Query(default="open", pattern="^(open|closed|all)
     elif state == "closed":
         q = q.where(Project.closed_at.is_not(None))
     vis = who.visible_team_ids()
-    if vis is not None:
-        in_my_team = select(Task.project_id).where(Task.project_id.is_not(None), Task.status != "handed_over",
-                                                   Task.team_id.in_(vis))
-        q = q.where(or_(Project.team_id.in_(vis), Project.id.in_(in_my_team)))
+    if vis is None:  # 能看全厂的人：看当前车间的
+        vis = departments.team_ids(db, dept)
+    in_my_team = select(Task.project_id).where(Task.project_id.is_not(None), Task.status != "handed_over",
+                                               Task.team_id.in_(vis))
+    q = q.where(or_(Project.team_id.in_(vis), Project.id.in_(in_my_team)))
     rows = list(db.scalars(q.order_by(Project.closed_at.is_not(None), Project.deadline.is_(None), Project.deadline,
                                       Project.id.desc()).limit(300)))
     prog = project_service.progress(db, [p.id for p in rows])
@@ -189,13 +193,14 @@ def create_project(body: ProjectIn, db: Session = Depends(get_db), user: User = 
 
 
 @router.get("/people", response_model=list[PersonSlot])
-def people(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    """分给具体的人时用：每个人下一个（或正在上的）班，休息的人能看出来。"""
+def people(db: Session = Depends(get_db), user: User = Depends(get_current_user),
+           dept: int | None = Depends(get_dept)):
+    """分给具体的人时用（当前车间的人）：每个人下一个（或正在上的）班，休息的人能看出来。"""
     sched = load_schedule(db)
     now = local_now()
     d, k = sched.shift_at(now)
     out = []
-    for w in db.scalars(select(Worker).where(Worker.is_active.is_(True))):
+    for w in db.scalars(select(Worker).where(Worker.is_active.is_(True), Worker.department_id == dept)):
         slot = project_service.next_slot_of_worker(db, sched, w, now)
         out.append(PersonSlot(worker_id=w.id, next_date=slot[0] if slot else None, next_kind=slot[1] if slot else None,
                               on_now=slot == (d, k)))
