@@ -235,6 +235,7 @@ class TaskCreate(BaseModel):
     worker_ids: list[int] = Field(default_factory=list, max_length=200)
     lead_worker_id: int | None = None  # 带队人员（可不填）
     equipment_id: int | None = None  # 关联的设备（可不填）
+    transferable: bool = True  # False = 不可移交，一直留在本班组
     status: Literal["not_started", "in_progress", "done"] = "not_started"
     start_at: datetime | None = None
     end_at: datetime | None = None
@@ -250,6 +251,7 @@ class TaskUpdate(BaseModel):
     worker_ids: list[int] | None = Field(default=None, max_length=200)
     lead_worker_id: int | None = None  # 传了就改（null = 去掉带队人），不传不改
     equipment_id: int | None = None  # 传了就改（null = 不关联设备），不传不改
+    transferable: bool | None = None  # 传了就改
     start_at: datetime | None = None
     end_at: datetime | None = None
     # 原文改了以后：True 重新翻译（覆盖人工校对的译文）；False 保留现有译文
@@ -368,6 +370,7 @@ class TaskOut(BaseModel):
     perms: dict[str, bool] = {}
     project: "ProjectBrief | None" = None  # 属于哪个项目（子项目）
     equipment: EquipmentBrief | None = None  # 关联的设备
+    transferable: bool = True  # 能不能移交（任务自己的设置，且项目子项目时项目也可移交）
     # 移交 / 废弃 / 警示
     chain_started_at: UTCDateTime
     handover_count: int

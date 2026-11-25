@@ -311,6 +311,8 @@ class Task(Base):
     inspection_id: Mapped[int | None] = mapped_column(ForeignKey("inspection_templates.id"), nullable=True, index=True)
     project_id: Mapped[int | None] = mapped_column(ForeignKey("projects.id"), nullable=True, index=True)  # 属于哪个项目（子项目）
     equipment_id: Mapped[int | None] = mapped_column(ForeignKey("equipment.id"), nullable=True, index=True)  # 关联的设备
+    # 可移交：False = 这条任务一直留在本班组（不能手动移交、不参加自动移交）。项目子项目还要看项目的设置
+    transferable: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())
     # 带队人员（一个，可不填）。带队人同时也在 workers（task_workers）里，所以按「参与」统计时自动算上他
     lead_worker_id: Mapped[int | None] = mapped_column(ForeignKey("workers.id"), nullable=True, index=True)
 

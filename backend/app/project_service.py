@@ -122,7 +122,7 @@ def due_for_auto_handover(db: Session, now_local: datetime) -> list[Task]:
     sched = load_schedule(db)
     d, k = sched.shift_at(now_local)
     rows = db.scalars(select(Task).join(Project, Project.id == Task.project_id).where(
-        Task.status.in_(OPEN), Project.transferable.is_(True))).all()
+        Task.status.in_(OPEN), Project.transferable.is_(True), Task.transferable.is_(True))).all()
     out = []
     for t in rows:
         team = sched.team(t.team_id)

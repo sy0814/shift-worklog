@@ -183,7 +183,8 @@ const runType = { created: 'success', manual: 'primary', skipped: 'info', failed
         <template #default="{ row }"><el-switch :model-value="row.enabled" size="small" :disabled="!row.can_edit" @change="(v) => toggle(row, v)" /></template>
       </el-table-column>
       <el-table-column :label="t('insp.name')" min-width="140">
-        <template #default="{ row }">{{ row.name }} <el-tag v-if="row.sub_items?.length" size="small" effect="plain">📁 {{ t('insp.subsCount', { n: row.sub_items.length }) }}</el-tag></template>
+        <template #default="{ row }">{{ row.name }} <el-tag v-if="row.sub_items?.length" size="small" effect="plain">📁 {{ t('insp.subsCount', { n: row.sub_items.length }) }}</el-tag>
+          <el-tag v-if="!row.transferable" size="small" type="info" effect="plain">{{ t('task.notTransferable') }}</el-tag></template>
       </el-table-column>
       <el-table-column :label="t('insp.kind')" min-width="200"><template #default="{ row }">{{ summary(row) }}</template></el-table-column>
       <el-table-column :label="t('insp.assign')" width="160"><template #default="{ row }">{{ who(row) }}</template></el-table-column>
@@ -222,10 +223,12 @@ const runType = { created: 'success', manual: 'primary', skipped: 'info', failed
                 <el-button link type="danger" @click="form.subs.splice(i, 1)">✕</el-button>
               </div>
               <el-button size="small" :icon="Plus" @click="form.subs.push({ content: '', target: { mode: 'default', team_id: null, worker_id: null } })">{{ t('proj.addSub') }}</el-button>
-              <div v-if="form.subs?.length" class="row">
-                <el-switch v-model="form.transferable" />
-                <small class="muted">{{ form.transferable ? t('proj.transferableHint') : t('proj.fixedHint') }}</small>
-              </div>
+            </div>
+          </el-form-item>
+          <el-form-item :label="t('task.transferable')">
+            <div class="row">
+              <el-switch v-model="form.transferable" />
+              <small class="muted">{{ form.transferable ? (form.subs?.length ? t('proj.transferableHint') : '') : t('insp.transferHint') }}</small>
             </div>
           </el-form-item>
           <el-form-item :label="t('insp.kind')">

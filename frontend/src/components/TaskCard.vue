@@ -31,6 +31,7 @@ const leftover = computed(() => localText(props.task.leftover, props.task.leftov
       <el-tag v-if="task.inspection_id" size="small" type="success" effect="plain">{{ t('insp.tag') }}</el-tag>
       <el-tag v-if="task.project" size="small" type="primary" effect="plain" class="ptag">📁 {{ localText(task.project.name, task.project.source_lang).text }} {{ task.project.done }}/{{ task.project.total }}</el-tag>
       <el-tag v-if="task.equipment" size="small" type="info" effect="plain" class="ptag">⚙ {{ task.equipment.code }} {{ localText(task.equipment.name, task.equipment.source_lang).text }}</el-tag>
+      <el-tag v-if="task.transferable === false" size="small" type="info" effect="plain">🔒 {{ t('task.notTransferable') }}</el-tag>
       <el-tag v-if="task.handover_in" size="small" effect="plain">← {{ auth.teamLabel(task.handover_in.team_id) }}</el-tag>
       <el-tag v-if="task.handover_out" size="small" type="warning" effect="plain">→ {{ auth.teamLabel(task.handover_out.team_id) }}</el-tag>
       <span class="spacer" />

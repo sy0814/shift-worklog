@@ -44,6 +44,7 @@ const messages = {
     nav2: { tasks: '任务', workers: '员工名册', board: '交接班', glossary: '术语表' },
     status: { not_started: '未开始', in_progress: '进行中', done: '已完成', handed_over: '已移交', discarded: '已废弃', open: '未完成', all: '全部' },
     task: {
+      transferable: '可移交', notTransferable: '不可移交', transferableHint: '关掉 = 这条任务一直留在本班组，不能移交、不会自动移交',
       new: '新建任务', edit: '编辑任务', content: '工作内容', contentPh: '可以用中文、塞语或英语填写', workers: '参与人员', team: '班组',
       start: '开始时间', end: '完成时间', leftover: '遗留问题', status: '状态', publisher: '发布人', updater: '最后修改',
       recorded: '录入', shift: '班次', confirmedBy: '完成确认', start_action: '开始', done_action: '完成', reopen: '重新打开', doneLocked: '已完成的任务只有管理员可以修改', undo_start: '改回未开始',
@@ -115,6 +116,7 @@ const messages = {
       note: '工时按「完成 − 开始」计算，多人参与的任务每人都计全部工时；出勤默认按排班。报告由 AI 根据统计数据撰写，仅供参考。',
     },
     insp: {
+      transferHint: '关掉 = 生成的任务（有小项目时 = 生成的项目）一直留在派给的班组，不能移交',
       subs: '小项目', subsHint: '可以不加。加了小项目，每次派发会生成一个项目（名称 = 巡查项名称），每个小项目是一个子项目：可以指定班组或具体的人，「跟派给的班组」= 给这次派给的班组。', contentOptional: '有小项目时可以不填', openProject: '查看项目', subsCount: '{n} 个小项目', title: '定期巡查', add: '新建巡查项', name: '名称', content: '巡查内容（生成任务的工作内容）', enabled: '启用', kind: '周期',
       kinds: { daily: '每天 / 每隔几天', weekly: '每周', monthly: '每月', yearly: '每年', shift: '按班次' },
       yearDates: '哪几天', yearPick: '选日期（可多选）', everyYears: '每隔几年', yearHint: '选 2 月 29 日时，平年按 2 月 28 日', leaderHint: '班长只能管理固定派给本班组的巡查项', readonly: '只读',
@@ -232,6 +234,7 @@ const messages = {
     nav2: { tasks: 'Zadaci', workers: 'Radnici', board: 'Primopredaja', glossary: 'Rečnik' },
     status: { not_started: 'Nije započeto', in_progress: 'U toku', done: 'Završeno', handed_over: 'Predato', discarded: 'Odbačeno', open: 'Nezavršeno', all: 'Sve' },
     task: {
+      transferable: 'Može se predati', notTransferable: 'bez predaje', transferableHint: 'Isključeno = zadatak ostaje u ovoj ekipi i ne može se predati',
       new: 'Novi zadatak', edit: 'Izmena zadatka', content: 'Opis posla', contentPh: 'Možete pisati na srpskom, kineskom ili engleskom', workers: 'Učesnici', team: 'Smena',
       start: 'Početak', end: 'Završetak', leftover: 'Preostali problemi', status: 'Status', publisher: 'Uneo', updater: 'Poslednja izmena',
       recorded: 'Uneto', shift: 'Smena', confirmedBy: 'Potvrdio završetak', start_action: 'Započni', done_action: 'Završi', reopen: 'Ponovo otvori', doneLocked: 'Završen zadatak može da menja samo administrator', undo_start: 'Vrati na nije započeto',
@@ -303,6 +306,7 @@ const messages = {
       note: 'Sati = završetak − početak; kod zadataka sa više učesnika svakom se računaju svi sati; prisustvo po rasporedu. Izveštaj piše AI na osnovu statistike – samo kao pomoć.',
     },
     insp: {
+      transferHint: 'Isključeno = napravljeni zadatak (ili projekat) ostaje u dodeljenoj ekipi i ne može se predati',
       subs: 'Stavke', subsHint: 'Opciono. Sa stavkama svaki obilazak pravi projekat (naziv = naziv obilaska), a svaka stavka je podzadatak: određena ekipa ili osoba, ili „Ekipi obilaska”.', contentOptional: 'Nije obavezno kada postoje stavke', openProject: 'Projekat', subsCount: '{n} stavki', title: 'Periodični obilasci', add: 'Novi obilazak', name: 'Naziv', content: 'Sadržaj (opis posla za zadatak)', enabled: 'Aktivno', kind: 'Učestalost',
       kinds: { daily: 'Dnevno / na N dana', weekly: 'Nedeljno', monthly: 'Mesečno', yearly: 'Godišnje', shift: 'Po smenama' },
       yearDates: 'Datumi', yearPick: 'Izaberite datume (više)', everyYears: 'Na koliko godina', yearHint: '29. februar: u neprestupnim godinama 28. februar', leaderHint: 'Šef smene upravlja samo obilascima dodeljenim svojoj ekipi', readonly: 'Samo pregled',
@@ -420,6 +424,7 @@ const messages = {
     nav2: { tasks: 'Tasks', workers: 'Workers', board: 'Handover', glossary: 'Glossary' },
     status: { not_started: 'Not started', in_progress: 'In progress', done: 'Done', handed_over: 'Handed over', discarded: 'Discarded', open: 'Open', all: 'All' },
     task: {
+      transferable: 'Can be handed over', notTransferable: 'not transferable', transferableHint: 'Off = the task stays with this team and cannot be handed over',
       new: 'New task', edit: 'Edit task', content: 'Work', contentPh: 'Chinese, Serbian or English', workers: 'Workers', team: 'Team',
       start: 'Start', end: 'Finish', leftover: 'Open issues', status: 'Status', publisher: 'Posted by', updater: 'Last edited',
       recorded: 'Recorded', shift: 'Shift', confirmedBy: 'Confirmed by', start_action: 'Start', done_action: 'Done', reopen: 'Reopen', doneLocked: 'Only an administrator can change a completed task', undo_start: 'Back to not started',
@@ -491,6 +496,7 @@ const messages = {
       note: 'Hours = finish − start; tasks with several workers count full hours for each; attendance follows the schedule. The report is written by AI from these statistics and is for guidance only.',
     },
     insp: {
+      transferHint: 'Off = the generated task (or project) stays with the assigned team and cannot be handed over',
       subs: 'Sub-items', subsHint: 'Optional. With sub-items every run creates a project (named after the inspection) and each sub-item becomes a sub-task: for a given team or person, or “Inspection’s team”.', contentOptional: 'Optional when there are sub-items', openProject: 'Open project', subsCount: '{n} sub-items', title: 'Scheduled inspections', add: 'New inspection', name: 'Name', content: 'Content (work text of the generated task)', enabled: 'Enabled', kind: 'Schedule',
       kinds: { daily: 'Daily / every N days', weekly: 'Weekly', monthly: 'Monthly', yearly: 'Yearly', shift: 'By shift' },
       yearDates: 'Dates', yearPick: 'Pick dates (multiple)', everyYears: 'Every N years', yearHint: 'Feb 29: Feb 28 in non-leap years', leaderHint: 'Leaders can only manage inspections fixed to their own team', readonly: 'Read only',

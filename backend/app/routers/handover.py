@@ -27,7 +27,7 @@ from ..schemas import (
 from ..security import get_current_user, require_admin
 from ..shifts import TeamInfo
 from .. import permissions
-from .tasks import LANGS, OPEN, _get_task, _require, overdue_clause, tasks_out
+from .tasks import LANGS, OPEN, _get_task, _require, can_transfer, overdue_clause, tasks_out
 
 router = APIRouter(prefix="/api", tags=["handover"])
 
@@ -58,8 +58,8 @@ def handover(body: HandoverRequest, db: Session = Depends(get_db),
     for t in tasks:
         if t.status not in OPEN:
             raise HTTPException(status.HTTP_409_CONFLICT, f"task {t.id} is {t.status}")
-        if t.project_id and t.project and not t.project.transferable:
-            raise HTTPException(status.HTTP_409_CONFLICT, "project tasks cannot be handed over")
+        if not can_transfer(t):
+            raise HTTPException(status.HTTP_409_CONFLICT, "this task cannot be handed over")
         _require(db, t, user, "handover")
 
     created = perform_handover(db, tasks, body.to_team_id, note, lang, user.id)

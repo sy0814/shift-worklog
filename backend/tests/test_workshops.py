@@ -210,3 +210,28 @@ def test_worker_follows_team_department(client, admin_h, d2):
     assert w["department_id"] == d2["id"]
     with SessionLocal() as db:
         assert load_schedule(db).team(d2["teams"][2]).dept == d2["id"]
+
+
+# ---------------- 不可移交（普通任务、巡查任务）----------------
+def test_task_not_transferable(client, admin_h, leader_h):
+    t = client.post("/api/tasks", headers=leader_h, json={
+        "client_id": str(uuid.uuid4()), "content": "2# 球磨机衬板更换，本班跟到底", "lang": "zh", "transferable": False}).json()
+    assert t["transferable"] is False and t["perms"]["handover"] is False
+    r = client.post("/api/handover", headers=leader_h, json={"task_ids": [t["id"]]})
+    assert r.status_code == 409 and r.json()["detail"] == "this task cannot be handed over"
+    t = client.patch(f"/api/tasks/{t['id']}", headers=leader_h, json={"transferable": True}).json()
+    assert t["transferable"] is True and t["perms"]["handover"] is True
+
+
+def test_inspection_task_not_transferable(client, admin_h):
+    from app import inspection_service
+    from app.models import InspectionTemplate, Task
+
+    r = client.post("/api/inspections", headers=admin_h, json={
+        "name": "配电室巡检", "content": "检查配电柜温度", "lang": "zh", "kind": "daily", "at_time": "10:00",
+        "transferable": False}).json()
+    assert r["transferable"] is False
+    run = client.post(f"/api/inspections/{r['id']}/run-now", headers=admin_h).json()
+    with SessionLocal() as db:
+        assert db.get(Task, run["task_id"]).transferable is False
+    assert client.get(f"/api/tasks/{run['task_id']}", headers=admin_h).json()["perms"]["handover"] is False

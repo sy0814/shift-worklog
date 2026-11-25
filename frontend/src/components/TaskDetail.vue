@@ -206,7 +206,8 @@ function histText(h) {
         <span class="muted">{{ task.shift_date }}</span>
         <el-tag v-if="task.inspection_id" size="small" type="success" effect="plain">{{ t('insp.tag') }} · {{ task.inspection_name }}</el-tag>
         <el-tag v-if="task.equipment" size="small" type="info" effect="plain">⚙ {{ task.equipment.code }} {{ localText(task.equipment.name, task.equipment.source_lang).text }}</el-tag>
-        <el-tag v-if="task.project" size="small" type="primary" effect="plain">📁 {{ localText(task.project.name, task.project.source_lang).text }} · {{ task.project.done }}/{{ task.project.total }}<template v-if="!task.project.transferable"> · {{ t('proj.fixed') }}</template></el-tag>
+        <el-tag v-if="task.project" size="small" type="primary" effect="plain">📁 {{ localText(task.project.name, task.project.source_lang).text }} · {{ task.project.done }}/{{ task.project.total }}</el-tag>
+        <el-tag v-if="task.transferable === false" size="small" type="info" effect="plain">🔒 {{ t('task.notTransferable') }}</el-tag>
       </div>
 
       <el-alert v-if="task.overdue" type="error" :closable="false" show-icon class="mt"

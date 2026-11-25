@@ -1,5 +1,6 @@
 // 把服务器返回的英文错误说明翻译成界面语言（只翻用户操作会碰到的；其他的原样显示）
 const T = {
+  no_transfer: ['这条任务设为「不可移交」，不能移交', 'Ovaj zadatak je označen „bez predaje”', 'This task is set as not transferable'],
   dept_name: ['请填车间名称', 'Unesite naziv pogona', 'Workshop name is required'],
   not_dept: ['只能管理本车间', 'Samo za vaš pogon', 'Your own workshop only'],
   dept_used: ['车间里已经有班组、员工或设备，不能删除，请改为停用', 'Pogon ima ekipe, radnike ili opremu; označite ga kao neaktivan', 'The workshop is in use; deactivate it instead'],
@@ -85,6 +86,7 @@ const T = {
   self: ['不能降级或停用自己', 'Ne možete sebi oduzeti prava', 'You cannot demote or disable yourself'],
 }
 const RULES = [
+  [/^(?:this task|project tasks) cannot be handed over/, 'no_transfer'],
   [/^not your department/, 'not_dept'],
   [/^department name required/, 'dept_name'],
   [/^department in use/, 'dept_used'],

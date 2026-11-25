@@ -48,7 +48,7 @@ async function init() {
     const l = pick(tk.leftover, tk.leftover_source_lang)
     original = {
       content: c.text, contentLang: c.lang, leftover: l.text, leftoverLang: l.lang,
-      worker_ids: tk.workers.map((w) => w.id), lead_worker_id: tk.lead?.id ?? null, equipment_id: tk.equipment?.id ?? null,
+      worker_ids: tk.workers.map((w) => w.id), lead_worker_id: tk.lead?.id ?? null, equipment_id: tk.equipment?.id ?? null, transferable: tk.transferable !== false,
       start_at: toLocal(tk.start_at), end_at: toLocal(tk.end_at),
     }
     Object.assign(form, { ...original, worker_ids: [...original.worker_ids] })
@@ -56,7 +56,7 @@ async function init() {
     Object.assign(form, {
       client_id: uuid(), content: '', leftover: '', status: 'not_started',
       worker_ids: [...(props.preset?.worker_ids || [])], lead_worker_id: props.preset?.lead_worker_id ?? null,
-      equipment_id: props.preset?.equipment_id ?? null, start_at: null, end_at: null, team_id: props.preset?.team_id ?? (auth.hasOwnTeamHere ? auth.user.team_id : auth.teams[0]?.id),
+      equipment_id: props.preset?.equipment_id ?? null, transferable: true, start_at: null, end_at: null, team_id: props.preset?.team_id ?? (auth.hasOwnTeamHere ? auth.user.team_id : auth.teams[0]?.id),
     })
   }
   workers.value = await loadWorkers()
@@ -164,7 +164,7 @@ async function saveNew() {
   const body = {
     client_id: form.client_id, content: form.content.trim(), lang: locale.value,
     worker_ids: form.worker_ids, lead_worker_id: form.lead_worker_id || null, status: form.status, start_at: form.start_at || null,
-    equipment_id: form.equipment_id || null,
+    equipment_id: form.equipment_id || null, transferable: form.transferable,
     end_at: form.end_at || null, leftover: form.leftover?.trim() || null,
     recorded_at: new Date().toISOString(),
     ...(chooseTeam.value ? { team_id: form.team_id } : {}),
@@ -190,6 +190,7 @@ async function saveEdit() {
   if ([...form.worker_ids].sort().join() !== [...o.worker_ids].sort().join()) patch.worker_ids = form.worker_ids
   if ((form.lead_worker_id || null) !== (o.lead_worker_id || null)) patch.lead_worker_id = form.lead_worker_id || null
   if ((form.equipment_id || null) !== (o.equipment_id || null)) patch.equipment_id = form.equipment_id || null
+  if (form.transferable !== o.transferable) patch.transferable = form.transferable
   if (form.start_at !== o.start_at) patch.start_at = form.start_at || null
   if (form.end_at !== o.end_at) patch.end_at = form.end_at || null
   // 改了原文、且这段有人工校对过的译文：问是重新翻译还是保留
@@ -264,6 +265,13 @@ async function saveEdit() {
           <el-date-picker v-model="form.end_at" type="datetime" :value-format="DT" format="MM-DD HH:mm" style="width: 100%" />
         </el-form-item>
       </div>
+      <!-- 项目子项目能不能移交跟着项目设置 -->
+      <el-form-item v-if="!task?.project" :label="t('task.transferable')">
+        <div class="tr-row">
+          <el-switch v-model="form.transferable" />
+          <small class="muted">{{ form.transferable ? '' : t('task.transferableHint') }}</small>
+        </div>
+      </el-form-item>
       <el-form-item :label="t('task.leftover')">
         <el-input v-model="form.leftover" type="textarea" :autosize="{ minRows: 2, maxRows: 6 }" maxlength="5000" />
       </el-form-item>
@@ -285,4 +293,5 @@ async function saveEdit() {
 .small { font-size: 12px; }
 .two { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
 @media (max-width: 480px) { .two { grid-template-columns: 1fr; } }
+.tr-row { display: flex; align-items: center; gap: 10px; min-height: 32px; }
 </style>

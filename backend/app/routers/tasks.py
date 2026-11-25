@@ -100,13 +100,17 @@ def task_perms(w: "permissions.Who | None", task: Task) -> dict[str, bool]:
     return {
         "edit": live and done_ok and w.task_ok("task.edit", task),
         "status": live and done_ok and w.task_ok("task.status", task),
-        # 不可移交的项目的子项目不能移交
-        "handover": open_ and w.task_ok("task.handover", task) and not (task.project_id and task.project
-                                                                        and not task.project.transferable),
+        # 不可移交的任务、不可移交的项目的子项目不能移交
+        "handover": open_ and w.task_ok("task.handover", task) and can_transfer(task),
         "discard": open_ and w.task_ok("task.discard", task),
         "photo": live and done_ok and w.task_ok("photo.upload", task),
         "correct": done_ok and w.task_ok("translation.correct", task),
     }
+
+
+def can_transfer(task: Task) -> bool:
+    """任务自己可移交，并且（是项目子项目时）项目也可移交。"""
+    return bool(task.transferable) and not (task.project_id and task.project and not task.project.transferable)
 
 
 def photo_delete_ok(w: "permissions.Who | None", task: Task, a: Attachment) -> bool:
@@ -243,7 +247,7 @@ def task_out(task: Task, user: User, ctx: OutCtx) -> TaskOut:
         can_correct=perms["correct"],
         perms=perms,
         project=ctx.projects.get(task.project_id),
-        equipment=ctx.equipment.get(task.equipment_id),
+        equipment=ctx.equipment.get(task.equipment_id), transferable=can_transfer(task),
         chain_started_at=task.chain_started_at, handover_count=task.handover_count,
         age_hours=round(age, 1), overdue=overdue,
         handover_in=_ho_info(ctx.ho_to.get(task.id), True, names),
@@ -513,11 +517,13 @@ def create_task(body: TaskCreate, db: Session = Depends(get_db),
     task.lead_worker_id = lead_id
     _check_equipment(db, body.equipment_id)
     task.equipment_id = body.equipment_id
+    task.transferable = body.transferable
     db.add(task)
     db.flush()
     audit.log(db, user_id=user.id, action="create", entity="task", entity_id=task.id, new={
         "content": body.content.strip(), "lang": body.lang, "team_id": team_id,
         "status": body.status, "worker_ids": member_ids, "lead_worker_id": lead_id, "equipment_id": body.equipment_id,
+        "transferable": body.transferable,
         "start_at": start_at, "end_at": end_at, "leftover": task.leftover_source_lang and body.leftover.strip(),
         "recorded_at": recorded, "shift": f"{shift_date} {shift_kind}",
     })
@@ -554,6 +560,8 @@ def update_task(task_id: int, body: TaskUpdate, db: Session = Depends(get_db),
     if "equipment_id" in data:
         _check_equipment(db, data["equipment_id"])
         changes["equipment_id"] = data["equipment_id"]
+    if data.get("transferable") is not None:
+        changes["transferable"] = data["transferable"]
     _check_times(changes.get("start_at", task.start_at), changes.get("end_at", task.end_at))
 
     changed = audit.log_changes(db, task, changes, user_id=user.id, entity="task", entity_id=task.id)

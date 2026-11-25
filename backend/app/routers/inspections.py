@@ -45,7 +45,7 @@ class InspectionIn(BaseModel):
     team_id: int | None = None
     worker_ids: list[int] = Field(default_factory=list, max_length=50)
     sub_items: list[SubItem] = Field(default_factory=list, max_length=100)  # 小项目
-    transferable: bool = True  # 有小项目时：生成的项目是否可移交
+    transferable: bool = True  # 生成的任务（有小项目时 = 生成的项目）是否可移交
 
 
 class InspectionOut(InspectionIn):
