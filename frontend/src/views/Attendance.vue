@@ -1,4 +1,6 @@
 <script setup>
+import ScheduleGuide from '../components/ScheduleGuide.vue'
+import WhyPanel from '../components/WhyPanel.vue'
 // 出勤表：按月、按班组；点格子看此人当天做了什么，并可修改出勤
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -91,11 +93,13 @@ async function ensureWorkers() {
   if (!allWorkers.value.length) allWorkers.value = (await api.get('/workers')).data
 }
 const isGuest = (w) => data.value?.guest_ids?.includes(w.id)
+const whyOpen = ref(false) // 「为什么？」展开（每次打开格子都收起，重新读）
 async function openCell(w, day) {
   Object.assign(cur, { worker: w, day, cell: data.value.cells[w.id][day], tasks: [], loading: true })
   Object.assign(form, { status: cur.cell.status || 'present', shift_kind: cur.cell.shift_kind,
     team_id: cur.cell.team_id !== w.team_id ? cur.cell.team_id : null, note: cur.cell.note || '', until: null })
   swapWith.value = null
+  whyOpen.value = false
   dlg.value = true
   ensureWorkers()
   try {
@@ -195,6 +199,7 @@ const exportOpen = ref(false)
     </div>
     <div class="muted small">{{ t('att.defaultHint') }} · {{ t('att.legend') }}</div>
 
+    <ScheduleGuide />
     <div v-loading="loading" :class="['grid-wrap', { first: !data }]">
       <table v-if="data" class="grid">
         <thead>
@@ -246,9 +251,13 @@ const exportOpen = ref(false)
 
     <el-dialog v-model="dlg" :title="cur.worker ? `${cur.worker.name} · ${cur.day}` : ''" width="min(560px, 96vw)" :fullscreen="isNarrow()" append-to-body>
       <template v-if="cur.worker">
-        <div v-if="cur.cell.source !== 'default'" class="muted small">
-          {{ cur.cell.source === 'import' ? t('att.importedSrc') : t('att.edited') }}
+        <div class="why-row">
+          <span v-if="cur.cell.source !== 'default'" class="muted small">
+            {{ cur.cell.source === 'import' ? t('att.importedSrc') : t('att.edited') }}
+          </span>
+          <el-button link type="primary" size="small" style="margin-left: auto" @click="whyOpen = !whyOpen">{{ t('why.button') }} {{ whyOpen ? '▴' : '▾' }}</el-button>
         </div>
+        <div v-if="whyOpen" class="why-box"><WhyPanel type="worker" :id="cur.worker.id" :day="cur.day" /></div>
         <el-form label-width="auto" :disabled="!canEdit(cur.worker)">
           <el-form-item :label="t('att.status')">
             <el-radio-group v-model="form.status">
@@ -343,6 +352,8 @@ const exportOpen = ref(false)
 </template>
 
 <style scoped>
+.why-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 24px; }
+.why-box { margin: 4px 0 12px; padding: 8px 12px; border-radius: 6px; background: var(--el-fill-color-light); }
 .spacer { flex: 1; }
 .muted { color: #909399; }
 .small { font-size: 12px; margin-bottom: 8px; }

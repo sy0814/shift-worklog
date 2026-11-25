@@ -2,7 +2,9 @@
 
 - **使用说明书**（给使用者）：[docs/USER_MANUAL.md](docs/USER_MANUAL.md)
 - **开发说明**（给 AI 和开发者）：[docs/AI_GUIDE.md](docs/AI_GUIDE.md)
-- 需求来历和每一轮修改的详细记录：[CLAUDE.md](CLAUDE.md)
+- **现在的业务规则**（按领域）：[CLAUDE.md](CLAUDE.md)
+- **排班场景表**（某种情况系统怎么排，同时是测试）：[docs/SCHEDULE_SCENARIOS.md](docs/SCHEDULE_SCENARIOS.md)
+- 需求原文和每一轮修改的记录：[docs/CHANGELOG.md](docs/CHANGELOG.md)
 
 ## 开发
 

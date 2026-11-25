@@ -10,7 +10,7 @@ from . import departments as _departments  # noqa: F401  注册员工车间跟�
 from .db import SessionLocal, engine
 from . import migrate, translation_service
 from .config import get_settings
-from .routers import analysis as analysis_router, attendance, departments as departments_router, branding, duty, equipment, overtime, inspections, audit_log, auth, export, handover, llm_settings, projects, roles, schedule, storage, tasks, translation, users, workers
+from .routers import analysis as analysis_router, attendance, departments as departments_router, branding, duty, equipment, explain as explain_router, overtime, inspections, audit_log, auth, export, handover, llm_settings, projects, roles, schedule, storage, tasks, translation, users, workers
 from .seed import seed, seed_glossary
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"  # 前端构建产物
@@ -52,6 +52,7 @@ app.include_router(tasks.router)
 app.include_router(handover.router)
 app.include_router(translation.router)
 app.include_router(attendance.router)
+app.include_router(explain_router.router)
 app.include_router(export.router)
 app.include_router(llm_settings.router)
 app.include_router(analysis_router.router)

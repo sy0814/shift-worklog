@@ -12,6 +12,10 @@ import { useAuth } from '../stores/auth'
 import ShiftTag from '../components/ShiftTag.vue'
 import CycleEditor from '../components/CycleEditor.vue'
 import TriNames from '../components/TriNames.vue'
+import WhyPanel from '../components/WhyPanel.vue'
+import WhyDialog from '../components/WhyDialog.vue'
+import ScheduleGuide from '../components/ScheduleGuide.vue'
+import { useRoute } from 'vue-router'
 import { fullHours, shortEntry, splitHours } from '../cycle'
 
 const { t, tm, locale } = useI18n()
@@ -19,6 +23,11 @@ const actW1 = useActionsWidth(() => [t('schedule.restore')])
 const actW2 = useActionsWidth(() => [t('common.edit'), t('common.delete')])
 const actW3 = useActionsWidth(() => [t('common.delete')])
 const auth = useAuth()
+const route = useRoute()
+// 「怎么改排班？」里的链接用 ?tab=teams 直接打开班组管理
+const tabFor = (v) => (v === 'teams' && auth.deptOk('team.manage') ? 'teams' : 'calendar')
+const tab = ref(tabFor(route.query.tab))
+watch(() => route.query.tab, (v) => { if (v) tab.value = tabFor(v) })
 
 const month = ref(dayjs().format('YYYY-MM'))
 const days = ref([])
@@ -56,12 +65,18 @@ const changes = computed(() => days.value.flatMap((d) => Object.entries(d.change
 const tsOpen = ref(false)
 const canShift = (teamId) => auth.teamOk('schedule.team_shift', teamId)
 const canShiftAny = computed(() => auth.can('schedule.team_shift'))
-const ts = reactive({ mode: 'set', team_id: null, team_b: null, range: [], shift_kind: 'day', note: '', ranges: [] })
+const ts = reactive({ mode: 'set', team_id: null, team_b: null, range: [], shift_kind: 'day', note: '', ranges: [], why: null })
+// 「为什么？」：不能调班的人点格子 → 弹窗；能调班的人在调班弹窗里展开看
+const why = reactive({ open: false, team: 0, day: '', title: '' })
+const tsWhyOpen = ref(false)
+function openWhy(teamId, day) {
+  Object.assign(why, { open: true, team: teamId, day, title: `${localName(auth.teamById(teamId))} · ${day}` })
+}
 // 自定义上班时间（shift_kind = 'hours' 时）
 const TIMES = Array.from({ length: 48 }, (_, i) => `${String(Math.floor(i / 2)).padStart(2, '0')}:${i % 2 ? '30' : '00'}`)
 const tsHours = computed(() => ts.ranges.filter((r) => r.a && r.b).map((r) => `${r.a}-${r.b}`).join(','))
 function openTeamShift(teamId, day) {
-  if (teamId != null && !canShift(teamId)) return
+  if (teamId != null && !canShift(teamId)) return openWhy(teamId, day)
   if (!canShiftAny.value) return
   const d = day || todayStr
   const cur = days.value.find((x) => x.day === d)
@@ -69,7 +84,9 @@ function openTeamShift(teamId, day) {
   const curHours = cur && teamId && cur.hours?.[teamId]
   Object.assign(ts, { mode: 'set', team_id: team, team_b: null, range: [d, d],
     shift_kind: curHours ? 'hours' : (cur && teamId && cur.shifts[teamId]) || 'day', note: '',
-    ranges: curHours ? splitHours(curHours).map(([a, b]) => ({ a, b })) : [{ a: '07:00', b: '12:00' }, { a: '14:00', b: '17:00' }] })
+    ranges: curHours ? splitHours(curHours).map(([a, b]) => ({ a, b })) : [{ a: '07:00', b: '12:00' }, { a: '14:00', b: '17:00' }],
+    why: teamId != null ? { team: teamId, day: d } : null })
+  tsWhyOpen.value = false
   tsOpen.value = true
 }
 async function saveTeamShift() {
@@ -179,13 +196,14 @@ onMounted(async () => {
 
 <template>
   <div class="page">
-    <el-tabs>
-      <el-tab-pane :label="t('schedule.calendar')">
+    <el-tabs v-model="tab">
+      <el-tab-pane name="calendar" :label="t('schedule.calendar')">
         <div class="toolbar">
           <el-date-picker v-model="month" type="month" value-format="YYYY-MM" :clearable="false" />
           <el-button v-if="canShiftAny" type="primary" plain @click="openTeamShift(null)">{{ t('schedule.teamShift') }}</el-button>
-          <span v-if="canShiftAny" class="muted">{{ t('schedule.clickHint') }}</span>
+          <span class="muted">{{ canShiftAny ? t('schedule.clickHint') : t('schedule.clickWhy') }}</span>
         </div>
+        <ScheduleGuide />
         <el-alert v-if="coverage.length" type="warning" :closable="false" show-icon class="cov" :title="t('schedule.covTitle')">
           <div v-for="(p, i) in coverage.slice(0, 8)" :key="i">{{ covText(p) }}</div>
           <div v-if="coverage.length > 8">…（{{ coverage.length }}）</div>
@@ -220,6 +238,10 @@ onMounted(async () => {
 
         <el-dialog v-model="tsOpen" :title="t('schedule.teamShift')" width="min(480px, 94vw)" append-to-body>
           <p class="muted">{{ t('schedule.teamShiftHint') }}</p>
+          <template v-if="ts.why">
+            <el-button link type="primary" size="small" @click="tsWhyOpen = !tsWhyOpen">{{ t('why.button') }} {{ localName(auth.teamById(ts.why.team)) }} · {{ ts.why.day }} {{ tsWhyOpen ? '▴' : '▾' }}</el-button>
+            <div v-if="tsWhyOpen" class="why-box"><WhyPanel type="team" :id="ts.why.team" :day="ts.why.day" /></div>
+          </template>
           <el-form label-width="auto">
             <el-form-item>
               <el-radio-group v-model="ts.mode">
@@ -262,7 +284,7 @@ onMounted(async () => {
         </el-dialog>
       </el-tab-pane>
 
-      <el-tab-pane v-if="auth.deptOk('team.manage')" lazy :label="t('schedule.teams')">
+      <el-tab-pane v-if="auth.deptOk('team.manage')" name="teams" lazy :label="t('schedule.teams')">
         <div class="toolbar"><el-button type="primary" @click="openTeam(null)">{{ t('schedule.addTeam') }}</el-button></div>
         <!-- 列宽都固定：切到这个标签时表格不用再算一次列宽（否则会左右跳一下） -->
         <el-table :data="auth.teams" size="small" border class="teams-table">
@@ -329,7 +351,7 @@ onMounted(async () => {
         </el-dialog>
       </el-tab-pane>
 
-      <el-tab-pane v-if="auth.isAdmin" lazy :label="t('schedule.config')">
+      <el-tab-pane v-if="auth.isAdmin" name="config" lazy :label="t('schedule.config')">
         <el-form label-width="auto" style="max-width: 520px">
           <el-form-item :label="t('schedule.dayStart')"><el-time-select v-model="cfg.day_start" start="00:00" step="00:30" end="23:30" format="HH:mm" /></el-form-item>
           <el-form-item :label="t('schedule.middleStart')"><el-time-select v-model="cfg.middle_start" start="00:00" step="00:30" end="23:30" format="HH:mm" /></el-form-item>
@@ -338,7 +360,7 @@ onMounted(async () => {
         </el-form>
       </el-tab-pane>
 
-      <el-tab-pane v-if="auth.isAdmin" lazy :label="t('schedule.holidays')">
+      <el-tab-pane v-if="auth.isAdmin" name="holidays" lazy :label="t('schedule.holidays')">
         <div class="toolbar">
           <el-input-number v-model="year" :min="2020" :max="2100" controls-position="right" />
           <el-date-picker v-model="newHoliday.day" value-format="YYYY-MM-DD" :placeholder="t('schedule.date')" />
@@ -363,6 +385,7 @@ onMounted(async () => {
         </el-table>
       </el-tab-pane>
     </el-tabs>
+    <WhyDialog v-model="why.open" type="team" :id="why.team" :day="why.day" :title="why.title" />
   </div>
 </template>
 
@@ -372,7 +395,8 @@ onMounted(async () => {
 .weekend { color: #f56c6c; }
 .toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
 .cell { display: inline-flex; flex-direction: column; align-items: center; gap: 1px; }
-.cell.admin { cursor: pointer; }
+.cell { cursor: pointer; }
+.why-box { margin: 4px 0 12px; padding: 8px 12px; border-radius: 6px; background: var(--el-fill-color-light); }
 .cell.changed :deep(.el-tag) { outline: 2px dashed #e6a23c; outline-offset: 1px; }
 .was { color: #e6a23c; font-size: 11px; }
 .hrs { color: #1d7a66; font-size: 11px; white-space: nowrap; }

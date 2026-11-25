@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from .models import Attendance, Worker
 from .schedule_service import load_schedule
-from .shifts import OFF, Schedule, parse_hours
+from .shifts import OFF, Schedule, note, parse_hours
 from .worker_history import Entry, Timelines
 
 STATUSES = ("present", "leave", "sick", "absent", "off")
@@ -24,15 +24,43 @@ class DayAttendance:
     hours: str | None = None  # 按排班有自定义上班时间时，例如 "07:00-12:00,14:00-17:00"
 
 
-def default_for(sched: Schedule, entry: Entry, d: date) -> DayAttendance:
+def default_for(sched: Schedule, entry: Entry, d: date, trace: list | None = None) -> DayAttendance:
     """按当天有效的班组 / 个人循环推算默认出勤。"""
+    note(trace, "membership", team_id=entry.team_id, since=entry.effective_from, personal=entry.cycle is not None)
     if entry.team_id is None and entry.cycle is None:
         return DayAttendance(None, None, None, "default")
-    raw = sched.worker_entry(sched.team(entry.team_id), entry.cycle, d)
-    kind = sched.entry_kind(raw)
+    raw = sched.worker_entry(sched.team(entry.team_id), entry.cycle, d, trace)
+    kind = sched.entry_kind_traced(raw, trace)
     if kind == OFF:
         return DayAttendance("off", None, entry.team_id, "default")
     return DayAttendance("present", kind, entry.team_id, "default", hours=raw if parse_hours(raw) else None)
+
+
+def resolve(sched: Schedule, entry: Entry, a: Attendance | None, d: date,
+            trace: list | None = None) -> DayAttendance:
+    """某人某天的出勤：先按排班推算（default_for），有例外记录（导入 / 手工改）就以例外为准。
+    出勤表、首页在岗、导出、AI 统计和「为什么？」都走这里（trace 记下每一步依据）。"""
+    base = default_for(sched, entry, d, trace)
+    if a is None:
+        return base
+    note(trace, "attendance", status=a.status, shift_kind=a.shift_kind, team_id=a.team_id, source=a.source,
+         note=a.note, by=a.updated_by, at=a.updated_at)
+    kind = a.shift_kind
+    if a.status == "present" and not kind:
+        if a.team_id and a.team_id != entry.team_id:
+            # 去顶别的班组、没指定班次 → 按被顶班组当天的班次
+            cover = sched.team(a.team_id)
+            k = sched.shift_of(cover, d) if cover else None
+            kind = k if k and k != OFF else None
+            note(trace, "cover", team_id=a.team_id, kind=kind)
+        else:
+            kind = base.shift_kind
+    # 手工改过 / 导入的：班次没变的话保留自定义上班时间
+    hours = base.hours if a.status == "present" and kind == base.shift_kind else None
+    if base.hours and a.status == "present" and hours is None:
+        note(trace, "hours_dropped", hours=base.hours)
+    return DayAttendance(a.status, kind if a.status == "present" else None,
+                         a.team_id or entry.team_id, a.source, a.note, hours)
 
 
 def effective(db: Session, workers: list[Worker], start: date, end: date,
@@ -51,25 +79,7 @@ def effective(db: Session, workers: list[Worker], start: date, end: date,
         row = {}
         d = start
         while d <= end:
-            entry = tl.on(w.id, d)
-            base = default_for(sched, entry, d)
-            a = overrides.get((w.id, d))
-            if a is not None:
-                kind = a.shift_kind
-                if a.status == "present" and not kind:
-                    if a.team_id and a.team_id != entry.team_id:
-                        # 去顶别的班组、没指定班次 → 按被顶班组当天的班次
-                        cover = sched.team(a.team_id)
-                        k = sched.shift_of(cover, d) if cover else None
-                        kind = k if k and k != OFF else None
-                    else:
-                        kind = base.shift_kind
-                # 手工改过 / 导入的：班次没变的话保留自定义上班时间
-                hours = base.hours if a.status == "present" and kind == base.shift_kind else None
-                row[d] = DayAttendance(a.status, kind if a.status == "present" else None,
-                                       a.team_id or entry.team_id, a.source, a.note, hours)
-            else:
-                row[d] = base
+            row[d] = resolve(sched, tl.on(w.id, d), overrides.get((w.id, d)), d)
             d += timedelta(days=1)
         out[w.id] = row
     return out

@@ -37,14 +37,24 @@ def member_days(db: Session, own: Schedule, d: date) -> dict:
     if not ids:
         return days
     workers = list(db.scalars(select(Worker).where(Worker.id.in_(ids), Worker.is_active.is_(True))))
+    for day, shifts in vote_member_shifts(attendance_service.effective(db, workers, start, end, own).values(),
+                                          set(nonmain)).items():
+        days[day].update(shifts)
+    return days
+
+
+def vote_member_shifts(rows, nonmain: set) -> dict:
+    """（纯函数）成员出勤 → {日期: {非主班组 id: 班次}}：有成员出勤上某个班，班组就算上这个班；
+    同一天成员上不同的班时，取人最多的那个（一样多取先上的）。rows = 每人 {日期: DayAttendance}。"""
     votes: dict = {}
-    for row in attendance_service.effective(db, workers, start, end, own).values():
+    for row in rows:
         for day, a in row.items():
             if a.status == "present" and a.shift_kind and a.team_id in nonmain:
                 votes.setdefault((day, a.team_id), Counter())[a.shift_kind] += 1
+    out: dict = {}
     for (day, tid), c in votes.items():
-        days[day][tid] = max(c, key=lambda k: (c[k], -ORDER.index(k)))
-    return days
+        out.setdefault(day, {})[tid] = max(c, key=lambda k: (c[k], -ORDER.index(k)))
+    return out
 
 
 def _load_base(db: Session) -> Schedule:

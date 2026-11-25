@@ -27,6 +27,13 @@ MAX_CYCLE = 62
 # （最多 4 段，按时间先后；最后一段可以跨过午夜，例如 "22:00-06:00"）。
 # 分组、交接、任务归属班次时，按和白 / 中 / 夜哪个班重叠最多来算（见 Schedule.entry_kind）；
 # 首页「现在在不在上班」、加班从几点算起，用实际的时间段（见 Schedule.entry_hours）。
+# 推理过程（「为什么？」）：下面的函数可以带一个 trace 列表，按判定顺序追加每一步依据 {"code": ..., ...}。
+# 结果和不带 trace 时完全一样（同一段代码），只是多记下来；业务代码平时不传。见 app/explain.py。
+def note(trace: list | None, code: str, **kw) -> None:
+    if trace is not None:
+        trace.append({"code": code, **kw})
+
+
 _HOURS_RE = re.compile(r"^(\d{2}):(\d{2})-(\d{2}):(\d{2})$")
 
 
@@ -85,13 +92,18 @@ class Cycle:
         rank = {k: i for i, k in enumerate(ORDER)}
         return max(c, key=lambda k: (c[k], -rank.get(k, 9)))
 
-    def planned(self, d: date, holidays=frozenset(), workdays=frozenset()) -> str:
+    def planned(self, d: date, holidays=frozenset(), workdays=frozenset(), trace: list | None = None) -> str:
         """这一天循环里写的内容：day / middle / night / off，或自定义时间段（原样返回）。"""
-        k = self.pattern[(d - self.start).days % len(self.pattern)]
+        pos = (d - self.start).days % len(self.pattern)
+        k = self.pattern[pos]
+        note(trace, "cycle", pos=pos + 1, length=len(self.pattern), start=self.start, entry=k,
+             holiday_off=self.holiday_off)
         if self.holiday_off:
             if d in holidays:
+                note(trace, "holiday", was=k)
                 return OFF
             if d in workdays and k == OFF:
+                note(trace, "workday", entry=self.work_shift)
                 return self.work_shift
         return k
 
@@ -161,9 +173,9 @@ class Schedule:
             return True
         return d.weekday() < 5 and d not in self.holidays
 
-    def cycle_entry(self, cycle: Cycle, d: date) -> str:
+    def cycle_entry(self, cycle: Cycle, d: date, trace: list | None = None) -> str:
         """循环里这一天写的内容（含节假日处理）：班次，或自定义时间段。"""
-        return cycle.planned(d, self.holidays, self.extra_workdays)
+        return cycle.planned(d, self.holidays, self.extra_workdays, trace)
 
     def cycle_shift(self, cycle: Cycle, d: date) -> str:
         """这一天算哪个班（自定义时间段按重叠最多的班算）。"""
@@ -213,13 +225,25 @@ class Schedule:
             out.append((start, end))
         return out
 
-    def shift_of(self, team: TeamInfo, d: date) -> str:
-        if not team.active_on(d):
-            return OFF
-        o = self.overrides.get((team.id, d))
-        k = self.entry_kind(o) if o is not None else self.planned_shift_of(team, d)
-        if k == OFF and not team.is_main:
-            k = self.member_shift(team.id, d) or OFF  # 成员被单独安排上班 → 班组也算在班
+    def entry_kind_traced(self, entry: str, trace: list | None = None) -> str:
+        """同 entry_kind；自定义时间段时把「算作哪个班」记进 trace。"""
+        k = self.entry_kind(entry)
+        if trace is not None and k != entry:
+            note(trace, "hours_kind", hours=entry, kind=k)
+        return k
+
+    def shift_of(self, team: TeamInfo, d: date, trace: list | None = None) -> str:
+        k = self.entry_kind_traced(self.team_entry(team, d, trace), trace)
+        if k == OFF and not team.is_main and team.active_on(d):
+            if (team.id, d) in self.overrides:
+                # 明确写下的优先于推算的：班组这天有班组调班，就按调班算，不再因为有成员上班改回在班
+                if trace is not None and (m := self.member_shift(team.id, d)):
+                    note(trace, "member_ignored", team_id=team.id, kind=m)
+                return k
+            m = self.member_shift(team.id, d)  # 成员被单独安排上班 → 班组也算在班
+            if m:
+                note(trace, "member_shift", team_id=team.id, kind=m)
+                k = m
         return k
 
     def planned_entry(self, team: TeamInfo, d: date) -> str:
@@ -234,20 +258,30 @@ class Schedule:
             return OFF
         return self.cycle_shift(team.cycle, d)
 
-    def team_entry(self, team: TeamInfo, d: date) -> str:
+    def team_entry(self, team: TeamInfo, d: date, trace: list | None = None) -> str:
         """班组这一天的安排：整体调班优先；否则循环里写的。两者都可能是班次或自定义时间段。"""
         if not team.active_on(d):
+            note(trace, "inactive", team_id=team.id, active_from=team.active_from, active_to=team.active_to)
             return OFF
         o = self.overrides.get((team.id, d))
         if o is not None:
+            if trace is not None:
+                note(trace, "team_cycle", team_id=team.id, manual=team.cycle is None)
+                sub: list = []
+                planned = self.cycle_entry(team.cycle, d, sub) if team.cycle else OFF
+                trace.extend(sub)
+                note(trace, "team_override", team_id=team.id, entry=o, planned=planned)
             return o
-        return self.cycle_entry(team.cycle, d) if team.cycle else OFF
+        note(trace, "team_cycle", team_id=team.id, manual=team.cycle is None)
+        return self.cycle_entry(team.cycle, d, trace) if team.cycle else OFF
 
-    def worker_entry(self, team: TeamInfo | None, personal: Cycle | None, d: date) -> str:
+    def worker_entry(self, team: TeamInfo | None, personal: Cycle | None, d: date,
+                     trace: list | None = None) -> str:
         """员工这一天的安排：有个人循环按个人的，否则跟班组。"""
         if personal is not None:
-            return self.cycle_entry(personal, d)
-        return self.team_entry(team, d) if team else OFF
+            note(trace, "personal_cycle")
+            return self.cycle_entry(personal, d, trace)
+        return self.team_entry(team, d, trace) if team else OFF
 
     # ---- 某天 / 某时刻 ----
     def main_team_on(self, d: date, kind: str, dept=ALL) -> TeamInfo | None:
