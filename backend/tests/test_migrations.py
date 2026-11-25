@@ -226,3 +226,27 @@ def test_alembic_ini_is_ascii():
     """中文 Windows 上 Alembic 按 GBK 读 alembic.ini，里面不能有非 ASCII 字符（2026-11-23 实际踩到）。"""
     data = (migrate.BACKEND / "alembic.ini").read_bytes()
     assert all(b < 128 for b in data)
+
+
+def test_0021_schedule_why(engine):
+    """0021：角色加「看排班原因」权限，按以前的规则给默认值（班长等 → 本车间，成员 → 不能）；退回去也能去掉。"""
+    import json
+
+    cfg = migrate.alembic_config()
+    with engine.begin() as c:
+        cfg.attributes["connection"] = c
+        command.upgrade(cfg, "0020")
+    migrate.upgrade(engine)
+
+    def perms(c, code):
+        p = c.execute(text("SELECT permissions FROM roles WHERE code = :c"), {"c": code}).scalar()
+        return json.loads(p) if isinstance(p, str) else p
+
+    with engine.connect() as c:
+        assert perms(c, "leader")["schedule.why"] == "dept"
+        assert perms(c, "member")["schedule.why"] == "none"
+    with engine.begin() as c:
+        cfg.attributes["connection"] = c
+        command.downgrade(cfg, "0020")
+    with engine.connect() as c:
+        assert "schedule.why" not in perms(c, "leader")

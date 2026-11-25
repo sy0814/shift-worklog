@@ -212,3 +212,34 @@ def test_team_shift_unaffected(client, admin_h):
     g = client.get("/api/attendance", headers=admin_h, params={"start": str(d), "end": str(d), "team_id": t["id"]}).json()
     assert g["cells"][str(own["id"])][str(d)]["shift_kind"] == "night"
     assert g["cells"][str(follow["id"])][str(d)]["status"] == "off"
+
+
+def test_why_permission_scope(client, admin_h):
+    """「看排班原因」是角色权限 schedule.why：本班组 = 只能看本班组的人和班组；不能 = 403。"""
+    from app.db import SessionLocal
+    from app.models import User
+
+    from .conftest import login
+
+    teams = {t["code"]: t["id"] for t in client.get("/api/teams", headers=admin_h).json()}
+    r = client.post("/api/roles", headers=admin_h, json={"name_zh": "看原因-本班组", "login_mode": "password",
+                                                          "permissions": {"schedule.why": "team"}}).json()
+    w = client.post("/api/workers", headers=admin_h, json={"name": "Why Viewer", "team_id": teams["T1"]}).json()
+    client.patch(f"/api/workers/{w['id']}", headers=admin_h, json={"role_id": r["id"]})
+    acc = client.put(f"/api/workers/{w['id']}/account", headers=admin_h, json={"username": "whyviewer", "password": "pass1234"}).json()
+    with SessionLocal() as db:
+        db.get(User, acc["user_id"]).must_change_password = False
+        db.commit()
+    h = login(client, "whyviewer", "pass1234")
+    me = client.get("/api/auth/me", headers=h).json()
+    assert me["perms"]["schedule.why"] == "team"
+    day = {"day": "2026-11-25"}
+    assert client.get(f"/api/explain/worker/{w['id']}", headers=h, params=day).status_code == 200
+    other = client.post("/api/workers", headers=admin_h, json={"name": "Why Other", "team_id": teams["T3"]}).json()
+    assert client.get(f"/api/explain/worker/{other['id']}", headers=h, params=day).status_code == 403
+    assert client.get(f"/api/explain/team/{teams['T1']}", headers=h, params=day).status_code == 200
+    assert client.get(f"/api/explain/team/{teams['T3']}", headers=h, params=day).status_code == 403
+    # 改成「不能」→ 自己班组也看不到
+    client.put(f"/api/roles/{r['id']}", headers=admin_h, json={"name_zh": "看原因-本班组", "login_mode": "password",
+                                                               "permissions": {"schedule.why": "none"}})
+    assert client.get(f"/api/explain/team/{teams['T1']}", headers=h, params=day).status_code == 403
