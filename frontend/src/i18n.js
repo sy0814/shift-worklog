@@ -50,7 +50,7 @@ const messages = {
       start: '开始时间', end: '完成时间', leftover: '遗留问题', status: '状态', publisher: '发布人', updater: '最后修改',
       recorded: '录入', shift: '班次', confirmedBy: '完成确认', start_action: '开始', done_action: '完成', reopen: '重新打开', doneLocked: '已完成的任务只有管理员可以修改', undo_start: '改回未开始',
       history: '修改记录', original: '原文', pendingTr: '待翻译', search: '搜索内容', empty: '没有任务', allTeams: '全部班组',
-      dateRange: '日期', noWorkers: '未选择', created: '已创建', confirmDone: '确认这项工作已完成？', loadMore: '加载更多',
+      dateRange: '日期', noWorkers: '未选择', created: '已创建', confirmDone: '确认这项工作已完成？', doneLogHint: '班次日志（选填）：这个班做了什么、换了什么、还要注意什么。会自动翻译，导出里也有。', loadMore: '加载更多',
     },
     photo: {
       title: '图片', camera: '拍照', gallery: '从相册选择', file: '选择图片', takenAt: '拍摄时间',
@@ -274,7 +274,7 @@ const messages = {
       start: 'Početak', end: 'Završetak', leftover: 'Preostali problemi', status: 'Status', publisher: 'Uneo', updater: 'Poslednja izmena',
       recorded: 'Uneto', shift: 'Smena', confirmedBy: 'Potvrdio završetak', start_action: 'Započni', done_action: 'Završi', reopen: 'Ponovo otvori', doneLocked: 'Završen zadatak može da menja samo administrator', undo_start: 'Vrati na nije započeto',
       history: 'Istorija izmena', original: 'Original', pendingTr: 'Čeka prevod', search: 'Pretraga', empty: 'Nema zadataka', allTeams: 'Sve smene',
-      dateRange: 'Datum', noWorkers: 'Nije izabrano', created: 'Kreirano', confirmDone: 'Potvrditi da je posao završen?', loadMore: 'Učitaj još',
+      dateRange: 'Datum', noWorkers: 'Nije izabrano', created: 'Kreirano', confirmDone: 'Potvrditi da je posao završen?', doneLogHint: 'Dnevnik smene (nije obavezno): šta je urađeno, šta je zamenjeno, na šta treba paziti. Prevodi se automatski i ulazi u izvoz.', loadMore: 'Učitaj još',
     },
     photo: {
       title: 'Slike', camera: 'Fotografiši', gallery: 'Iz galerije', file: 'Izaberi sliku', takenAt: 'Snimljeno',
@@ -498,7 +498,7 @@ const messages = {
       start: 'Start', end: 'Finish', leftover: 'Open issues', status: 'Status', publisher: 'Posted by', updater: 'Last edited',
       recorded: 'Recorded', shift: 'Shift', confirmedBy: 'Confirmed by', start_action: 'Start', done_action: 'Done', reopen: 'Reopen', doneLocked: 'Only an administrator can change a completed task', undo_start: 'Back to not started',
       history: 'History', original: 'Original', pendingTr: 'Awaiting translation', search: 'Search', empty: 'No tasks', allTeams: 'All teams',
-      dateRange: 'Date', noWorkers: 'None', created: 'Created', confirmDone: 'Confirm this work is done?', loadMore: 'Load more',
+      dateRange: 'Date', noWorkers: 'None', created: 'Created', confirmDone: 'Confirm this work is done?', doneLogHint: 'Shift log (optional): what was done, what was replaced, what to watch. Translated automatically and included in exports.', loadMore: 'Load more',
     },
     photo: {
       title: 'Photos', camera: 'Take photo', gallery: 'From gallery', file: 'Choose image', takenAt: 'Taken',

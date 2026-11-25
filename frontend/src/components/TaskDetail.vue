@@ -100,10 +100,30 @@ async function changed() {
   emit('changed')
 }
 
-async function setStatus(status) {
-  if (status === 'done') {
-    await ElMessageBox.confirm(t('task.confirmDone'), { type: 'success' })
+// 点「完成」：弹出确认窗口，可以顺手写一条班次日志（选填）。写了就先存日志（自动翻译、导出里有），再改成已完成
+const doneOpen = ref(false)
+const doneLog = ref('')
+function askDone() {
+  doneLog.value = ''
+  doneOpen.value = true
+}
+async function confirmDone() {
+  const text = doneLog.value.trim()
+  busy.value = true
+  try {
+    if (text && task.value.perms?.log) await outbox.submitLog(task.value, text, locale.value) // 断网时存手机，按顺序同步
+  } catch (err) {
+    const d = err.response?.data?.detail
+    ElMessage.error(typeof d === 'string' ? translateError(d, locale.value, t) : t('common.requestFailed'))
+    busy.value = false
+    return // 日志没存上：不关窗口，写的字还在
   }
+  busy.value = false
+  doneOpen.value = false
+  await setStatus('done')
+}
+
+async function setStatus(status) {
   busy.value = true
   try {
     const res = await outbox.submitStatus(task.value, status)
@@ -243,7 +263,7 @@ function histText(h) {
       <div v-if="task.perms?.status || task.perms?.edit || task.perms?.handover || task.perms?.discard" class="actions">
         <template v-if="task.perms?.status">
         <el-button v-if="task.status === 'not_started'" type="warning" :loading="busy" @click="setStatus('in_progress')">{{ t('task.start_action') }}</el-button>
-        <el-button v-if="['not_started', 'in_progress'].includes(task.status)" type="success" :loading="busy" @click="setStatus('done')">{{ t('task.done_action') }}</el-button>
+        <el-button v-if="['not_started', 'in_progress'].includes(task.status)" type="success" :loading="busy" @click="askDone">{{ t('task.done_action') }}</el-button>
         <el-button v-if="task.status === 'in_progress'" :loading="busy" @click="setStatus('not_started')">{{ t('task.undo_start') }}</el-button>
         <el-button v-if="task.status === 'done'" :loading="busy" @click="setStatus('in_progress')">{{ t('task.reopen') }}</el-button>
         </template>
@@ -288,6 +308,16 @@ function histText(h) {
       </el-collapse>
     </div>
     <el-skeleton v-else :rows="6" animated />
+    <el-dialog v-model="doneOpen" :title="t('task.confirmDone')" width="min(480px, 94vw)" append-to-body>
+      <template v-if="task?.perms?.log">
+        <div class="small muted done-hint">{{ t('task.doneLogHint') }}</div>
+        <el-input v-model="doneLog" type="textarea" :autosize="{ minRows: 3, maxRows: 8 }" maxlength="5000" :placeholder="t('tlog.placeholder')" />
+      </template>
+      <template #footer>
+        <el-button @click="doneOpen = false">{{ t('common.cancel') }}</el-button>
+        <el-button type="success" :loading="busy" @click="confirmDone">{{ t('task.done_action') }}</el-button>
+      </template>
+    </el-dialog>
     <TaskForm v-if="task" v-model="editOpen" :task="task" @saved="changed" />
     <TranslationEditor v-if="task" v-model="trOpen" :task="task" @saved="changed" />
     <HandoverDialog v-if="task" v-model="hoOpen" :task-ids="[task.id]" :team-id="task.team_id" @done="changed" />
@@ -308,5 +338,6 @@ function histText(h) {
 .wtag { margin: 2px 4px 2px 0; }
 .pre { white-space: pre-wrap; }
 .mt { margin-top: 12px; }
+.done-hint { margin-bottom: 6px; }
 h4 { margin: 16px 0 8px; }
 </style>
