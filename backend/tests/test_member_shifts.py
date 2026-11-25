@@ -68,10 +68,30 @@ def test_split_hours_shown_once_with_break(client, admin_h, monkeypatch):
 
     k, rows = at(9)
     assert k == "day" and [r["status"] for r in rows] == ["idle"]
-    assert not at(9, "next")[1]  # 不会同时出现在下一个班（中班）里
+    _k, nxt = at(9, "next")  # 下一个班（中班）里也列出来、计入在岗，写「到 17:00」（2026-11-25 用户要求）
+    assert [r["status"] for r in nxt] == ["idle"] and nxt[0]["overlap_until"].startswith(f"{D}T17:00")
     k, rows = at(13)  # 午休
     assert rows[0]["status"] == "off_hours" and rows[0]["back_at"].startswith(f"{D}T14:00")
     k, rows = at(16)  # 已经是中班时段，他 14-17 还在上班：只在当前班（中班）里出现一次
     assert k == "middle" and len(rows) == 1 and rows[0]["status"] == "idle"
     k, rows = at(18)  # 下班了
     assert k == "middle" and not rows
+
+
+def test_split_hours_assignable_in_next_shift(client, admin_h, monkeypatch):
+    """白班 07-12、14-17 的人：中班的主班组也能给他安排任务（他 15-17 还在）。"""
+    from app.routers import tasks as tasks_router
+
+    with SessionLocal() as db:
+        s = load_schedule(db)
+        main = s.main_team_on(D, "day", s.team(1).dept)
+        mid = s.main_team_on(D, "middle", s.team(1).dept)
+    w = client.post("/api/workers", headers=admin_h, json={"name": "Split Assign", "team_id": main.id}).json()
+    start = D - timedelta(days=2)
+    assert client.put(f"/api/workers/{w['id']}/schedule", headers=admin_h, json={
+        "effective_from": str(start), "team_id": main.id, "personal": True,
+        "pattern": ["07:00-12:00,14:00-17:00"] * 7, "cycle_start": str(start)}).status_code == 200
+    with SessionLocal() as db:
+        s = load_schedule(db)
+        assert w["id"] in tasks_router.assignable_ids(db, s, mid.id, D, "middle")
+        assert w["id"] in tasks_router.assignable_ids(db, s, main.id, D, "day")  # 白班本来就能

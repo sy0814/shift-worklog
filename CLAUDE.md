@@ -321,6 +321,7 @@
   - `assignable_ids`：班次主班组那一组还能分配「自己班组不上这个班、人被单独安排来上」的人（例如 4 班休息、人被叫来上白班却没写顶哪个班组）
   - `recording_slot` / `receiving_slot`：班组最近 30 天都没有班时归到当前班次，不再报错
   - **分两段上班**（例如 7-12、14-17）：按重叠最多的班算（白班），首页人员状态里只在一个班次出现一次（16:00 已是中班时段时出现在当前班，不会同时出现在白班和中班）；中间不在时间段里显示「不在上班时间」+「休息中，14:00 回来」/「07:00 上班」/「今天已下班」（`DutyWorker.back_at`），时间标签后面写出休息时间（`cycle.breaks`）
+  - 2026-11-25 补充（用户要求）：「不在上班时间」改叫「休息中」，休息中的人照样能勾选、安排任务（不算在岗）；上班时间延伸到下一个班的人（白班 07-12、14-17 → 中班 15-17）在下一个班的人员状态里也列出、**计入在岗**，标「到 17:00」（`duty._overlap`、`DutyWorker.overlap_until`），那个班的主班组也能给他安排任务（`assignable_ids`）；过了时间就不再列
 - [x] **车间（部门）层**（2026-11-25）：全厂一套系统，每个车间像独立系统一样用，车间之间可以移交任务、借调人员（用户选的方案 B：一套系统 + 车间层，不做多套独立系统）
   - 表 `departments`（迁移 0017，建默认车间 id=1，已有数据都归它）；`teams.department_id` 必填，`workers.department_id`（有班组时跟班组走，`departments.py` 的 before_flush 同步），`equipment.department_id`（空 = 全厂共用），`inspection_templates.department_id`，`ai_reports.department_id`
   - **排班按车间分开**：`TeamInfo.dept`，`teams_on` / `main_team_on` / `coverage_problems` 带 `dept` 参数，`group_of` / 交接对象自动用本车间；各车间各有主班组、合并显示、交接顺序。班次时间（07/15/23）、节假日仍全厂共用

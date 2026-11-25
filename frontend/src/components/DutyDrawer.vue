@@ -41,7 +41,8 @@ defineExpose({ load })
 
 const teamName = (id) => localName(auth.teamById(id))
 const ST_TYPE = { busy: 'warning', idle: 'success', leave: 'info', sick: 'info', absent: 'danger', off: 'info', off_hours: 'info' }
-const canPick = (r) => data.value?.can_add && (r.status === 'busy' || r.status === 'idle')
+// 休息中的人（午休、还没到点）也能勾选、安排任务，只是不算在岗
+const canPick = (r) => data.value?.can_add && ['busy', 'idle', 'off_hours'].includes(r.status)
 function toggle(id, v) {
   picked.value = v ? [...picked.value, id] : picked.value.filter((x) => x !== id)
 }
@@ -102,6 +103,7 @@ function addTask() {
                 <el-tag size="small" effect="plain" type="info">{{ teamName(r.team_id) }}</el-tag>
                 <el-tag :type="ST_TYPE[r.status]" size="small" effect="dark">{{ t('duty.st.' + r.status) }}</el-tag>
                 <el-tag v-if="r.status === 'off_hours'" size="small" type="info" effect="plain">{{ offText(r) }}</el-tag>
+                <el-tag v-if="r.overlap_until" size="small" type="primary" effect="plain" :title="t('duty.untilHint', { t: hm(r.overlap_until) })">{{ t('duty.untilT', { t: hm(r.overlap_until) }) }}</el-tag>
                 <el-tag v-if="r.hours" size="small" effect="plain" class="hrs">⏱ {{ hoursText(r.hours) }}</el-tag>
                 <el-tag v-if="r.overtime_until" size="small" type="warning" effect="plain">⏱ {{ t(r.overtime_prev ? 'ot.prevTag' : 'ot.untilTag', { t: hm(r.overtime_until) }) }}</el-tag>
               </div>
@@ -125,6 +127,7 @@ function addTask() {
                 <b>{{ r.worker.name }}</b>
                 <el-tag :type="ST_TYPE[r.status]" size="small" effect="dark">{{ t('duty.st.' + r.status) }}</el-tag>
                 <el-tag v-if="r.status === 'off_hours'" size="small" type="info" effect="plain">{{ offText(r) }}</el-tag>
+                <el-tag v-if="r.overlap_until" size="small" type="primary" effect="plain" :title="t('duty.untilHint', { t: hm(r.overlap_until) })">{{ t('duty.untilT', { t: hm(r.overlap_until) }) }}</el-tag>
                 <el-tag v-if="r.hours" size="small" effect="plain" class="hrs">⏱ {{ hoursText(r.hours) }}</el-tag>
                 <el-tag v-if="r.support" size="small" effect="plain">{{ t('duty.support') }} · {{ teamName(r.worker.team_id) }}</el-tag>
                 <el-tag v-if="r.overtime_until" size="small" type="warning" effect="plain">⏱ {{ t(r.overtime_prev ? 'ot.prevTag' : 'ot.untilTag', { t: hm(r.overtime_until) }) }}</el-tag>

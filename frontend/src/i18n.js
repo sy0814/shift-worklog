@@ -179,8 +179,8 @@ const messages = {
     dp: { title: '新员工默认密码', label: '默认密码', hint: '在员工名册里新加的人会自动开账号，密码就是这个；他第一次登录后必须改成自己的密码。至少 6 位。', openAll: '给没账号的人开账号', openAllConfirm: '给名册里还没有账号的在职员工都开账号（用默认密码，第一次登录必须改）？', openAllDone: '开了 {n} 个账号，默认密码：{p}', added: '已给 {n} 开账号（默认密码，第一次登录要改）', mustChange: '需改密码' },
     lead: { title: '带队人员', none: '未指定', members: '参与人员', pick: '选择带队人（可不选）' },
     duty: {
-      breaks: '（{b} 休息）', backAt: '休息中，{t} 回来', startsAt: '{t} 上班', doneToday: '今天已下班', onDuty: '在岗 {n} 人', offHours: '不在上班时间 {n}', busy: '忙碌 {n}', idle: '空闲 {n}', absent: '请假/缺勤 {n}', title: '{shift} 人员状态', support: '支援',
-      st: { off_hours: '不在上班时间', busy: '忙碌', idle: '空闲', leave: '请假', sick: '病假', absent: '缺勤', off: '调休' },
+      breaks: '（{b} 休息）', backAt: '休息中，{t} 回来', startsAt: '{t} 上班', doneToday: '今天已下班', onDuty: '在岗 {n} 人', offHours: '休息中 {n}', untilT: '到 {t}', untilHint: '算在别的班，这个班次里上到 {t}', busy: '忙碌 {n}', idle: '空闲 {n}', absent: '请假/缺勤 {n}', title: '{shift} 人员状态', support: '支援',
+      st: { off_hours: '休息中', busy: '忙碌', idle: '空闲', leave: '请假', sick: '病假', absent: '缺勤', off: '调休' },
       none: '这个班次没有安排人员', select: '勾选人员后可快捷添加任务', addTask: '给选中的人添加任务（{n}）', noTask: '没有未完成的任务', clickHint: '点击查看人员',
     },
     ot: {
@@ -369,8 +369,8 @@ const messages = {
     dp: { title: 'Podrazumevana lozinka za nove radnike', label: 'Lozinka', hint: 'Novi ljudi u spisku dobijaju nalog sa ovom lozinkom; posle prve prijave moraju da je promene. Najmanje 6 znakova.', openAll: 'Otvori naloge onima bez naloga', openAllConfirm: 'Otvoriti naloge svim aktivnim radnicima bez naloga (podrazumevana lozinka, promena pri prvoj prijavi)?', openAllDone: 'Otvoreno naloga: {n}, podrazumevana lozinka: {p}', added: 'Nalog za {n} je otvoren (podrazumevana lozinka, mora se promeniti)', mustChange: 'treba promeniti lozinku' },
     lead: { title: 'Vođa ekipe', none: 'Nije određen', members: 'Učesnici', pick: 'Izaberite vođu (opciono)' },
     duty: {
-      breaks: ' (pauza {b})', backAt: 'Pauza, vraća se u {t}', startsAt: 'Počinje u {t}', doneToday: 'Završio za danas', onDuty: 'Na smeni {n}', offHours: 'Van radnog vremena {n}', busy: 'Zauzeto {n}', idle: 'Slobodno {n}', absent: 'Odsutno {n}', title: '{shift} – stanje radnika', support: 'Pomoć',
-      st: { off_hours: 'Van radnog vremena', busy: 'Zauzet', idle: 'Slobodan', leave: 'Odsustvo', sick: 'Bolovanje', absent: 'Izostanak', off: 'Slobodan dan' },
+      breaks: ' (pauza {b})', backAt: 'Pauza, vraća se u {t}', startsAt: 'Počinje u {t}', doneToday: 'Završio za danas', onDuty: 'Na smeni {n}', offHours: 'Pauza {n}', untilT: 'do {t}', untilHint: 'Radi u drugoj smeni; u ovoj je do {t}', busy: 'Zauzeto {n}', idle: 'Slobodno {n}', absent: 'Odsutno {n}', title: '{shift} – stanje radnika', support: 'Pomoć',
+      st: { off_hours: 'Pauza', busy: 'Zauzet', idle: 'Slobodan', leave: 'Odsustvo', sick: 'Bolovanje', absent: 'Izostanak', off: 'Slobodan dan' },
       none: 'Za ovu smenu nema raspoređenih radnika', select: 'Označite radnike da biste brzo dodali zadatak', addTask: 'Dodaj zadatak izabranima ({n})', noTask: 'Nema otvorenih zadataka', clickHint: 'Kliknite za radnike',
     },
     ot: {
@@ -559,8 +559,8 @@ const messages = {
     dp: { title: 'Default password for new workers', label: 'Default password', hint: 'People added to the roster get an account with this password and must change it after their first sign-in. At least 6 characters.', openAll: 'Open accounts for people without one', openAllConfirm: 'Open accounts for all active workers who have none (default password, must change at first sign-in)?', openAllDone: '{n} accounts opened, default password: {p}', added: 'Account opened for {n} (default password, must be changed)', mustChange: 'must change password' },
     lead: { title: 'Lead', none: 'Not set', members: 'Workers', pick: 'Choose a lead (optional)' },
     duty: {
-      breaks: ' (break {b})', backAt: 'On break, back at {t}', startsAt: 'Starts at {t}', doneToday: 'Done for today', onDuty: '{n} on shift', offHours: '{n} outside hours', busy: '{n} busy', idle: '{n} free', absent: '{n} absent', title: '{shift} – people', support: 'Support',
-      st: { off_hours: 'Outside working hours', busy: 'Busy', idle: 'Free', leave: 'Leave', sick: 'Sick', absent: 'Absent', off: 'Day off' },
+      breaks: ' (break {b})', backAt: 'On break, back at {t}', startsAt: 'Starts at {t}', doneToday: 'Done for today', onDuty: '{n} on shift', offHours: '{n} on break', untilT: 'until {t}', untilHint: 'Belongs to another shift; here until {t}', busy: '{n} busy', idle: '{n} free', absent: '{n} absent', title: '{shift} – people', support: 'Support',
+      st: { off_hours: 'On break', busy: 'Busy', idle: 'Free', leave: 'Leave', sick: 'Sick', absent: 'Absent', off: 'Day off' },
       none: 'Nobody is scheduled for this shift', select: 'Tick people to add a task quickly', addTask: 'Add a task for selected ({n})', noTask: 'No open tasks', clickHint: 'Click to see people',
     },
     ot: {

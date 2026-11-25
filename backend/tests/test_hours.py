@@ -106,3 +106,22 @@ def test_duty_helpers():
     row = {d: DayAttendance("present", "day", 9, "default", hours=split)}
     assert _working_now(s, row, d, datetime(2026, 11, 24, 16)) is row[d]  # 16:00 已是中班时段，但他还在上班
     assert _working_now(s, row, d, datetime(2026, 11, 24, 18)) is None
+
+
+def test_duty_overlap_into_next_shift():
+    """白班 07-12、14-17 的人算白班，但在中班名单里也列出来（到 17:00，计入在岗）。"""
+    from app.routers.duty import _overlap
+    from app.attendance_service import DayAttendance
+
+    s = Schedule(teams=T)
+    d = date(2026, 11, 24)
+    split = "07:00-12:00,14:00-17:00"
+    row = {d: DayAttendance("present", "day", 9, "default", hours=split)}
+    mid_start, mid_end = s.shift_window(d, MIDDLE)
+    a, f, u = _overlap(s, row, d, MIDDLE, mid_start, mid_end, None)  # 提前看下一个班（中班）
+    assert a is row[d] and f == datetime(2026, 11, 24, 15) and u == datetime(2026, 11, 24, 17)
+    assert _overlap(s, row, d, DAY, *s.shift_window(d, DAY), None) is None  # 本来就是白班的人：不算 overlap
+    assert _overlap(s, row, d, NIGHT, *s.shift_window(d, NIGHT), None) is None  # 夜班没有重叠
+    assert _overlap(s, row, d, MIDDLE, mid_start, mid_end, datetime(2026, 11, 24, 18)) is None  # 当前班次里已经过去了
+    plain = {d: DayAttendance("present", "day", 9, "default")}
+    assert _overlap(s, plain, d, MIDDLE, mid_start, mid_end, None) is None  # 普通白班的人不列
