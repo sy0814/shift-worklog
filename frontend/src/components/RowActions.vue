@@ -5,10 +5,12 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { narrowKeep, useNarrow } from '../rowActions'
 
-const props = defineProps({ items: { type: Array, required: true }, keep: { type: Number, default: 2 } })
+// max：电脑上最多直接显示几个（放不下时把后面的收进「⋯」，页面自己按宽度算）
+const props = defineProps({ items: { type: Array, required: true }, keep: { type: Number, default: 2 }, max: { type: Number, default: 99 } })
 const { t } = useI18n()
 const narrow = useNarrow()
-const shown = computed(() => (narrow.value ? props.items.slice(0, narrowKeep(props.items.map((a) => a.label), props.keep)) : props.items))
+const shown = computed(() => (narrow.value ? props.items.slice(0, narrowKeep(props.items.map((a) => a.label), props.keep))
+  : props.items.slice(0, props.max)))
 const rest = computed(() => props.items.slice(shown.value.length))
 const run = (i) => rest.value[i]?.onClick()
 </script>

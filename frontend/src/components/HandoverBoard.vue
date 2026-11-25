@@ -1,6 +1,8 @@
 <script setup>
 // 首页的交接班：上一班移交过来的 + 本班待办 + 本班完成（不在班时显示上个班完成的），可多选一起移交
 // 常白班上班的日子，常白班和当天白班的倒班班组合并成一块（两边班长都能操作）
+// 看哪个班组由首页传进来（teamId，0 = 默认：有本班组的人看本班组，其他人看当前在班的）；
+// 显示的不是「此刻在班」的班时，标题旁边写明是哪个班，免得看错
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import api from '../api'
@@ -16,7 +18,8 @@ import HandoverDialog from './HandoverDialog.vue'
 const { t } = useI18n()
 const auth = useAuth()
 const outbox = useOutbox()
-const teamId = ref(0) // 0 = 默认（管理员：当前在班班组；班长：本班组）
+const props = defineProps({ teamId: { type: Number, default: 0 } })
+const teamId = computed(() => props.teamId)
 const board = ref(null)
 const loading = ref(false)
 const selected = ref([])
@@ -41,7 +44,7 @@ watch(teamId, () => { selected.value = []; load() })
 watch(() => outbox.lastSyncedTaskIds.length, () => load()) // 离线草稿 / 状态同步上去了
 onMounted(load)
 defineExpose({ load })
-const emit = defineEmits(['changed'])
+const emit = defineEmits(['changed', 'reset'])
 function changed() { // 任务有变化：自己刷新，并通知首页刷新在岗人数
   load()
   emit('changed')
@@ -76,8 +79,8 @@ function open(task) {
 }
 const hoOpen = ref(false)
 const teamName = (id) => localName(auth.teamById(id))
-// 班组切换：只列倒班班组 + 常白班（合并在服务器端处理）
-const switchTeams = computed(() => auth.teams)
+// 正在看的不是此刻在班的班（不在班 → 它的下一个班；或者从「今日排班」点了别的班组）：标题旁边写明
+const viewing = computed(() => board.value && (props.teamId || !board.value.on_duty))
 const sections = computed(() => board.value && [
   { key: 'received', title: t('board.received'), list: board.value.received, selectable: true },
   { key: 'todo', title: t('board.todo'), list: board.value.todo, selectable: true },
@@ -91,23 +94,12 @@ const sections = computed(() => board.value && [
   <section class="hb">
     <div class="toolbar">
       <h2 class="title">{{ t('nav2.board') }}</h2>
-      <el-radio-group v-model="teamId" size="small">
-        <el-radio-button :value="0">{{ auth.hasOwnTeamHere ? t('home.myTeam') : t('shift.current') }}</el-radio-button>
-        <el-radio-button v-for="tm in switchTeams" :key="tm.id" :value="tm.id">{{ localName(tm) }}</el-radio-button>
-      </el-radio-group>
+      <span v-if="viewing" class="viewing">
+        {{ t('home.viewing') }}: <b>{{ board.team_ids.map(teamName).join(' + ') }}</b>
+        <ShiftTag :kind="board.shift_kind" /> {{ board.shift_date.slice(5) }}<template v-if="!board.on_duty"> · {{ t('home.nextShiftTag') }}</template>
+        <el-button v-if="teamId" link type="primary" @click="emit('reset')">{{ t('home.back') }}</el-button>
+      </span>
     </div>
-
-    <el-card v-if="board" shadow="never" class="head">
-      <div class="head-row">
-        <b class="big">{{ board.team_ids.map(teamName).join(' + ') }}</b>
-        <ShiftTag :kind="board.shift_kind" />
-        <span>{{ board.on_duty ? t('board.onDuty', { shift: board.shift_date.slice(5) }) : t('board.next', { date: board.shift_date.slice(5), shift: '' }) }}</span>
-      </div>
-      <div class="head-row muted">
-        <span v-if="board.prev_team_ids.length">{{ t('board.prev') }}: {{ board.prev_team_ids.map(teamName).join(' + ') }}</span>
-        <span v-if="board.next_team_id">{{ t('board.nextTeam') }}: {{ teamName(board.next_team_id) }}</span>
-      </div>
-    </el-card>
 
     <!-- 批量移交栏一直占位（没有可选的任务时变灰），切换班组时下面的列表不会上下跳 -->
     <div class="batch">
@@ -142,9 +134,9 @@ const sections = computed(() => board.value && [
 
 <style scoped>
 .hb { margin-top: 16px; }
-.title { font-size: 17px; margin: 0; flex: 1; }
+.title { font-size: 17px; margin: 0; }
+.viewing { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; color: #606266; font-size: 13px; }
 .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
-.toolbar :deep(.el-radio-group) { flex-wrap: wrap; }
 .head { margin-bottom: 8px; }
 .head-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .head-row + .head-row { margin-top: 6px; }

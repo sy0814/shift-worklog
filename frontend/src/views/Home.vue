@@ -1,5 +1,6 @@
 <script setup>
-// 首页：未闭环警示 → 当前在班 / 下一个接班（含在岗人数，点开看人员状态）→ 交接班（合并在首页）→ 今日排班
+// 首页：未闭环警示 → 当前在班 / 下一个接班（含在岗人数，点开看人员状态）→ 交接班（合并在首页）→ 今日排班（默认收起，
+// 点里面的班组 = 在上面看它的交接班）
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import dayjs from 'dayjs'
@@ -45,10 +46,15 @@ onMounted(() => {
 onUnmounted(() => clearInterval(timer))
 
 const fmt = (s) => dayjs(s.slice(0, 16)).format('MM-DD HH:mm')
-// 卡片上只显示主班组（常白班等合并显示的班组合并进去，点开人员状态时才分开显示）
-const mainTeam = (s) => {
-  const rot = s.team_ids.filter((id) => auth.teamById(id)?.is_main) // 主班组；其他班组合并进去
-  return (rot.length ? rot : s.team_ids).map((id) => localName(auth.teamById(id))).join(' + ')
+// 卡片上显示这个班次合在一起的所有班组（主班组在前），和交接班里合并显示的一致
+const mainTeam = (s) => [...s.team_ids].sort((a, b) => !!auth.teamById(b)?.is_main - !!auth.teamById(a)?.is_main)
+  .map((id) => localName(auth.teamById(id))).join(' + ')
+// 交接班看哪个班组：0 = 默认；在「今日排班」里点班组切换
+const boardTeam = ref(0)
+const todayOpen = ref([])
+function viewTeam(id) {
+  boardTeam.value = id
+  document.querySelector('.hb')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 const cards = computed(() => now.value && [
   { key: 'current', s: now.value.current, d: duty.value.current },
@@ -115,17 +121,21 @@ function open(id) {
       </el-card>
     </div>
 
-    <HandoverBoard ref="boardRef" @changed="load" />
+    <HandoverBoard ref="boardRef" :team-id="boardTeam" @changed="load" @reset="boardTeam = 0" />
 
-    <el-card v-if="today" shadow="never" class="today">
-      <template #header>{{ t('home.today') }} · {{ today.day }}</template>
-      <div class="today-grid">
-        <div v-for="team in auth.teams" :key="team.id" :class="['today-item', { mine: team.id === auth.user?.team_id }]">
-          <span>{{ localName(team) }}</span>
-          <ShiftTag :kind="today.shifts[team.id]" />
+    <el-collapse v-if="today" v-model="todayOpen" class="today">
+      <el-collapse-item name="today">
+        <template #title><b>{{ t('home.today') }} · {{ today.day }}</b></template>
+        <div class="muted small">{{ t('home.todayHint') }}</div>
+        <div class="today-grid">
+          <button v-for="team in auth.teams" :key="team.id" type="button" @click="viewTeam(team.id)"
+                  :class="['today-item', { mine: team.id === auth.user?.team_id, on: team.id === boardTeam }]">
+            <span>{{ localName(team) }}</span>
+            <ShiftTag :kind="today.shifts[team.id]" />
+          </button>
         </div>
-      </div>
-    </el-card>
+      </el-collapse-item>
+    </el-collapse>
 
     <DutyDrawer ref="drawerRef" v-model="dutyOpen" :which="dutyWhich" @add="quickAdd" @open-task="open"
                 @loaded="(w, d) => (duty[w] = d)" />
@@ -153,8 +163,13 @@ function open(id) {
 .cnt.idle { color: #529b2e; }
 .cnt.absent { color: #909399; }
 .hint { margin-left: auto; color: #409eff; font-size: 12px; }
-.today { margin-top: 16px; }
+.today { margin-top: 16px; background: #fff; border-radius: 4px; padding: 0 16px; border: 1px solid var(--el-border-color-lighter); }
+.today :deep(.el-collapse-item__header), .today :deep(.el-collapse-item__wrap) { border-bottom: 0; }
+.muted { color: #909399; }
+.small { font-size: 12px; margin-bottom: 8px; }
 .today-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
-.today-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; background: #f7f8fa; border-radius: 6px; }
+.today-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; background: #f7f8fa; border-radius: 6px;
+  border: 0; font: inherit; color: inherit; cursor: pointer; text-align: left; }
+.today-item:hover, .today-item.on { background: #ecf5ff; }
 .today-item.mine { outline: 1px solid #409eff; font-weight: 600; }
 </style>

@@ -20,7 +20,7 @@ const messages = {
     nav: { home: '首页', schedule: '排班', users: '账号管理', audit: '操作记录', logout: '退出', password: '修改密码' },
     login: { title: '登录', username: '用户名', password: '密码', submit: '登录', failed: '用户名或密码错误', personal: '个人账号', team: '班组账号', noTeams: '还没有班组开通班组账号', pickYou: '{team}：点自己的头像', yourPassword: '输入你的个人密码', locked: '密码连续输错，已锁定 {n} 分钟，请稍后再试或找班长 / 管理员解锁', useTeam: '这个账号请用「班组账号」登录' },
     shift: { day: '白班', middle: '中班', night: '夜班', off: '休息', current: '当前在班', next: '下一个接班', now: '现在' },
-    home: { welcome: '你好，{name}', myTeam: '我的班组', today: '今日排班', tasksSoon: '任务与交接功能将在下一步加入' },
+    home: { welcome: '你好，{name}', myTeam: '我的班组', today: '今日排班', tasksSoon: '任务与交接功能将在下一步加入', nextShiftTag: '下一个班', viewing: '正在看', back: '回到当前', todayHint: '点班组可以在上面看它的交接班' },
     team: { rotating: '倒班', day: '常白班' },
     users: {
       username: '用户名', fullName: '姓名', role: '角色', team: '班组', lang: '语言', active: '启用',
@@ -210,7 +210,7 @@ const messages = {
     nav: { home: 'Početna', schedule: 'Raspored', users: 'Nalozi', audit: 'Evidencija izmena', logout: 'Odjava', password: 'Promena lozinke' },
     login: { title: 'Prijava', username: 'Korisničko ime', password: 'Lozinka', submit: 'Prijavi se', failed: 'Pogrešno korisničko ime ili lozinka', personal: 'Lični nalog', team: 'Nalog ekipe', noTeams: 'Nijedna ekipa još nema nalog ekipe', pickYou: '{team}: kliknite svoju sliku', yourPassword: 'Unesite svoju ličnu lozinku', locked: 'Previše pogrešnih lozinki, zaključano {n} min. Pokušajte kasnije ili pitajte šefa / administratora', useTeam: 'Ovaj nalog se prijavljuje preko „Naloga ekipe”' },
     shift: { day: 'Prva smena', middle: 'Druga smena', night: 'Treća smena', off: 'Slobodno', current: 'Trenutno na smeni', next: 'Sledeća smena', now: 'Sada' },
-    home: { welcome: 'Zdravo, {name}', myTeam: 'Moja smena', today: 'Današnji raspored', tasksSoon: 'Zadaci i primopredaja dolaze u sledećem koraku' },
+    home: { welcome: 'Zdravo, {name}', myTeam: 'Moja smena', today: 'Današnji raspored', tasksSoon: 'Zadaci i primopredaja dolaze u sledećem koraku', nextShiftTag: 'sledeća smena', viewing: 'Prikaz', back: 'Nazad na trenutnu', todayHint: 'Kliknite ekipu da vidite njenu primopredaju gore' },
     team: { rotating: 'Smenski rad', day: 'Dnevna smena' },
     users: {
       username: 'Korisničko ime', fullName: 'Ime i prezime', role: 'Uloga', team: 'Smena', lang: 'Jezik', active: 'Aktivan',
@@ -400,7 +400,7 @@ const messages = {
     nav: { home: 'Home', schedule: 'Schedule', users: 'Accounts', audit: 'Audit log', logout: 'Log out', password: 'Change password' },
     login: { title: 'Sign in', username: 'Username', password: 'Password', submit: 'Sign in', failed: 'Wrong username or password', personal: 'Personal account', team: 'Team account', noTeams: 'No team has team accounts yet', pickYou: '{team}: tap your photo', yourPassword: 'Enter your personal password', locked: 'Too many wrong passwords, locked for {n} min. Try later or ask the leader / administrator', useTeam: 'Please sign in with “Team account”' },
     shift: { day: 'Day', middle: 'Middle', night: 'Night', off: 'Off', current: 'On shift now', next: 'Next shift', now: 'Now' },
-    home: { welcome: 'Hello, {name}', myTeam: 'My team', today: "Today's schedule", tasksSoon: 'Tasks and handover come in the next step' },
+    home: { welcome: 'Hello, {name}', myTeam: 'My team', today: "Today's schedule", tasksSoon: 'Tasks and handover come in the next step', nextShiftTag: 'next shift', viewing: 'Viewing', back: 'Back to current', todayHint: 'Click a team to see its handover above' },
     team: { rotating: 'Rotating', day: 'Day team' },
     users: {
       username: 'Username', fullName: 'Full name', role: 'Role', team: 'Team', lang: 'Language', active: 'Active',

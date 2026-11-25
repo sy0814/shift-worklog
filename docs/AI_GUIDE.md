@@ -150,6 +150,7 @@ deploy/Caddyfile, deploy/install/install.html
     - 组件根元素 class 名要独特，避免被父组件 scoped 样式命中。
 11. **表格和工具栏的写法**（2026-11-25 统一）：
     - 表格「操作」列一律用 `components/RowActions.vue`（items = [{label, type, onClick}]，删除放最后），列宽用 `rowActions.useActionsWidth(() => [所有可能的按钮文字])` 算（按当前语言量文字宽度，塞语最长也不换行；手机上只算直接显示的那几个）。标题都是「操作」、`fixed="right"`。
+    - 普通列宽度用 `rowActions.colWidth(表头, 可能的内容)`（表头、内容取宽的，按当前语言量），标签一排用 `tagsWidth`；操作按钮多、页面放不下时给 `RowActions` 传 `max`，后面的收进「⋯」（账号管理页的做法）。
     - 手机上 `.toolbar` 的直接子元素由 `style.css` 统一排：输入框 / 下拉框整行，按钮两个一排等宽。新页面的工具栏按钮直接放在 `.toolbar` 下面就行。
     - 列表里一部分行有勾选框时，其他行也要留同样宽的位置（首页交接班的 `.pick`）。
     - 手机上表格单元格里的班次用 `<ShiftTag short>`。
