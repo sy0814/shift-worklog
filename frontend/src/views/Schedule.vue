@@ -14,6 +14,8 @@ import CycleEditor from '../components/CycleEditor.vue'
 import TriNames from '../components/TriNames.vue'
 import WhyPanel from '../components/WhyPanel.vue'
 import WhyDialog from '../components/WhyDialog.vue'
+import ScheduleGuide from '../components/ScheduleGuide.vue'
+import { useRoute } from 'vue-router'
 import { fullHours, shortEntry, splitHours } from '../cycle'
 
 const { t, tm, locale } = useI18n()
@@ -21,6 +23,11 @@ const actW1 = useActionsWidth(() => [t('schedule.restore')])
 const actW2 = useActionsWidth(() => [t('common.edit'), t('common.delete')])
 const actW3 = useActionsWidth(() => [t('common.delete')])
 const auth = useAuth()
+const route = useRoute()
+// 「怎么改排班？」里的链接用 ?tab=teams 直接打开班组管理
+const tabFor = (v) => (v === 'teams' && auth.deptOk('team.manage') ? 'teams' : 'calendar')
+const tab = ref(tabFor(route.query.tab))
+watch(() => route.query.tab, (v) => { if (v) tab.value = tabFor(v) })
 
 const month = ref(dayjs().format('YYYY-MM'))
 const days = ref([])
@@ -189,13 +196,14 @@ onMounted(async () => {
 
 <template>
   <div class="page">
-    <el-tabs>
-      <el-tab-pane :label="t('schedule.calendar')">
+    <el-tabs v-model="tab">
+      <el-tab-pane name="calendar" :label="t('schedule.calendar')">
         <div class="toolbar">
           <el-date-picker v-model="month" type="month" value-format="YYYY-MM" :clearable="false" />
           <el-button v-if="canShiftAny" type="primary" plain @click="openTeamShift(null)">{{ t('schedule.teamShift') }}</el-button>
           <span class="muted">{{ canShiftAny ? t('schedule.clickHint') : t('schedule.clickWhy') }}</span>
         </div>
+        <ScheduleGuide />
         <el-alert v-if="coverage.length" type="warning" :closable="false" show-icon class="cov" :title="t('schedule.covTitle')">
           <div v-for="(p, i) in coverage.slice(0, 8)" :key="i">{{ covText(p) }}</div>
           <div v-if="coverage.length > 8">…（{{ coverage.length }}）</div>
@@ -276,7 +284,7 @@ onMounted(async () => {
         </el-dialog>
       </el-tab-pane>
 
-      <el-tab-pane v-if="auth.deptOk('team.manage')" lazy :label="t('schedule.teams')">
+      <el-tab-pane v-if="auth.deptOk('team.manage')" name="teams" lazy :label="t('schedule.teams')">
         <div class="toolbar"><el-button type="primary" @click="openTeam(null)">{{ t('schedule.addTeam') }}</el-button></div>
         <!-- 列宽都固定：切到这个标签时表格不用再算一次列宽（否则会左右跳一下） -->
         <el-table :data="auth.teams" size="small" border class="teams-table">
@@ -343,7 +351,7 @@ onMounted(async () => {
         </el-dialog>
       </el-tab-pane>
 
-      <el-tab-pane v-if="auth.isAdmin" lazy :label="t('schedule.config')">
+      <el-tab-pane v-if="auth.isAdmin" name="config" lazy :label="t('schedule.config')">
         <el-form label-width="auto" style="max-width: 520px">
           <el-form-item :label="t('schedule.dayStart')"><el-time-select v-model="cfg.day_start" start="00:00" step="00:30" end="23:30" format="HH:mm" /></el-form-item>
           <el-form-item :label="t('schedule.middleStart')"><el-time-select v-model="cfg.middle_start" start="00:00" step="00:30" end="23:30" format="HH:mm" /></el-form-item>
@@ -352,7 +360,7 @@ onMounted(async () => {
         </el-form>
       </el-tab-pane>
 
-      <el-tab-pane v-if="auth.isAdmin" lazy :label="t('schedule.holidays')">
+      <el-tab-pane v-if="auth.isAdmin" name="holidays" lazy :label="t('schedule.holidays')">
         <div class="toolbar">
           <el-input-number v-model="year" :min="2020" :max="2100" controls-position="right" />
           <el-date-picker v-model="newHoliday.day" value-format="YYYY-MM-DD" :placeholder="t('schedule.date')" />

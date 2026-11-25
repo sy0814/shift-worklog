@@ -57,6 +57,8 @@ function text(s) {
     case 'hours_kind': return t('why.hoursKind', { hours: fullHours(s.hours), kind: shift(s.kind) })
     case 'member_shift': return t('why.memberShift', { team: team(s.team_id), kind: shift(s.kind),
       names: (s.workers || []).map((w) => w.name).join(t('why.sep')) || '—' })
+    case 'member_ignored': return t('why.memberIgnored', { team: team(s.team_id), kind: shift(s.kind),
+      names: (s.workers || []).map((w) => w.name).join(t('why.sep')) || '—' })
     case 'attendance': {
       let what = t('att.st.' + s.status)
       if (s.status === 'present') {

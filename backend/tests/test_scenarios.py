@@ -65,8 +65,10 @@ class World:
         return rows[max(i, 0)]
 
     def schedule(self) -> Schedule:
-        own = Schedule(tuple(self.teams), holidays=frozenset(self.holidays),
-                       extra_workdays=frozenset(self.workdays), overrides=dict(self.overrides))
+        plain = Schedule(tuple(self.teams), holidays=frozenset(self.holidays), extra_workdays=frozenset(self.workdays))
+        # 和页面一样：调成和原排班写法一样的不保存（routers/schedule.py 的班组调班）
+        overrides = {(tid, d): v for (tid, d), v in self.overrides.items() if plain.planned_entry(plain.team(tid), d) != v}
+        own = replace(plain, overrides=overrides)
         nonmain = {t.id for t in self.teams if not t.is_main}
         if not nonmain or not self.workers:
             return own

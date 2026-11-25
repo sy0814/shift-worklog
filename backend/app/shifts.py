@@ -235,6 +235,11 @@ class Schedule:
     def shift_of(self, team: TeamInfo, d: date, trace: list | None = None) -> str:
         k = self.entry_kind_traced(self.team_entry(team, d, trace), trace)
         if k == OFF and not team.is_main and team.active_on(d):
+            if (team.id, d) in self.overrides:
+                # 明确写下的优先于推算的：班组这天有班组调班，就按调班算，不再因为有成员上班改回在班
+                if trace is not None and (m := self.member_shift(team.id, d)):
+                    note(trace, "member_ignored", team_id=team.id, kind=m)
+                return k
             m = self.member_shift(team.id, d)  # 成员被单独安排上班 → 班组也算在班
             if m:
                 note(trace, "member_shift", team_id=team.id, kind=m)

@@ -15,6 +15,7 @@ code 一览（按出现的先后）：
   team_override  班组调班：改成 entry（原本 planned）
   hours_kind     自定义时间段 hours 算作 kind 班
   member_shift   （班组）班组本身休息，但有成员被单独安排上 kind 班 → 班组也算在班（workers = 哪些人）
+  member_ignored （班组）有成员被单独安排上 kind 班，但班组这天有班组调班，以调班为准，不算在班（workers）
   attendance     出勤例外记录（导入 / 手工改）：status、shift_kind、顶哪个班组 team_id、备注
   cover          去顶 team_id 的班、没写班次 → 按那个班组当天的 kind
   hours_dropped  例外改了班次，原来的自定义时间段 hours 不再适用
@@ -115,7 +116,7 @@ def team_day(db: Session, team: Team, d: date) -> dict:
     kind = sched.shift_of(info, d, trace)
     entry = sched.team_entry(info, d)
     for s in trace:
-        if s["code"] == "member_shift":
+        if s["code"] in ("member_shift", "member_ignored"):
             s["workers"] = _member_workers(db, sched, team.id, d, s["kind"])
     if kind != OFF:
         _group(sched, trace, team.id, d, kind)

@@ -157,3 +157,33 @@ def test_explain_team_api(client, admin_h):
     cal = client.get("/api/shifts/calendar", headers=admin_h, params={"start": str(D), "end": str(D)}).json()[0]
     assert cal["shifts"][str(t["id"])] == "middle"
     assert client.get("/api/explain/team/999999", headers=admin_h, params={"day": str(D)}).status_code == 404
+
+
+def test_team_override_beats_members(client, admin_h):
+    """班组这天有班组调班：以调班为准，不再因为有成员上班算回在班（2026-11-25 起）。人照样能被分配。"""
+    d = D + timedelta(days=40)
+    t = client.post("/api/teams", headers=admin_h, json={"name_zh": "调班优先组", "kind": "cycle", "pattern": ["middle"],
+                                                         "cycle_start": str(d), "is_main": False,
+                                                         "active_from": str(d), "active_to": str(d)}).json()
+    w = client.post("/api/workers", headers=admin_h, json={"name": "Still Works", "team_id": t["id"]}).json()
+    client.put("/api/attendance/batch", headers=admin_h, json={"worker_ids": [w["id"]], "start": str(d), "end": str(d),
+                                                                "status": "present", "shift_kind": "day"})
+    cal = lambda: client.get("/api/shifts/calendar", headers=admin_h, params={"start": str(d), "end": str(d)}).json()[0]
+    assert cal()["shifts"][str(t["id"])] == "middle"  # 班组自己排的是中班，他被单独叫来上白班
+    r = client.put("/api/team-shifts", headers=admin_h, json={"team_id": t["id"], "start": str(d), "end": str(d),
+                                                              "shift_kind": "off", "note": "全组放假"})
+    assert r.status_code == 200, r.text
+    c = cal()
+    assert c["shifts"][str(t["id"])] == "off" and t["id"] not in c["by_members"]
+    x = client.get(f"/api/explain/team/{t['id']}", headers=admin_h, params={"day": str(d)}).json()
+    assert x["result"]["kind"] == "off"
+    ig = next(s for s in x["steps"] if s["code"] == "member_ignored")
+    assert [p["name"] for p in ig["workers"]] == ["Still Works"]
+    # 人照样上白班，白班主班组那一组能分配到他
+    from app.db import SessionLocal
+    from app.routers.tasks import assignable_ids
+    from app.schedule_service import load_schedule
+    with SessionLocal() as db:
+        sched = load_schedule(db)
+        main = sched.main_team_on(d, "day")
+        assert w["id"] in assignable_ids(db, sched, main.id, d, "day")

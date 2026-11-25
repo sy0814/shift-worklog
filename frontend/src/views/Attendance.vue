@@ -1,4 +1,5 @@
 <script setup>
+import ScheduleGuide from '../components/ScheduleGuide.vue'
 import WhyPanel from '../components/WhyPanel.vue'
 // 出勤表：按月、按班组；点格子看此人当天做了什么，并可修改出勤
 import { computed, onMounted, reactive, ref, watch } from 'vue'
@@ -198,6 +199,7 @@ const exportOpen = ref(false)
     </div>
     <div class="muted small">{{ t('att.defaultHint') }} · {{ t('att.legend') }}</div>
 
+    <ScheduleGuide />
     <div v-loading="loading" :class="['grid-wrap', { first: !data }]">
       <table v-if="data" class="grid">
         <thead>
