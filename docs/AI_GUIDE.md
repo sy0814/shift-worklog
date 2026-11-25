@@ -2,7 +2,7 @@
 
 > 读者：在这个仓库里改代码的 AI 助手（以及想快速了解代码结构的开发者）。
 > 给使用者看的说明书在 [USER_MANUAL.md](USER_MANUAL.md)。
-> 需求来历、每一轮修改的细节和踩过的坑在根目录 [CLAUDE.md](../CLAUDE.md)（按时间记的开发日志，内容最全）。本文是**按结构整理的速查**，两者冲突时以代码为准，并顺手修正文档。
+> 现在的业务规则在根目录 [CLAUDE.md](../CLAUDE.md)（按领域整理）；需求原文、每一轮修改的经过和当时的决定在 [CHANGELOG.md](CHANGELOG.md)；排班的具体例子在 [SCHEDULE_SCENARIOS.md](SCHEDULE_SCENARIOS.md)（同时是测试）。本文是**按代码结构整理的速查**，冲突时以代码为准，并顺手修正文档。
 
 ---
 
@@ -169,7 +169,7 @@ deploy/Caddyfile, deploy/install/install.html
 6. 前端：`views/Xxx.vue`、`router.js` 加路由（`meta.admin` / `meta.perm`）、`Layout.vue` 加菜单、`i18n.js` 三语、`apiErrors.js` 错误提示。
 7. 测试：`backend/tests/test_xxx.py`。
 8. 跑测试、`npm run build`、用 Playwright 在浏览器里点一遍（检查有没有跳动、控制台有没有报错）。
-9. 在 CLAUDE.md「进度与约定」里记一条（做了什么、关键文件 / 接口、迁移号、坑）。用户可见的变化同步到 [USER_MANUAL.md](USER_MANUAL.md)。
+9. 在 [CHANGELOG.md](CHANGELOG.md) 末尾记一条（做了什么、关键文件 / 接口、迁移号、坑）；规则变了改 CLAUDE.md 对应段落（只写现在的规则）。用户可见的变化同步到 [USER_MANUAL.md](USER_MANUAL.md)。改了排班 / 出勤判定，在 [SCHEDULE_SCENARIOS.md](SCHEDULE_SCENARIOS.md) 加场景。
 
 ## 6. 运行与测试
 
@@ -197,6 +197,7 @@ npm run build    # 输出到 backend/static
 ```
 
 - 测试环境变量在 `tests/conftest.py`：临时 SQLite、`ADMIN_PASSWORD=admin123`、不启动调度器、默认不翻译。
+- **排班场景测试** `tests/test_scenarios.py`：读 `docs/SCHEDULE_SCENARIOS.md` 的设置和表格，不用数据库，直接调 `Schedule` / `attendance_service.resolve` / `schedule_service.vote_member_shifts`。失败信息写明哪一行、表里写的、系统算出的和「为什么？」的依据。
 - 翻译测试用 `tests/test_translation.py` 的 `fake` fixture（假 DeepSeek，给每种语言加前缀）。
 - 时间相关的测试：monkeypatch 路由模块里的 `local_now`（例如 `app.routers.duty.local_now`）。
 - 示例账号：`admin` / `.env` 的 `ADMIN_PASSWORD`；`t1_leader1`…`t4_leader1`、`day_leader1`…`day_leader3`，密码同用户名。
