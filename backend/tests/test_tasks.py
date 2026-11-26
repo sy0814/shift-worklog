@@ -89,16 +89,17 @@ def test_admin_must_choose_team(client, admin_h, teams):
 
 
 def test_offline_recorded_at_sets_shift(client, admin_h):
-    # 离线草稿昨天 23:30（工厂时区）由当晚上夜班的班组录入，今天才同步 → 归属昨天的夜班
+    # 离线草稿昨天 23:30（工厂时区）由当晚上夜班的班组录入，今天才同步 → 归属那个夜班（记在下班那天 = 今天）
     from app.db import SessionLocal
     from app.schedule_service import load_schedule
     tz = ZoneInfo("Europe/Belgrade")
-    yday = datetime.now(tz).date() - timedelta(days=1)
+    today = datetime.now(tz).date()
+    yday = today - timedelta(days=1)
     with SessionLocal() as db:
-        night_team = load_schedule(db).rotating_team_on(yday, "night").id
+        night_team = load_schedule(db).rotating_team_on(today, "night").id
     rec = datetime.combine(yday, time(23, 30), tz)
     t = new_task(client, admin_h, team_id=night_team, recorded_at=rec.isoformat())
-    assert (t["shift_date"], t["shift_kind"]) == (yday.isoformat(), "night")
+    assert (t["shift_date"], t["shift_kind"]) == (today.isoformat(), "night")
     # 早于 30 天的录入时间不可信，按同步时间算
     old = new_task(client, admin_h, team_id=night_team, recorded_at="2020-01-01T10:00:00+01:00")
     assert old["recorded_at"][:4] != "2020"

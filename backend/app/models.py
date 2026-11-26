@@ -137,7 +137,7 @@ class TeamShiftOverride(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"), index=True)
-    day: Mapped[date] = mapped_column(Date, index=True)  # 班次日（夜班归属开始的那天）
+    day: Mapped[date] = mapped_column(Date, index=True)  # 班次日（夜班归属下班的那天）
     shift_kind: Mapped[str] = mapped_column(String(10))  # day / middle / night / off（有 hours 时 = 它算作的班）
     hours: Mapped[str | None] = mapped_column(String(60), nullable=True)  # 自定义时间段，例 07:00-12:00,14:00-17:00
     note: Mapped[str] = mapped_column(String(200), default="")
@@ -317,7 +317,7 @@ class Task(Base):
     lead_worker_id: Mapped[int | None] = mapped_column(ForeignKey("workers.id"), nullable=True, index=True)
 
     status: Mapped[str] = mapped_column(String(15), default="not_started", index=True)
-    # 录入所在的班次（按 recorded_at 推算；夜班归属开始那天）
+    # 录入所在的班次（按 recorded_at 推算；夜班归属下班那天）
     shift_date: Mapped[date] = mapped_column(Date, index=True)
     shift_kind: Mapped[str] = mapped_column(String(10))
     start_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -376,7 +376,7 @@ class TaskLog(Base):
     content_en: Mapped[str | None] = mapped_column(Text, nullable=True)
     source_lang: Mapped[str] = mapped_column(String(5))
     translation_status: Mapped[str] = mapped_column(String(10), default="pending")  # pending / done
-    shift_date: Mapped[date] = mapped_column(Date)  # 写的时候是哪个班次（夜班归属开始那天）
+    shift_date: Mapped[date] = mapped_column(Date)  # 写的时候是哪个班次（夜班归属下班那天）
     shift_kind: Mapped[str] = mapped_column(String(10))
     team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"), nullable=True)  # 写的时候任务属于哪个班组
     worker_id: Mapped[int | None] = mapped_column(ForeignKey("workers.id"), nullable=True)  # 写的人（名册）
@@ -463,7 +463,7 @@ class Attendance(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     worker_id: Mapped[int] = mapped_column(ForeignKey("workers.id"), index=True)
-    day: Mapped[date] = mapped_column(Date, index=True)  # 班次日期（夜班归属开始那天）
+    day: Mapped[date] = mapped_column(Date, index=True)  # 班次日期（夜班归属下班那天）
     # present 出勤 / leave 请假 / sick 病假 / absent 缺勤 / off 休息
     status: Mapped[str] = mapped_column(String(10))
     # 实际上的班次（调班、加班时与本班组排班不同）；为空表示按本班组排班

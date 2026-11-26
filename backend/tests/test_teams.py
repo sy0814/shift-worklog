@@ -31,20 +31,20 @@ def test_any_cycle_pure():
 
 def test_merged_groups_pure():
     # 合并显示：常白班白班时并到白班主班组；临时 / 自定义班组上哪个班就并到哪个班
-    extra = TeamInfo(6, Cycle((NIGHT, OFF), date(2026, 11, 21)))  # 11-21 夜班（3 班也是夜班）
+    extra = TeamInfo(6, Cycle((NIGHT, OFF), date(2026, 11, 21)))  # 11-21 夜班（4 班也是夜班）
     s = Schedule(teams=(*T, extra))
     d = date(2026, 11, 23)  # 周一：4 班白班
     assert [t.id for t in s.group_of(T[4], d)] == [4, 5]
     assert [t.id for t in s.group_of(T[3], d)] == [4, 5]
-    assert [t.id for t in s.group_of(extra, date(2026, 11, 21))] == [3, 6]
-    assert s.main_team_on(date(2026, 11, 21), NIGHT).id == 3
+    assert [t.id for t in s.group_of(extra, date(2026, 11, 21))] == [4, 6]
+    assert s.main_team_on(date(2026, 11, 21), NIGHT).id == 4
     # 主班组都不上、只有合并班组上的班：它自己就是那个班的班组
-    s2 = Schedule(teams=(*T, extra), overrides={(3, date(2026, 11, 21)): OFF})
+    s2 = Schedule(teams=(*T, extra), overrides={(4, date(2026, 11, 21)): OFF})
     assert s2.main_team_on(date(2026, 11, 21), NIGHT).id == 6
     assert [t.id for t in s2.group_of(extra, date(2026, 11, 21))] == [6]
     # 两个合并班组都上同一个班、没有主班组：合在一起
     extra2 = TeamInfo(7, Cycle((NIGHT,), date(2026, 1, 1)))
-    s3 = Schedule(teams=(*T, extra, extra2), overrides={(3, date(2026, 11, 21)): OFF})
+    s3 = Schedule(teams=(*T, extra, extra2), overrides={(4, date(2026, 11, 21)): OFF})
     assert [t.id for t in s3.group_of(extra2, date(2026, 11, 21))] == [6, 7]
 
 

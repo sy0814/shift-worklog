@@ -9,7 +9,6 @@
 """
 
 from dataclasses import dataclass, field
-from datetime import timedelta
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
@@ -171,9 +170,6 @@ def group_ids(db: Session, team_id: int | None) -> set[int]:
         out |= {t.id for t in sched.paired_teams(team, sd, sk)}
     except ValueError:  # 不固定班组没安排班
         pass
-    yesterday = today - timedelta(days=1)
-    if sched.shift_of(team, yesterday) == "night":
-        out |= {t.id for t in sched.paired_teams(team, yesterday)}
     return out
 
 

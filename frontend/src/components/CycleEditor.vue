@@ -48,7 +48,7 @@ function applyHours(all) {
   hoursOpen.value = false
 }
 function preset(name) {
-  if (name === 'rot8') model.value.pattern = ['day', 'day', 'middle', 'middle', 'night', 'night', 'off', 'off']
+  if (name === 'rot8') model.value.pattern = ['day', 'day', 'middle', 'middle', 'off', 'night', 'night', 'off']
   if (name === 'week5') {
     model.value.pattern = ['day', 'day', 'day', 'day', 'day', 'off', 'off']
     model.value.holiday_off = true

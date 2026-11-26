@@ -1,6 +1,6 @@
 """班组、排班、节假日。"""
 
-from datetime import date, timedelta
+from datetime import date, time, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
@@ -171,7 +171,7 @@ def set_team_shift(body: TeamShiftIn, db: Session = Depends(get_db), admin: User
     entry = body.shift_kind
     if body.hours and body.hours.strip():
         try:
-            entry = check_hours(body.hours.replace(" ", "").replace("，", ","))
+            entry = check_hours(body.hours.replace(" ", "").replace("，", ","), _night_start(db))
         except ValueError as e:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, f"bad hours: {e}") from e
         if parse_hours(entry) is None:
@@ -310,7 +310,12 @@ class TeamIn(BaseModel):
     active_to: date | None = None
 
 
-def check_cycle(pattern: list[str] | None, start: date | None) -> list[str]:
+def _night_start(db: Session):
+    cfg = db.get(ShiftConfig, 1)
+    return cfg.night_start if cfg else time(23)
+
+
+def check_cycle(pattern: list[str] | None, start: date | None, night_start: time = time(23)) -> list[str]:
     """校验循环设置（班组和个人排班共用）。"""
     if not pattern or start is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "cycle pattern and start date required")
@@ -319,7 +324,7 @@ def check_cycle(pattern: list[str] | None, start: date | None) -> list[str]:
     out = []
     for k in pattern:  # 班次，或自定义上班时间段（例如 07:00-12:00,14:00-17:00）
         try:
-            out.append(k if k in KINDS else check_hours(str(k)))
+            out.append(k if k in KINDS else check_hours(str(k), night_start))
         except ValueError as e:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, f"bad hours {k!r}: {e}")
     if all(k == OFF for k in out):
@@ -338,7 +343,7 @@ def _team_fields(db: Session, body: TeamIn) -> dict:
     if body.active_from and body.active_to and body.active_to < body.active_from:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "active_to before active_from")
     if body.kind == "cycle":
-        cyc = dict(pattern=check_cycle(body.pattern, body.cycle_start), cycle_start=body.cycle_start,
+        cyc = dict(pattern=check_cycle(body.pattern, body.cycle_start, _night_start(db)), cycle_start=body.cycle_start,
                    holiday_off=body.holiday_off)
     else:
         cyc = dict(pattern=None, cycle_start=None, holiday_off=False)

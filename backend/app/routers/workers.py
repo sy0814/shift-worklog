@@ -702,7 +702,7 @@ def put_schedule(worker_id: int, body: ScheduleEntryIn, db: Session = Depends(ge
                  admin: User = Depends(get_current_user)):
     """从某天起：属于哪个班组、跟班组排班还是按个人循环（例如每人休息日不同的一周排班）。
     同一天已有记录就覆盖。以前的出勤不受影响。"""
-    from .schedule import check_cycle
+    from .schedule import _night_start, check_cycle
     from ..shifts import Cycle
 
     w = db.get(Worker, worker_id)
@@ -712,7 +712,7 @@ def put_schedule(worker_id: int, body: ScheduleEntryIn, db: Session = Depends(ge
     _manager(db, admin, _team_dept(db, body.team_id, w.department_id))
     cycle = None
     if body.personal:
-        cycle = Cycle(tuple(check_cycle(body.pattern, body.cycle_start)), body.cycle_start, body.holiday_off)
+        cycle = Cycle(tuple(check_cycle(body.pattern, body.cycle_start, _night_start(db))), body.cycle_start, body.holiday_off)
     elif body.team_id is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "choose a team or a personal cycle")
     worker_history.record(db, w, body.effective_from, body.team_id, cycle, admin.id, body.note,

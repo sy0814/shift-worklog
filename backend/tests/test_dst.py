@@ -1,6 +1,7 @@
 """夏令时（工厂时区 Europe/Belgrade）：
-  2026-03-29 02:00 → 03:00（少 1 小时）：3-28 的夜班实际只有 7 小时
-  2026-10-25 03:00 → 02:00（多 1 小时）：10-24 的夜班实际有 9 小时
+  2026-03-29 02:00 → 03:00（少 1 小时）：3-29 的夜班（3-28 23:00 开始）实际只有 7 小时
+  2026-10-25 03:00 → 02:00（多 1 小时）：10-25 的夜班（10-24 23:00 开始）实际有 9 小时
+  （夜班记在下班那天）
 规则：班次划分、巡查时间按当地钟点；工时、加班时长按真实经过的时间算。
 注意 Python 的坑：两个带同一个时区（ZoneInfo）的时间相减，算的是钟面差，不是真实经过的时间；要先转成 UTC 再减。
 """
@@ -18,7 +19,8 @@ from app.inspection_schedule import Rule, next_occurrence
 from app.inspection_service import to_utc
 from app.schedule_service import load_schedule, slot
 
-SPRING, FALL = date(2026, 3, 28), date(2026, 10, 24)
+SPRING, FALL = date(2026, 3, 28), date(2026, 10, 24)  # 切换前一天（中班、加班用）
+SPRING_N, FALL_N = date(2026, 3, 29), date(2026, 10, 25)  # 跨切换时刻的夜班（记在下班那天）
 UTC = timezone.utc
 
 
@@ -38,17 +40,17 @@ def test_timezone_is_belgrade():
 def test_night_shift_real_length(client):
     with SessionLocal() as db:
         sched = load_schedule(db)
-    assert hours(*(lambda s: (s.start, s.end))(slot(sched, SPRING, "night"))) == 7
-    assert hours(*(lambda s: (s.start, s.end))(slot(sched, FALL, "night"))) == 9
+    assert hours(*(lambda s: (s.start, s.end))(slot(sched, SPRING_N, "night"))) == 7
+    assert hours(*(lambda s: (s.start, s.end))(slot(sched, FALL_N, "night"))) == 9
     assert hours(*(lambda s: (s.start, s.end))(slot(sched, SPRING, "day"))) == 8  # 白班不跨切换时刻
 
 
 def test_shift_at_during_repeated_hour(client):
-    """10-25 02:30 这个钟点出现两次，两次都属于 10-24 的夜班。"""
+    """10-25 02:30 这个钟点出现两次，两次都属于 10-25 的夜班。"""
     with SessionLocal() as db:
         sched = load_schedule(db)
-    assert sched.shift_at(datetime(2026, 10, 25, 2, 30)) == (FALL, "night")
-    assert sched.shift_at(datetime(2026, 3, 29, 3, 30)) == (SPRING, "night")
+    assert sched.shift_at(datetime(2026, 10, 25, 2, 30)) == (FALL_N, "night")
+    assert sched.shift_at(datetime(2026, 3, 29, 3, 30)) == (SPRING_N, "night")
 
 
 def test_export_hours_across_dst(client, admin_h, leader_h, teams):

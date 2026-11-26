@@ -94,7 +94,8 @@ def _check(db: Session, user: User) -> None:
 def _range(start: date | None, end: date | None) -> tuple[date, date]:
     from ..schedule_service import local_now
 
-    end = end or local_now().date()
+    # 默认到「下一天」：23:00 以后上的夜班记在第二天，下班后录的任务也可能记到下一个班
+    end = end or local_now().date() + timedelta(days=1)
     start = start or end - timedelta(days=89)
     if end < start or (end - start).days >= MAX_DAYS:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"range must be 1..{MAX_DAYS} days")

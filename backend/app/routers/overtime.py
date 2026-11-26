@@ -28,7 +28,7 @@ MAX_HOURS = 16
 
 
 class OvertimeIn(BaseModel):
-    day: date  # 班次日（夜班归属开始那天）
+    day: date  # 班次日（夜班归属下班那天）
     shift_kind: str | None = Field(default=None, pattern="^(day|middle|night)$")  # 不填 = 按当天出勤 / 排班
     team_id: int | None = None  # 整个班组
     worker_ids: list[int] = Field(default_factory=list, max_length=200)  # 或者这几个人

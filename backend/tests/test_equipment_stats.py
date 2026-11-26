@@ -2,6 +2,7 @@
 
 import io
 import uuid
+from datetime import date, timedelta
 
 import pytest
 from openpyxl import load_workbook
@@ -56,7 +57,9 @@ def test_stats(client, admin_h, leader_h, teams):
     task(client, leader_h, mill, "maintenance", "换润滑油", status="done")
     task(client, leader_h, pump, "inspection", "日常巡查", status="done")
 
-    r = client.get("/api/equipment-stats", headers=leader_h)
+    # 任务记在录入班组「这个班或下一个班」，不在班时可能是几天后：查询范围放宽
+    rng = {"start": str(date.today() - timedelta(days=30)), "end": str(date.today() + timedelta(days=10))}
+    r = client.get("/api/equipment-stats", headers=leader_h, params=rng)
     assert r.status_code == 200, r.text
     s = r.json()
     rows = {x["equipment"]["code"]: x for x in s["items"]}

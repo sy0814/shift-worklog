@@ -66,8 +66,9 @@ def test_report_flow(client, admin_h, llm, data):
     people = {p["name"]: p for p in rep["stats"]["people"]}
     busy, idle = people[data["busy"]], people[data["idle"]]
     assert busy["tasks"] == 2 and busy["done"] == 2 and busy["task_hours"] == 4.5
-    assert busy["present_shifts"] == busy["scheduled_shifts"] == 24  # 3 班 11 月：3 个完整循环 18 天 + 余下 6 天（位置 0~5）都上班
-    assert busy["hours_per_present_shift"] == round(4.5 / 24, 2)
+    # 3 班 11 月：3 个完整循环 18 天 + 余下 6 天（位置 0~5，第 5 个是休）5 天
+    assert busy["present_shifts"] == busy["scheduled_shifts"] == 23
+    assert busy["hours_per_present_shift"] == round(4.5 / 23, 2)
     assert idle["tasks"] == 0 and idle["task_hours"] == 0
     team = rep["stats"]["teams"][0]
     assert team["tasks"] >= 3 and team["tasks_without_workers"] >= 1
