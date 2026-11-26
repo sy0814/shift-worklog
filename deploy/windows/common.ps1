@@ -60,19 +60,22 @@ function Invoke-Native {
     }
 }
 
-# Windows 程序「没跑起来 / 崩溃」的常见退出码（负数 = 0xC0000xxx）是什么意思；普通的错误退出码返回空
-function Get-ExitCodeHint([long]$Code) {
+# Windows 程序「没跑起来 / 崩溃」的常见退出码（负数 = 0xC0000xxx）是什么意思；普通的错误退出码返回空。
+# $Lang：zh / sr / en（看门狗按 WATCHDOG_LANG 传；安装、更新脚本是中文的，用默认）
+function Get-ExitCodeHint([long]$Code, [string]$Lang = 'zh') {
     $map = @{
-        '-1073741515' = '程序缺少 DLL 文件，安装不完整（被部分卸载、删除或被杀毒软件隔离），请重装这个软件'   # 0xC0000135
-        '-1073741701' = '程序的 DLL 文件损坏或 32 / 64 位不匹配，请重装这个软件'   # 0xC000007B
-        '-1073741819' = '程序崩溃（内存访问错误）'   # 0xC0000005
-        '-1073740791' = '程序崩溃（内部错误）'   # 0xC0000409
-        '-1073741510' = '程序被中断（关机或按了 Ctrl+C）'   # 0xC000013A
-        '-1073741801' = '内存不够'   # 0xC0000017
+        '-1073741515' = @('程序缺少 DLL 文件，安装不完整（被部分卸载、删除或被杀毒软件隔离），请重装这个软件', 'Programu nedostaje DLL fajl, instalacija je nepotpuna (delimično deinstalirana, obrisana ili u karantinu antivirusa); ponovo instalirajte taj program', 'The program is missing a DLL, the installation is incomplete (partly uninstalled, deleted or quarantined by the antivirus); reinstall that software')   # 0xC0000135
+        '-1073741701' = @('程序的 DLL 文件损坏或 32 / 64 位不匹配，请重装这个软件', 'DLL fajl programa je oštećen ili ne odgovara 32 / 64 bita; ponovo instalirajte taj program', 'A DLL of the program is damaged or the 32 / 64 bit does not match; reinstall that software')   # 0xC000007B
+        '-1073741819' = @('程序崩溃（内存访问错误）', 'Program se srušio (greška pristupa memoriji)', 'The program crashed (memory access violation)')   # 0xC0000005
+        '-1073740791' = @('程序崩溃（内部错误）', 'Program se srušio (interna greška)', 'The program crashed (internal error)')   # 0xC0000409
+        '-1073741510' = @('程序被中断（关机或按了 Ctrl+C）', 'Program je prekinut (gašenje računara ili Ctrl+C)', 'The program was interrupted (shutdown or Ctrl+C)')   # 0xC000013A
+        '-1073741801' = @('内存不够', 'Nema dovoljno memorije', 'Not enough memory')   # 0xC0000017
     }
     $k = [string]$Code
-    if ($map.ContainsKey($k)) { return $map[$k] }
-    return ''
+    if (-not $map.ContainsKey($k)) { return '' }
+    $i = 0
+    if ($Lang -eq 'sr') { $i = 1 } elseif ($Lang -eq 'en') { $i = 2 }
+    return $map[$k][$i]
 }
 
 function Update-PathFromRegistry {

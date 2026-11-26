@@ -139,6 +139,8 @@ ADMIN_USERNAME=admin
 ADMIN_PASSWORD=$adminPass
 DEEPSEEK_API_KEY=$($dsKey.Trim())
 UPLOAD_DIR=$($DataDir.Replace('\', '/'))/uploads
+# 服务器上看门狗报警（弹窗、事件日志）的语言：zh / sr / en
+WATCHDOG_LANG=zh
 "@
     Write-Utf8NoBom $EnvFile $envText
     # 配置文件里有密码：只给管理员和 SYSTEM 读

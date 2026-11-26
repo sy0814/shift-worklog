@@ -242,7 +242,7 @@ npm run build    # 输出到 backend/static
 | 员工班组变更到日子生效（`_sync_workers`） | 每分钟 |
 | 原图归档 | 每天 02:50 |
 | 数据库备份 | Windows 计划任务每天 03:40（`backup.ps1`，不在程序里） |
-| 看门狗 | Windows 计划任务每 5 分钟（`watchdog.ps1`，`WorkRecordWatchdog`）：PostgreSQL 和两个服务停了先启动再报警（启动不了时 `Get-DbCause` / `Get-AppCause` / `Get-CaddyCause` 查可能原因写进报警，新的常见原因加到这三个函数里）、`/api/health` 不通、备份失败 / 超过 26 小时、磁盘少于 5 GB 或 10%；服务器弹窗（msg.exe）+ 事件日志 + `logs\watchdog.log`，同一问题 60 分钟一次。阈值和 `app/alerts.py` 一致。update.ps1 先 `Disable-Watchdog`、最后 `Register-Watchdog` |
+| 看门狗 | Windows 计划任务每 5 分钟（`watchdog.ps1`，`WorkRecordWatchdog`）：PostgreSQL 和两个服务停了先启动再报警（启动不了时 `Get-DbCause` / `Get-AppCause` / `Get-CaddyCause` 查可能原因写进报警，新的常见原因加到这三个函数里；报警文字一律 `T '中' '塞' '英'`，语言来自 `.env` 的 `WATCHDOG_LANG`）、`/api/health` 不通、备份失败 / 超过 26 小时、磁盘少于 5 GB 或 10%；服务器弹窗（msg.exe）+ 事件日志 + `logs\watchdog.log`，同一问题 60 分钟一次。阈值和 `app/alerts.py` 一致。update.ps1 先 `Disable-Watchdog`、最后 `Register-Watchdog` |
 
 ## 9. 常见坑（都踩过）
 
