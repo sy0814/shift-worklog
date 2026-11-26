@@ -102,7 +102,7 @@ class UserUpdate(BaseModel):
 
 
 class PasswordReset(BaseModel):
-    password: str = Field(min_length=6, max_length=100)
+    password: str = Field(min_length=4, max_length=100)  # 管理账号至少 6 位、个人账号（点头像）至少 4 位，接口里按账号再查
 
 
 class PasswordChange(BaseModel):

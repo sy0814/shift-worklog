@@ -51,12 +51,38 @@ def update_user(user_id: int, body: UserUpdate, db: Session = Depends(get_db),
     return u
 
 
-@router.post("/{user_id}/reset-password", status_code=204)
-def reset_password(user_id: int, body: PasswordReset, db: Session = Depends(get_db),
-                   admin: User = Depends(require_admin)):
+@router.delete("/{user_id}", status_code=204)
+def delete_user(user_id: int, db: Session = Depends(get_db), admin: User = Depends(require_admin)):
+    """删除管理员账号：只有没用过的（没登录过、没留下任何记录）。名册里的人的账号在员工名册里随人一起删。"""
+    from .. import usage
+
     u = db.get(User, user_id)
     if u is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
+    if u.id == admin.id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "cannot demote or disable yourself")
+    if u.worker_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "delete the worker in the roster instead")
+    refs = usage.user_refs(db, u.id)
+    if u.last_login_at is not None:
+        refs["login"] = 1
+    if refs:
+        raise HTTPException(status.HTTP_409_CONFLICT, "user in use: " + ",".join(sorted(refs)))
+    audit.log(db, user_id=admin.id, action="delete", entity="user", entity_id=u.id,
+              old={"username": u.username, "full_name": u.full_name, "role": u.role})
+    db.delete(u)
+    db.commit()
+
+
+@router.post("/{user_id}/reset-password", status_code=204)
+def reset_password(user_id: int, body: PasswordReset, db: Session = Depends(get_db),
+                   admin: User = Depends(require_admin)):
+    from .auth import check_secret
+
+    u = db.get(User, user_id)
+    if u is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND)
+    check_secret(db, u, body.password)  # 以前一律要求 6 位：给点头像登录的成员设 4 位密码会报「请求失败」
     u.password_hash = hash_password(body.password)
     u.failed_logins, u.locked_until = 0, None
     u.must_change_password = u.id != admin.id  # 别人重设的密码：登录后必须先改
@@ -80,14 +106,23 @@ class Relink(BaseModel):
 
 @router.put("/{user_id}/worker", response_model=UserOut)
 def relink(user_id: int, body: Relink, db: Session = Depends(get_db), admin: User = Depends(require_admin)):
-    """把账号改关联到名册里的另一个人（升级时自动建的名册记录不对时用；原来那条名册记录请自行停用）。"""
+    """把账号改关联到名册里的另一个人（例如原来的班长账号关联到名册里真正的那个人，账号用过的记录都跟着走；
+    原来那条名册记录请自行停用或删除）。那个人在名册里设成班长时自动开了账号、还没用过的话，那个空账号自动删掉；
+    用过的不能顶掉（409）。"""
+    from .. import usage
+
     u = db.get(User, user_id)
     w = db.get(Worker, body.worker_id)
     if u is None or w is None or u.role == "admin":
         raise HTTPException(status.HTTP_404_NOT_FOUND)
     other = db.scalar(select(User).where(User.worker_id == w.id))
     if other is not None and other.id != u.id:
-        raise HTTPException(status.HTTP_409_CONFLICT, "worker already has an account")
+        if other.last_login_at is not None or usage.user_refs(db, other.id):
+            raise HTTPException(status.HTTP_409_CONFLICT, "worker already has an account")
+        audit.log(db, user_id=admin.id, action="delete", entity="user", entity_id=other.id,
+                  old={"username": other.username, "worker_id": w.id, "reason": "relink"})
+        db.delete(other)
+        db.flush()
     old = u.worker_id
     u.worker_id, u.full_name, u.team_id = w.id, w.name, w.team_id
     audit.log(db, user_id=admin.id, action="update", entity="user", entity_id=u.id, field="worker_id",

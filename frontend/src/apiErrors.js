@@ -72,7 +72,7 @@ const T = {
   role_in_use: ['还有人是这个角色，不能删除', 'Uloga je u upotrebi', 'The role is in use'],
   role_builtin: ['内置角色不能删除', 'Ugrađena uloga ne može da se obriše', 'Built-in roles cannot be deleted'],
   role_name: ['请填写角色名称', 'Unesite naziv uloge', 'Enter a role name'],
-  has_account: ['这个人已经有账号了', 'Ta osoba već ima nalog', 'This person already has an account'],
+  has_account: ['这个人已经有自己的账号而且用过了（登录过或有记录），不能再关联别的账号；直接用他自己的账号，把旧账号停用就行', 'Ta osoba već ima nalog koji je korišćen; koristite njen nalog, a stari deaktivirajte', 'This person already has an account that has been used; use it and deactivate the old one'],
   need_username: ['请填写用户名', 'Unesite korisničko ime', 'Enter a username'],
   need_password: ['请填写密码', 'Unesite lozinku', 'Enter a password'],
   pw_short: ['密码至少 {x} 位', 'Lozinka mora imati bar {x} znakova', 'The password needs at least {x} characters'],
@@ -83,9 +83,17 @@ const T = {
   no_team: ['这个人没有班组', 'Osoba nema ekipu', 'This person has no team'],
   tr_off: ['没有配置翻译接口（管理员在「系统设置」里配置）', 'Prevod nije podešen', 'Translation is not configured'],
   pw_same: ['新密码不能和原密码、默认密码一样', 'Nova lozinka mora biti drugačija', 'Choose a different password'],
+  worker_used: ['这个人已经用过（{x}），不能删除；不再用了请把「在职」关掉', 'Radnik je korišćen ({x}) i ne može se obrisati; isključite „Aktivan”', 'This person has been used ({x}) and cannot be deleted; switch off “Active” instead'],
+  user_used: ['这个账号已经用过（{x}），不能删除；不再用了请停用', 'Nalog je korišćen ({x}) i ne može se obrisati; deaktivirajte ga', 'This account has been used ({x}) and cannot be deleted; deactivate it instead'],
+  roster_acc: ['名册里的人的账号请到「员工名册」里删人', 'Nalog radnika brišite u „Spisak radnika”', 'Delete roster accounts from the roster'],
+  bad_username: ['用户名只能用英文字母、数字和 . _ -（不能有空格、中文），至少 2 位', 'Korisničko ime: samo slova, brojevi i . _ - (bez razmaka), najmanje 2 znaka', 'Username: letters, digits and . _ - only (no spaces), at least 2 characters'],
+  bad_input: ['填写的内容不对：{x}', 'Neispravan unos: {x}', 'Invalid input: {x}'],
   self: ['不能降级或停用自己', 'Ne možete sebi oduzeti prava', 'You cannot demote or disable yourself'],
 }
 const RULES = [
+  [/^worker in use: (.+)/, 'worker_used', 'refs'],
+  [/^user in use: (.+)/, 'user_used', 'refs'],
+  [/^delete the worker in the roster/, 'roster_acc'],
   [/^(?:this task|project tasks) cannot be handed over/, 'no_transfer'],
   [/^not your department/, 'not_dept'],
   [/^department name required/, 'dept_name'],
@@ -174,12 +182,36 @@ const RULES = [
 const IDX = { zh: 0, sr: 1, en: 2 }
 
 /** detail：服务器的英文说明；t：vue-i18n 的 t（翻译任务状态用） */
+// 「用过了不能删」里的表名 → 人能看懂的说法（同一种说法只出现一次）
+const REFS = {
+  tasks: ['任务', 'zadaci', 'tasks'], task_workers: ['任务', 'zadaci', 'tasks'], task_logs: ['班次日志', 'dnevnik smene', 'shift log'],
+  attendance: ['出勤记录', 'prisustvo', 'attendance'], overtime: ['加班', 'prekovremeni rad', 'overtime'],
+  audit_log: ['操作记录', 'evidencija izmena', 'audit log'], login: ['登录过', 'prijave', 'logins'],
+  inspection_templates: ['定期巡查', 'obilasci', 'inspections'], attachments: ['图片', 'slike', 'photos'],
+  task_handovers: ['移交', 'predaje', 'handovers'], projects: ['项目', 'projekti', 'projects'],
+}
+function refsText(list, i) {
+  const out = list.split(',').map((n) => (REFS[n.trim()] || [])[i] || n.trim())
+  return [...new Set(out)].join(i === 0 ? '、' : ', ')
+}
+
+/** 表单校验没过（服务器 422，detail 是列表）：说清楚是哪一项、为什么，别只说「请求失败」 */
+export function translateValidation(detail, locale) {
+  const i = IDX[locale] ?? 0
+  const e = detail[0] || {}
+  const field = String((e.loc || []).slice(-1)[0] ?? '')
+  if (/password|secret|pin/.test(field) && e.type === 'string_too_short') return T.pw_short[i].replace('{x}', e.ctx?.min_length ?? '')
+  if (field === 'username') return T.bad_username[i]
+  return T.bad_input[i].replace('{x}', `${field} ${e.msg || ''}`.trim())
+}
+
 export function translateError(detail, locale, t) {
   for (const [re, key, kind] of RULES) {
     const m = re.exec(detail)
     if (!m) continue
     let x = m[1] ?? ''
     if (kind === 'status' && t) x = t(`status.${x}`)
+    if (kind === 'refs') x = refsText(x, IDX[locale] ?? 0)
     return T[key][IDX[locale] ?? 0].replace('{x}', x)
   }
   return detail

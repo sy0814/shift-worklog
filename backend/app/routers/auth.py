@@ -74,8 +74,12 @@ def _check_password(db: Session, user: User | None, password: str) -> User:
 
 @router.post("/login", response_model=TokenOut)
 def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    """个人账号登录。成员（班组账号）请用 /pin。"""
-    user = db.scalar(select(User).where(User.username == form.username))
+    """管理账号登录（用户名或工号都行：先按用户名找，找不到再按名册里的工号找）。成员（点头像）请用 /pin。"""
+    name = form.username.strip()
+    user = db.scalar(select(User).where(User.username == name))
+    if user is None and name:
+        w = db.scalar(select(Worker).where(Worker.employee_no == name))
+        user = db.scalar(select(User).where(User.worker_id == w.id)) if w is not None else None
     if user is not None and login_mode(db, user) == "pin":
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "use team login")
     user = _check_password(db, user, form.password)

@@ -49,7 +49,7 @@ const W = computed(() => ({
   username: colWidth(t('users.username'), [...staff.value.map((u) => u.username), t('acc.teamLogin')]),
 }))
 // 系统管理员表：重置密码、停用
-const adminActW = useActionsWidth(() => [t('users.resetPassword'), longer(t('acc.disable'), t('acc.enable'))])
+const adminActW = useActionsWidth(() => [t('users.resetPassword'), longer(t('acc.disable'), t('acc.enable')), t('common.delete')])
 // 名册账号表：重置密码、（解锁）、改关联、停用；放不下就把最后的「停用」收进「⋯」
 const staffLabels = () => [t('users.resetPassword'), ...(staff.value.some(isLocked) ? [t('acc.unlock')] : []),
   t('users.relink'), longer(t('acc.disable'), t('acc.enable'))]
@@ -72,6 +72,14 @@ async function save() {
   await api.post('/users', { ...form })
   dialog.value = false
   ElMessage.success(t('common.saved'))
+  load()
+}
+// 删除管理员账号：只有没用过的（没登录过）能删；用过的服务器会拒绝，提示改成停用
+async function removeUser(u) {
+  await ElMessageBox.confirm(t('users.deleteConfirm', { n: u.username }), t('common.delete'),
+    { type: 'warning', confirmButtonText: t('common.delete'), cancelButtonText: t('common.cancel'), confirmButtonClass: 'el-button--danger' })
+  await api.delete(`/users/${u.id}`)
+  ElMessage.success(t('common.deleted'))
   load()
 }
 async function toggleActive(u) {
@@ -123,7 +131,8 @@ const freeWorkers = computed(() => workers.value.filter((w) => !users.value.some
       <el-table-column :label="t('common.actions')" :width="adminActW" fixed="right">
         <template #default="{ row }">
           <RowActions :items="[{ label: t('users.resetPassword'), type: 'primary', onClick: () => resetPassword(row) },
-                               ...(row.id !== auth.user?.id ? [{ label: row.is_active ? t('acc.disable') : t('acc.enable'), type: row.is_active ? 'danger' : 'success', onClick: () => toggleActive(row) }] : [])]" />
+                               ...(row.id !== auth.user?.id ? [{ label: row.is_active ? t('acc.disable') : t('acc.enable'), type: row.is_active ? 'danger' : 'success', onClick: () => toggleActive(row) },
+                                                               { label: t('common.delete'), type: 'danger', onClick: () => removeUser(row) }] : [])]" />
         </template>
       </el-table-column>
     </el-table>
