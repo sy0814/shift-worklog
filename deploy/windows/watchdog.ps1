@@ -6,7 +6,8 @@
 #  - 磁盘快满（剩余少于 5 GB 或 10%）：程序数据所在的盘、备份所在的盘
 # 报警方式：服务器上弹窗（msg.exe，发给所有登录的人）+ Windows 事件日志（应用程序，来源 WorkRecord）+ logs\watchdog.log。
 # 同一个问题 60 分钟内只弹一次；问题消失时再提示一次「已恢复」。
-# 报警语言：backend\.env 里的 WATCHDOG_LANG = zh（默认）/ sr / en。所有报警文字都用 T '中文' '塞语' '英语' 写，加新的也要三种都写。
+# 报警语言：网页「系统设置 → 存储与备份 → 服务器报警语言」，存在 data\watchdog-lang.txt（zh 默认 / sr / en）。
+# 所有报警文字都用 T '中文' '塞语' '英语' 写，加新的也要三种都写。
 # 阈值和 backend/app/alerts.py 保持一致。兼容 Windows PowerShell 5.1，本文件必须 UTF-8 带 BOM。
 
 . (Join-Path $PSScriptRoot 'common.ps1')
@@ -22,13 +23,10 @@ New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 
 # ---------------- 语言 ----------------
 $AlertLang = 'zh'
-if (Test-Path $EnvFile) {
-    foreach ($line in (Get-Content -Path $EnvFile -Encoding UTF8)) {
-        if ($line -match '^\s*WATCHDOG_LANG\s*=\s*"?([A-Za-z]+)') {
-            $v = $Matches[1].ToLower()
-            if ($v -eq 'sr' -or $v -eq 'en' -or $v -eq 'zh') { $AlertLang = $v }
-        }
-    }
+$langFile = Join-Path $DataDir 'watchdog-lang.txt'   # 网页上设置的（backend/app/storage_service.py 写）
+if (Test-Path $langFile) {
+    $v = ([string](Get-Content -Path $langFile -Raw -Encoding UTF8)).Trim().ToLower()
+    if ($v -eq 'sr' -or $v -eq 'en') { $AlertLang = $v }
 }
 
 # 按报警语言选一句

@@ -38,6 +38,23 @@ def test_backup_dirs_and_check(client, admin_h, leader_h):
     assert client.post("/api/storage/backup-now", headers=admin_h).status_code == 409  # 不是 Windows
 
 
+def test_alert_lang(client, admin_h):
+    """服务器报警语言：写进 watchdog-lang.txt 给 watchdog.ps1；中文是默认，不留文件；不传 = 不改；只认 zh / sr / en。"""
+    f = storage_service.data_dir() / "watchdog-lang.txt"
+    body = {"backup_dir": "", "backup_copy_dir": "", "archive_enabled": False, "archive_months": 12, "archive_dir": ""}
+    assert client.get("/api/storage", headers=admin_h).json()["alert_lang"] == "zh"
+    r = client.put("/api/storage", headers=admin_h, json=body | {"alert_lang": "sr"})
+    assert r.status_code == 200 and r.json()["alert_lang"] == "sr"
+    assert f.read_text(encoding="utf-8") == "sr"
+    assert client.put("/api/storage", headers=admin_h, json=body).json()["alert_lang"] == "sr"  # 旧页面没传：不改
+    assert client.put("/api/storage", headers=admin_h, json=body | {"alert_lang": "de"}).status_code == 422
+    hist = client.get("/api/audit", headers=admin_h, params={"entity": "setting"}).json()
+    items = hist["items"] if isinstance(hist, dict) else hist
+    assert any(x.get("field") == "alert_lang" for x in items)
+    client.put("/api/storage", headers=admin_h, json=body | {"alert_lang": "zh"})
+    assert not f.exists()
+
+
 def test_archive_originals(client, admin_h, leader_h):
     t = new_task(client, leader_h)
     a = upload(client, leader_h, t["id"], jpeg()).json()

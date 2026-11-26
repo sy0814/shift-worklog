@@ -61,7 +61,7 @@ function Invoke-Native {
 }
 
 # Windows 程序「没跑起来 / 崩溃」的常见退出码（负数 = 0xC0000xxx）是什么意思；普通的错误退出码返回空。
-# $Lang：zh / sr / en（看门狗按 WATCHDOG_LANG 传；安装、更新脚本是中文的，用默认）
+# $Lang：zh / sr / en（看门狗按网页上设的报警语言传；安装、更新脚本是中文的，用默认）
 function Get-ExitCodeHint([long]$Code, [string]$Lang = 'zh') {
     $map = @{
         '-1073741515' = @('程序缺少 DLL 文件，安装不完整（被部分卸载、删除或被杀毒软件隔离），请重装这个软件', 'Programu nedostaje DLL fajl, instalacija je nepotpuna (delimično deinstalirana, obrisana ili u karantinu antivirusa); ponovo instalirajte taj program', 'The program is missing a DLL, the installation is incomplete (partly uninstalled, deleted or quarantined by the antivirus); reinstall that software')   # 0xC0000135

@@ -415,4 +415,4 @@
   - `common.ps1`：`Get-ExitCodeHint` 把 0xC0000135（缺 DLL）等退出码翻译成人话，`Invoke-Native` 的报错带上
   - 部署指南三语 9.5 和常见问题加「PostgreSQL 程序文件不见了」怎么修。PowerShell 脚本没法在容器里运行，要在服务器上验证
 - 2026-11-27 **看门狗：服务被禁用时原因写「没查到」**（用户在服务器上测试：把 PostgreSQL 设成禁用）。禁用的服务 Windows 直接拒绝启动、不写事件日志，`Get-ScmError` 查不到。改成：启动用 `Start-Svc`，把 Windows 当场返回的错误（最里层异常）写进原因；另外先查启动类型是不是「禁用」（`Get-DisabledHint`），合并在 `Join-Causes`
-- 2026-11-27 **看门狗报警三语**（用户问网页切成塞语后报警是不是还是中文——是，脚本里写死的中文；用户选「设一个报警语言」）：`.env` 加 `WATCHDOG_LANG`（zh 默认 / sr / en，install 生成的 .env 和 `.env.example` 都写上），`watchdog.ps1` 每句报警改成 `T '中' '塞' '英'`；`common.ps1` 的 `Get-ExitCodeHint` 加语言参数。没法翻译的：Windows 自己给的错误文字、backup.ps1 写的中文错误说明（塞 / 英报警里只带退出码，原因照样翻译）
+- 2026-11-27 **看门狗报警三语**（用户问网页切成塞语后报警是不是还是中文——是，脚本里写死的中文；用户选「设一个报警语言」，并要求放在系统设置里）：「系统设置 → 存储与备份 → 服务器报警语言」（`PUT /api/storage` 的 `alert_lang`，不传 = 不改；存 `data\watchdog-lang.txt`，中文是默认不留文件，和备份位置一样由网页写、脚本读）；`watchdog.ps1` 每句报警改成 `T '中' '塞' '英'`；`common.ps1` 的 `Get-ExitCodeHint` 加语言参数。没法翻译的：Windows 自己给的错误文字、backup.ps1 写的中文错误说明（塞 / 英报警里只带退出码，原因照样翻译）
