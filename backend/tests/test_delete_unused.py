@@ -136,3 +136,22 @@ def test_reset_password_length_by_login_mode(client, admin_h, teams):
     r = client.post(f"/api/users/{adm['id']}/reset-password", headers=admin_h, json={"password": "4321"})
     assert r.status_code == 400 and "at least 6" in r.json()["detail"]
     assert client.post(f"/api/users/{adm['id']}/reset-password", headers=admin_h, json={"password": "654321"}).status_code == 204
+
+
+def test_login_with_username_or_employee_no(client, admin_h, teams):
+    """管理账号：用户名或工号都能登录（用户名改成别的以后，工号照样能用）。"""
+    roles = {r["code"]: r["id"] for r in client.get("/api/roles", headers=admin_h).json()}
+    w = client.post("/api/workers", headers=admin_h, json={"name": "Dejan", "employee_no": "10799001", "team_id": teams["T1"]}).json()
+    client.patch(f"/api/workers/{w['id']}", headers=admin_h, json={"role_id": roles["leader"]})
+    acc = client.put(f"/api/workers/{w['id']}/account", headers=admin_h, json={"username": "dejan", "password": "Dejan2026"}).json()
+    assert acc["username"] == "dejan"
+    for name in ("dejan", "10799001", " 10799001 "):
+        r = client.post("/api/auth/login", data={"username": name, "password": "Dejan2026"})
+        assert r.status_code == 200, (name, r.text)
+        assert r.json()["user"]["id"] == acc["user_id"]
+    assert client.post("/api/auth/login", data={"username": "10799001", "password": "wrong!!"}).status_code == 401
+    # 成员（点头像登录的）用工号也不行，照样提示去用「个人账号」
+    m = client.post("/api/workers", headers=admin_h, json={"name": "Member X", "employee_no": "10799002", "team_id": teams["T1"]}).json()
+    client.put(f"/api/workers/{m['id']}/account", headers=admin_h, json={"password": "1234"})
+    r = client.post("/api/auth/login", data={"username": "10799002", "password": "1234"})
+    assert r.status_code == 401 and r.json()["detail"] == "use team login"
