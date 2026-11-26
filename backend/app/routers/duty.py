@@ -1,5 +1,6 @@
 """首页：当前 / 下一个班次的在岗人员和状态。"""
 
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Query
@@ -7,7 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from .. import attendance_service as att, permissions
+from .. import attendance_service as att, permissions, work_hours
 from ..config import get_settings
 from ..db import get_db
 from ..models import Role, Task, User, Worker
@@ -86,50 +87,140 @@ def _status_order(s: str) -> int:
     return {"busy": 0, "idle": 1, "off_hours": 2}.get(s, 3)
 
 
-def _in_hours(sched, hours: str, d, now) -> bool:
-    return any(a <= now < b for a, b in sched.entry_hours(hours, d))
+@dataclass
+class _Slot:
+    """要看的那个班次。which = current（当前班次，看「现在」）/ next（下一个接班）。"""
+    sched: object
+    which: str
+    d: date
+    k: str
+    start: datetime
+    end: datetime
+    now: datetime
+
+    @property
+    def current(self) -> bool:
+        return self.which == "current"
 
 
-def _next_start(sched, hours: str, d, now):
-    """自定义上班时间里，now 之后最近一段的开始时间（本地 naive）；没有了返回 None。"""
-    starts = [a for a, _b in sched.entry_hours(hours, d) if a > now]
-    return min(starts) if starts else None
+@dataclass
+class _Placed:
+    """每个人放在哪个班组、什么状态（on / off_hours / leave……），以及自定义上班时间带来的附加信息。"""
+    rows: dict = field(default_factory=dict)  # 班组 id → [(员工, 状态, 是否支援)]
+    hours: dict = field(default_factory=dict)  # 员工 id → 自定义上班时间
+    back: dict = field(default_factory=dict)  # 员工 id → 午休后几点回来
+    overlap: dict = field(default_factory=dict)  # 员工 id → (从, 到)：算在别的班、这段时间落在本班次
+
+    def add(self, team_id, w: Worker, status: str, support: bool) -> None:
+        self.rows.setdefault(team_id, []).append((w, status, support))
 
 
-def _overlap(sched, row: dict, d, k, start, end, now):
-    """有自定义上班时间、算在别的班（不是 k），但时间段有一部分落在班次 [start, end) 里的那一天的出勤
-    （看前一天、当天和第二天：第二天的出勤可能从当天晚上就开始）。now 给了（当前班次）就只看还没结束的部分。
-    返回 (出勤, 从, 到) 或 None。"""
-    for day in (d, d + timedelta(days=1), d - timedelta(days=1)):
-        a = row.get(day)
-        if a is None or a.status != "present" or not a.hours or a.shift_kind == k:
+def _overtime(db: Session, slot: _Slot, workers: list[Worker]) -> dict[int, tuple[datetime, bool]]:
+    """员工 id → (加班到几点, 是不是上个班留下来的)。当前班次还要算上个班留下来、还没到点的人。"""
+    pd, pk = slot.sched.prev_shift(slot.d, slot.k)
+    ot: dict[int, tuple[datetime, bool]] = {}
+    for x in expand_overtime(db, pd, slot.d, workers):
+        if (x.day, x.shift_kind) == (slot.d, slot.k):
+            ot[x.worker_id] = (x.until_local, False)
+        elif slot.current and (x.day, x.shift_kind) == (pd, pk) and x.end_local <= slot.now < x.until_local:
+            ot.setdefault(x.worker_id, (x.until_local, True))
+    return ot
+
+
+def _place(db: Session, slot: _Slot, workers: list[Worker], eff: dict, ot: dict, slot_ids: set) -> _Placed:
+    """按出勤把每个人放进这个班次的班组（顶班、支援的放进被支援的班组），不在这个班的不放。"""
+    sched, d, k, now = slot.sched, slot.d, slot.k, slot.now
+    out = _Placed()
+    pd, _pk = sched.prev_shift(d, k)
+    prev_eff = att.effective(db, workers, pd, pd) if any(p for _u, p in ot.values()) else {}
+    for w in workers:
+        if w.id in ot and ot[w.id][1]:  # 上个班留下来加班
+            a = prev_eff[w.id][pd]
+            team = a.team_id or w.team_id
+            out.add(team, w, "on", team != w.team_id)
             continue
-        parts = [(max(x, start, now or start), min(y, end)) for x, y in sched.entry_hours(a.hours, day)]
-        parts = [(x, y) for x, y in parts if x < y]
-        if parts:
-            return a, min(x for x, _ in parts), max(y for _, y in parts)
-    return None
+        a = eff[w.id][d]
+        if a.status == "present" and a.shift_kind == k:
+            team = a.team_id or w.team_id
+            st = "on"
+            if slot.current and a.hours and not work_hours.in_hours(sched, a.hours, d, now):
+                st = "off_hours"  # 自定义上班时间：现在不在时间段里（例如午休、还没到点）
+                if (nx := work_hours.next_start(sched, a.hours, d, now)) is not None:
+                    out.back[w.id] = nx
+            out.hours[w.id] = a.hours
+            out.add(team, w, st, team != w.team_id)
+        elif slot.current and (x := work_hours.working_now(sched, eff[w.id], d, now)) is not None:
+            # 自定义上班时间跨过了班次分界（例如白班组 14:00-17:00，16:00 已经是中班时段）：现在在上班，也算在岗
+            out.hours[w.id] = x.hours
+            team = x.team_id or w.team_id
+            out.add(team, w, "on", team != w.team_id)
+        elif w.team_id in slot_ids and a.status in ("leave", "sick", "absent", "off") and a.source != "default":
+            out.add(w.team_id, w, a.status, False)  # 本该上这个班，但请假 / 调走了
+        elif (x := work_hours.overlap(sched, eff[w.id], d, k, slot.start, slot.end,
+                                      now if slot.current else None)) is not None:
+            # 算在别的班（例如白班 07-12、14-17），但有一段时间落在这个班次里：也列出来、计入在岗，写明到几点
+            a2, ov_from, ov_until = x
+            team = a2.team_id or w.team_id
+            out.hours[w.id] = a2.hours
+            out.overlap[w.id] = (ov_from, ov_until)
+            out.add(team, w, "on", team != w.team_id)
+    return out
 
 
-def _working_now(sched, row: dict, d, now):
-    """有自定义上班时间、而且现在正在时间段里的那一天的出勤（看当天、第二天和前一天）；没有返回 None。"""
-    for day in (d, d + timedelta(days=1), d - timedelta(days=1)):
-        a = row.get(day)
-        if a is not None and a.status == "present" and a.hours and _in_hours(sched, a.hours, day, now):
-            return a
-    return None
+def _open_tasks(db: Session, ids: list[int]) -> dict[int, list[Task]]:
+    """员工 id → 手上未完成的任务（未开始也算，进行中的排前面）。"""
+    tasks = list(db.scalars(select(Task).options(selectinload(Task.workers))
+                            .where(Task.status.in_(OPEN), Task.workers.any(Worker.id.in_(ids))))) if ids else []
+    out: dict[int, list[Task]] = {}
+    for t in tasks:
+        for w in t.workers:
+            out.setdefault(w.id, []).append(t)
+    for lst in out.values():
+        lst.sort(key=lambda t: (t.status != "in_progress", t.id))
+    return out
+
+
+def _local(dt: datetime | None) -> datetime | None:
+    return dt.replace(tzinfo=get_settings().tz) if dt is not None else None
+
+
+def _row(w: Worker, st: str, support: bool, tid, placed: _Placed, ot: dict, mine: list[Task],
+         member_role: int | None) -> DutyWorker:
+    """首页人员状态里的一行。在班的：手上有任务（未开始也算）= 忙碌，否则空闲。"""
+    if st == "on":
+        st = "busy" if mine else "idle"
+    ov = placed.overlap.get(w.id, (None, None))
+    return DutyWorker(
+        worker=WorkerOut.model_validate(w), status=st, support=support, team_id=tid, role_id=w.role_id or member_role,
+        hours=placed.hours.get(w.id), back_at=_local(placed.back.get(w.id)), overlap_from=_local(ov[0]),
+        overlap_until=_local(ov[1]), overtime_until=_local(ot[w.id][0]) if w.id in ot else None,
+        overtime_prev=ot.get(w.id, (None, False))[1],
+        tasks=[DutyTask(id=t.id, content=Trilingual(zh=t.content_zh, sr=t.content_sr, en=t.content_en),
+                        source_lang=t.source_lang, status=t.status, is_lead=t.lead_worker_id == w.id,
+                        team_id=t.team_id) for t in mine[:5]])
+
+
+def _can_add(db: Session, user: User, slot_ids: set) -> bool:
+    """能不能在首页这个班次快捷添加任务。"""
+    w = permissions.who(db, user)
+    return w.has("task.create") and (w.is_admin or w.scope("task.create") in ("dept", "all")
+                                     and any(w.team_ok("task.create", t) for t in slot_ids)
+                                     or user.team_id in slot_ids)
 
 
 @router.get("/duty", response_model=DutyOut)
 def duty(which: str = Query(default="current", pattern="^(current|next)$"), db: Session = Depends(get_db),
          user: User = Depends(get_current_user), dept: int | None = Depends(get_dept)):
     """当前车间某个班次在岗的人：按出勤（含调班、顶班）算；忙碌 = 手上有未完成的任务（未开始或进行中）。
-    别的车间借调来支援本车间班组的人也算在内（按他顶的班组）。"""
+    别的车间借调来支援本车间班组的人也算在内（按他顶的班组）。管理人员（能给全车间派活的人）单独一块；
+    「首页单独显示」的角色（班长等）列在最上面。"""
     sched = load_schedule(db)
-    d, k = sched.shift_at(local_now())
+    now = local_now()
+    d, k = sched.shift_at(now)
     if which == "next":
         d, k = sched.next_shift(d, k)
     start, end = sched.shift_window(d, k)
+    slot = _Slot(sched, which, d, k, start, end, now)
     slot_teams = sched.teams_on(d, k, dept)
     slot_ids = {t.id for t in slot_teams}
     main = sched.main_team_on(d, k, dept)
@@ -141,91 +232,28 @@ def duty(which: str = Query(default="current", pattern="^(current|next)$"), db: 
     role_of = lambda w: roles.get(w.role_id or member)
     is_mgr = lambda w: (role_of(w) is not None and (role_of(w).permissions or {}).get("task.create") in ("dept", "all")
                         and (dept is None or w.department_id == dept))
-    eff = att.effective(db, workers, d - timedelta(days=1), d + timedelta(days=1))
-    rows: dict[int, list[tuple[Worker, str, bool]]] = {}
-    hours_of: dict[int, str | None] = {}
-    back_of: dict[int, datetime] = {}
-    overlap_of: dict[int, tuple[datetime, datetime]] = {}
-    # 加班：本班次的人加班到几点；当前班次还要算上上个班留下来加班、还没到点的人
-    now = local_now()
-    pd, pk = sched.prev_shift(d, k)
-    ot: dict[int, tuple[datetime, bool]] = {}
-    for x in expand_overtime(db, pd, d, workers):
-        if (x.day, x.shift_kind) == (d, k):
-            ot[x.worker_id] = (x.until_local, False)
-        elif which == "current" and (x.day, x.shift_kind) == (pd, pk) and x.end_local <= now < x.until_local:
-            ot.setdefault(x.worker_id, (x.until_local, True))
-    prev_eff = att.effective(db, workers, pd, pd) if any(p for _u, p in ot.values()) else {}
-    for w in workers:
-        if w.id in ot and ot[w.id][1]:
-            a = prev_eff[w.id][pd]
-            team = a.team_id or w.team_id
-            rows.setdefault(team, []).append((w, "on", team != w.team_id))
-            continue
-        a = eff[w.id][d]
-        if a.status == "present" and a.shift_kind == k:
-            team = a.team_id or w.team_id
-            st = "on"
-            if which == "current" and a.hours and not _in_hours(sched, a.hours, d, now):
-                st = "off_hours"  # 自定义上班时间：现在不在时间段里（例如午休、还没到点）
-                if (nx := _next_start(sched, a.hours, d, now)) is not None:
-                    back_of[w.id] = nx
-            hours_of[w.id] = a.hours
-            rows.setdefault(team, []).append((w, st, team != w.team_id))
-        elif which == "current" and (x := _working_now(sched, eff[w.id], d, now)) is not None:
-            # 自定义上班时间跨过了班次分界（例如白班组 14:00-17:00，16:00 已经是中班时段）：现在在上班，也算在岗
-            hours_of[w.id] = x.hours
-            team = x.team_id or w.team_id
-            rows.setdefault(team, []).append((w, "on", team != w.team_id))
-        elif w.team_id in slot_ids and a.status in ("leave", "sick", "absent", "off") and a.source != "default":
-            rows.setdefault(w.team_id, []).append((w, a.status, False))  # 本该上这个班，但请假 / 调走了
-        elif (x := _overlap(sched, eff[w.id], d, k, start, end, now if which == "current" else None)) is not None:
-            # 算在别的班（例如白班 07-12、14-17），但有一段时间落在这个班次里：也列出来、计入在岗，写明到几点
-            a2, ov_from, ov_until = x
-            team = a2.team_id or w.team_id
-            hours_of[w.id] = a2.hours
-            overlap_of[w.id] = (ov_from, ov_until)
-            rows.setdefault(team, []).append((w, "on", team != w.team_id))
-
-    # 管理人员从班组里拿出来单独列（没有班组的人 rows 的键是 None）
-    mgr_rows = [(w, st, sup, tid) for tid, rs in rows.items() for w, st, sup in rs if is_mgr(w)]
-    rows = {tid: [r for r in rs if not is_mgr(r[0])] for tid, rs in rows.items()
-            if tid in dept_ids}  # 只列本车间班组的（含借调来的人）
-    unscheduled = sorted(w.name for w in workers if is_mgr(w) and eff[w.id][d].status is None)
-    ids = [w.id for rs in rows.values() for w, _s, _x in rs] + [w.id for w, *_ in mgr_rows]
-    tasks = list(db.scalars(select(Task).options(selectinload(Task.workers))
-                            .where(Task.status.in_(OPEN), Task.workers.any(Worker.id.in_(ids))))) if ids else []
-    by_worker: dict[int, list[Task]] = {}
-    for t in tasks:
-        for w in t.workers:
-            by_worker.setdefault(w.id, []).append(t)
-
     on_top = lambda w: role_of(w) is not None and role_of(w).show_on_top
-    top: list[DutyWorker] = []
-    teams, counts = [], {"managers": 0, "on_duty": 0, "busy": 0, "idle": 0, "absent": 0, "off_hours": 0}
+
+    eff = att.effective(db, workers, d - timedelta(days=1), d + timedelta(days=1))
+    ot = _overtime(db, slot, workers)
+    placed = _place(db, slot, workers, eff, ot, slot_ids)
+
+    # 管理人员从班组里拿出来单独列（没有班组的人 rows 的键是 None）；其余只列本车间班组的（含借调来的人）
+    mgr_rows = [(w, st, sup, tid) for tid, rs in placed.rows.items() for w, st, sup in rs if is_mgr(w)]
+    rows = {tid: [r for r in rs if not is_mgr(r[0])] for tid, rs in placed.rows.items() if tid in dept_ids}
+    unscheduled = sorted(w.name for w in workers if is_mgr(w) and eff[w.id][d].status is None)
+    by_worker = _open_tasks(db, [w.id for rs in rows.values() for w, _s, _x in rs] + [w.id for w, *_ in mgr_rows])
+    row = lambda w, st, sup, tid: _row(w, st, sup, tid, placed, ot, by_worker.get(w.id, []), member)
+
     order = [t.id for t in sorted(slot_teams, key=lambda t: not t.is_main)]
     order += [tid for tid in rows if tid not in order]
-
-    def entry(w, st, support, tid) -> DutyWorker:
-        mine = sorted(by_worker.get(w.id, []), key=lambda t: (t.status != "in_progress", t.id))
-        if st == "on":
-            st = "busy" if mine else "idle"  # 分配了任务（未开始也算）就是忙碌
-        return DutyWorker(
-                hours=hours_of.get(w.id),
-                back_at=back_of[w.id].replace(tzinfo=get_settings().tz) if w.id in back_of else None,
-                overlap_from=overlap_of[w.id][0].replace(tzinfo=get_settings().tz) if w.id in overlap_of else None,
-                overlap_until=overlap_of[w.id][1].replace(tzinfo=get_settings().tz) if w.id in overlap_of else None,
-                worker=WorkerOut.model_validate(w), status=st, support=support, team_id=tid, role_id=w.role_id or member,
-                overtime_until=ot[w.id][0].replace(tzinfo=get_settings().tz) if w.id in ot else None,
-                overtime_prev=ot.get(w.id, (None, False))[1],
-                tasks=[DutyTask(id=t.id, content=Trilingual(zh=t.content_zh, sr=t.content_sr, en=t.content_en),
-                                source_lang=t.source_lang, status=t.status, is_lead=t.lead_worker_id == w.id,
-                                team_id=t.team_id) for t in mine[:5]])
-
+    top: list[DutyWorker] = []
+    teams = []
+    counts = {"on_duty": 0, "busy": 0, "idle": 0, "absent": 0, "off_hours": 0}
     for tid in order:
         out = []
         for w, st, support in rows.get(tid, []):
-            r = entry(w, st, support, tid)
+            r = row(w, st, support, tid)
             if r.status in ("busy", "idle"):
                 counts["on_duty"] += 1
                 counts[r.status] += 1
@@ -236,19 +264,16 @@ def duty(which: str = Query(default="current", pattern="^(current|next)$"), db: 
             (top if on_top(w) else out).append(r)
         out.sort(key=lambda r: (_status_order(r.status), r.worker.name))
         teams.append(DutyTeam(team_id=tid, workers=out))
-    managers = sorted((entry(w, st, sup, tid) for w, st, sup, tid in mgr_rows),
+    managers = sorted((row(w, st, sup, tid) for w, st, sup, tid in mgr_rows),
                       key=lambda r: (_status_order(r.status), r.worker.name))
     counts["managers_busy"] = sum(r.status == "busy" for r in managers)
     counts["managers_idle"] = sum(r.status == "idle" for r in managers)
     counts["managers"] = counts["managers_busy"] + counts["managers_idle"]
+    top.sort(key=lambda r: (roles[r.role_id].sort_order if r.role_id in roles else 99,
+                            order.index(r.team_id) if r.team_id in order else 99, r.worker.name))
 
-    tz = get_settings().tz
     return DutyOut(
-        which=which, shift_date=d, shift_kind=k, start=start.replace(tzinfo=tz), end=end.replace(tzinfo=tz),
+        which=which, shift_date=d, shift_kind=k, start=_local(start), end=_local(end),
         main_team_id=main.id if main else None, teams=teams, managers=managers, managers_unscheduled=unscheduled,
-        top=sorted(top, key=lambda r: (roles[r.role_id].sort_order if r.role_id in roles else 99, order.index(r.team_id)
-                                       if r.team_id in order else 99, r.worker.name)), counts=DutyCounts(**counts),
-        can_add=(lambda w: w.has("task.create") and (w.is_admin or w.scope("task.create") in ("dept", "all")
-                                                     and any(w.team_ok("task.create", t) for t in slot_ids)
-                                                     or user.team_id in slot_ids))(permissions.who(db, user)),
+        top=top, counts=DutyCounts(**counts), can_add=_can_add(db, user, slot_ids),
     )
