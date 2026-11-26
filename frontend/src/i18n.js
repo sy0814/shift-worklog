@@ -92,7 +92,7 @@ const messages = {
     },
     glossary: { title: '术语表', zh: '中文', sr: '塞尔维亚语', en: '英语', category: '类别', note: '备注', import: '导入 CSV', export: '导出 CSV', imported: '新增 {added}，更新 {updated}，跳过 {skipped}', search: '搜索术语', hint: '翻译时会把术语表发给模型，保证专业词汇译法统一' },
     att: {
-      title: '出勤', month: '月份', template: '下载导入模板', import: '导入出勤表', imported: '已导入 {n} 条', importFailed: '有 {n} 行有问题，整个文件没有导入，请改好后重新导入',
+      title: '出勤', month: '月份', template: '下载导入模板', import: '导入出勤表', importConfirm: '导入「{file}」。如果是工厂的出勤月表（有 Sap No. 那一列），日期按现在选的月份 {month} 算，会用表里的星期核对。和排班一样的格子不记，不一样的记成例外；空格子不改。', importedSheet: '已按 {month} 导入 {people} 人：和排班不一样的 {n} 处记下了，清掉了 {c} 条旧的修改', imported: '已导入 {n} 条', importFailed: '有 {n} 行有问题，整个文件没有导入，请改好后重新导入',
       row: '第 {n} 行', status: '出勤状态', shiftActual: '实际班次', shiftAuto: '不选 = 按所顶班组当天的班次', teamActual: '顶哪个班组', note: '备注', reset: '恢复按排班', defaultHint: '没改过的按排班默认出勤',
       st: { present: '出勤', leave: '请假', sick: '病假', absent: '缺勤', off: '休息' }, code: { day: '白', middle: '中', night: '夜', off: '休', leave: '假', sick: '病', absent: '缺' },
       dayTasks: '当天参与的任务', noTasks: '当天没有参与任务', edited: '手工修改', importedSrc: '导入', legend: '白/中/夜 = 出勤班次；加粗斜体 = 手工修改或导入',
@@ -326,7 +326,7 @@ const messages = {
     },
     glossary: { title: 'Rečnik pojmova', zh: 'Kineski', sr: 'Srpski', en: 'Engleski', category: 'Kategorija', note: 'Napomena', import: 'Uvezi CSV', export: 'Izvezi CSV', imported: 'Dodato {added}, izmenjeno {updated}, preskočeno {skipped}', search: 'Pretraga', hint: 'Rečnik se šalje modelu pri prevođenju da bi stručni izrazi bili ujednačeni' },
     att: {
-      title: 'Prisustvo', month: 'Mesec', template: 'Preuzmi šablon', import: 'Uvezi prisustvo', imported: 'Uvezeno: {n}', importFailed: '{n} redova ima grešku; ništa nije uvezeno. Ispravite i uvezite ponovo',
+      title: 'Prisustvo', month: 'Mesec', template: 'Preuzmi šablon', import: 'Uvezi prisustvo', importConfirm: 'Uvoz „{file}”. Ako je to mesečna tabela prisustva fabrike (sa kolonom Sap No.), datumi se računaju po izabranom mesecu {month} i proveravaju po danima u nedelji. Ćelije iste kao raspored se ne beleže, različite se beleže kao izuzeci; prazne se ne menjaju.', importedSheet: 'Uvezeno za {month}, {people} radnika: {n} odstupanja od rasporeda zabeleženo, {c} starih izmena uklonjeno', imported: 'Uvezeno: {n}', importFailed: '{n} redova ima grešku; ništa nije uvezeno. Ispravite i uvezite ponovo',
       row: 'Red {n}', status: 'Status', shiftActual: 'Stvarna smena', shiftAuto: 'Prazno = smena te ekipe tog dana', teamActual: 'Za koju ekipu', note: 'Napomena', reset: 'Vrati na raspored', defaultHint: 'Bez izmena se računa po rasporedu',
       st: { present: 'Prisutan', leave: 'Odsustvo', sick: 'Bolovanje', absent: 'Izostanak', off: 'Slobodan' }, code: { day: 'P', middle: 'D', night: 'T', off: 'S', leave: 'O', sick: 'B', absent: 'I' },
       dayTasks: 'Zadaci tog dana', noTasks: 'Nema zadataka tog dana', edited: 'Ručno izmenjeno', importedSrc: 'Uvezeno', legend: 'P/D/T = smena; podebljano kurziv = ručno ili uvezeno',
@@ -560,7 +560,7 @@ const messages = {
     },
     glossary: { title: 'Glossary', zh: 'Chinese', sr: 'Serbian', en: 'English', category: 'Category', note: 'Note', import: 'Import CSV', export: 'Export CSV', imported: '{added} added, {updated} updated, {skipped} skipped', search: 'Search', hint: 'The glossary is sent to the model so technical terms are translated consistently' },
     att: {
-      title: 'Attendance', month: 'Month', template: 'Download template', import: 'Import attendance', imported: '{n} rows imported', importFailed: '{n} rows have problems; nothing was imported. Fix the file and import again',
+      title: 'Attendance', month: 'Month', template: 'Download template', import: 'Import attendance', importConfirm: 'Import “{file}”. If it is the factory monthly attendance sheet (with a Sap No. column), dates follow the selected month {month} and are checked against the weekdays. Cells matching the schedule are not stored, different ones become exceptions; empty cells change nothing.', importedSheet: 'Imported {month}, {people} people: {n} differences from the schedule recorded, {c} old edits cleared', imported: '{n} rows imported', importFailed: '{n} rows have problems; nothing was imported. Fix the file and import again',
       row: 'Row {n}', status: 'Status', shiftActual: 'Actual shift', shiftAuto: 'Empty = that team\'s shift on the day', teamActual: 'Covering team', note: 'Note', reset: 'Reset to schedule', defaultHint: 'Unchanged days follow the schedule',
       st: { present: 'Present', leave: 'Leave', sick: 'Sick', absent: 'Absent', off: 'Off' }, code: { day: 'D', middle: 'M', night: 'N', off: 'O', leave: 'L', sick: 'S', absent: 'A' },
       dayTasks: 'Tasks that day', noTasks: 'No tasks that day', edited: 'Edited', importedSrc: 'Imported', legend: 'D/M/N = shift worked; bold italic = edited or imported',

@@ -89,7 +89,7 @@ def test_import_all_or_nothing(client, admin_h, leader_h, teams, ws):
         ["23.11.2026", "", "att 张伟", "prisutan", "treća", "zamena"],
         ["2026-11-24", "", "Att 张伟", "absent", None, None],
     ]).json()
-    assert r == {"imported": 3, "errors": []}
+    assert (r["imported"], r["errors"]) == (3, [])
     cells = grid(client, admin_h, teams["T1"], "2026-11-22", "2026-11-24")["cells"]
     assert cells[str(ws["a"])]["2026-11-22"]["status"] == "sick"
     assert cells[str(ws["b"])]["2026-11-23"]["shift_kind"] == "night" and cells[str(ws["b"])]["2026-11-23"]["source"] == "import"

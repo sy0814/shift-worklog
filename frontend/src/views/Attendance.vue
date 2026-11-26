@@ -91,6 +91,7 @@ watch(() => route.query, (q) => { if (q.worker || q.team || q.month) applyQuery(
 
 function code(c) {
   if (!c || c.status == null) return ''
+  if (c.code) return c.code // 出勤月表里的原始写法（AL、SL、BT……）原样显示
   return c.status === 'present' ? t(`att.code.${c.shift_kind}`) : t(`att.code.${c.status}`)
 }
 const canEdit = (w) => auth.teamOk('attendance.edit', w.team_id)
@@ -183,15 +184,22 @@ async function importFile(e) {
   const f = e.target.files[0]
   e.target.value = ''
   if (!f) return
+  // 工厂的出勤月表里没有年月：按页面上选的月份算日期（后端用表里的星期核对）
+  try {
+    await ElMessageBox.confirm(t('att.importConfirm', { month: month.value, file: f.name }), t('att.import'),
+      { confirmButtonText: t('att.import'), cancelButtonText: t('common.cancel'), type: 'info' })
+  } catch { return }
   const fd = new FormData()
   fd.append('file', f)
+  fd.append('month', month.value)
   const { data: r } = await api.post('/attendance/import', fd, { timeout: 120000 })
   if (r.errors.length) {
     const lines = r.errors.slice(0, 30).map((x) => `${x.row ? t('att.row', { n: x.row }) + '：' : ''}${x.message}`).join('<br>')
     ElMessageBox.alert(`<p>${t('att.importFailed', { n: r.errors.length })}</p><div style="max-height:50vh;overflow:auto;font-size:13px">${lines}</div>`,
       t('att.import'), { dangerouslyUseHTMLString: true, type: 'error' })
   } else {
-    ElMessage.success(t('att.imported', { n: r.imported }))
+    ElMessage.success(r.people ? t('att.importedSheet', { month: r.month, people: r.people, n: r.imported, c: r.cleared })
+      : t('att.imported', { n: r.imported }))
     load()
   }
 }

@@ -220,7 +220,7 @@ npm run build    # 输出到 backend/static
 | 翻译 | `PUT /tasks/{id}/translation`、`POST /tasks/{id}/retranslate`、`POST /translate`、`GET /translation/status`、`POST /translation/retry-failed`、术语表 `/glossary*` |
 | 排班 | `GET /shifts/now`、`GET /shifts/calendar`、`GET /shifts/coverage`、`GET/PUT /shifts/config`（班次时间）、`/teams`（增删改）、`/team-shifts`（调班、`/swap` 互换、`/unaffected` 不受调班影响的人）、`/holidays/{day}` |
 | 为什么？ | `GET /explain/worker/{id}?day=`、`GET /explain/team/{id}?day=`：`{day, result, steps[]}`（权限 `schedule.why`，迁移 0021 给已有角色按以前的规则补默认值；按目标的班组判断范围，没有班组的人按车间；成员默认 403）。前端每一步的「去修改」链接（`WhyPanel.vue` 的 `link()`）靠页面 query 打开弹窗：`/attendance?worker=&day=`、`/attendance?team=&month=`、`/schedule?tab=teams&team=`、`/schedule?tab=calendar&shift=班组&day=`、`/schedule?tab=holidays`、`/workers?schedule=员工`；打开后 `router.replace` 去掉 query |
-| 出勤 | `GET/PUT /attendance`、`PUT /attendance/batch`、`POST /attendance/swap`、`GET /attendance/template`、`POST /attendance/import`、`GET /workers/{id}/day`、`/overtime` |
+| 出勤 | `GET/PUT /attendance`、`PUT /attendance/batch`、`POST /attendance/swap`、`GET /attendance/template`、`POST /attendance/import`（multipart `file` + `month=YYYY-MM`；有「Sap No.」列的是工厂月表，走 `_import_sheet`，否则按模板；`ImportOut` 多 `month / people / days / cleared`）、`GET /workers/{id}/day`、`/overtime` |
 | 员工 / 账号 | `/workers`（增改、Excel 导入导出、自定义列、头像、`/{id}/schedule`、`/{id}/account`、`/accounts/open-all`）、`/users`、`/roles` |
 | 项目 / 巡查 | `/projects`（`/subs`、`/subs/{id}/assign`、`/people`）、`/inspections`（`/preview`、`/{id}/run-now`、`/{id}/runs`） |
 | 设备 | `/equipment`、`/equipment/export/xlsx`、`/equipment/import/xlsx` |
