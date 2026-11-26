@@ -17,7 +17,7 @@ from ..config import get_settings
 from ..db import get_db
 from ..models import Overtime, Team, User, Worker, utcnow
 from ..overtime_service import expand, to_local
-from ..schedule_service import load_schedule
+from ..schedule_service import load_schedule, local_hours
 from ..departments import get_dept
 from .. import departments
 from ..schemas import UTCDateTime
@@ -55,7 +55,7 @@ def _until(sched, d: date, kind: str, hhmm: time) -> tuple[datetime, float]:
     until = datetime.combine(end.date(), hhmm)
     if until <= end:
         until += timedelta(days=1)
-    hours = (until - end).total_seconds() / 3600
+    hours = local_hours(end, until)  # 真实时长（夏令时那一夜和钟面差不一样）
     if hours > MAX_HOURS:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"overtime must end within {MAX_HOURS} h after the shift")
     return until, hours
@@ -77,7 +77,7 @@ def _out(db: Session, rows: list[Overtime]) -> list[OvertimeOut]:
         out.append(OvertimeOut(
             id=r.id, day=r.day, shift_kind=r.shift_kind, team_id=r.team_id, worker_id=r.worker_id,
             worker_name=wnames.get(r.worker_id), until=r.until,
-            hours=round(max(0.0, (to_local(r.until) - shift_end).total_seconds() / 3600), 2),
+            hours=round(max(0.0, local_hours(shift_end, to_local(r.until))), 2),
             people=counts.get(r.id, 0) if r.team_id else 1, note=r.note,
             created_by_name=names.get(r.created_by, "")))
     return out

@@ -144,6 +144,7 @@ class OutCtx:
     who: "permissions.Who | None"  # 当前用户的权限
     projects: dict  # 项目 id → ProjectBrief
     equipment: dict  # 设备 id → EquipmentBrief
+    log_counts: dict = None  # 任务 id → 整条移交链上的班次日志条数
 
 
 def _project_briefs(db: Session, ids: set[int]) -> dict:
@@ -169,6 +170,30 @@ def _equipment_briefs(db: Session, ids: set[int]) -> dict:
             for e in db.scalars(select(Equipment).where(Equipment.id.in_(ids)))}
 
 
+def _log_counts(db: Session, tasks: list[Task]) -> dict[int, int]:
+    """每条任务整条移交链（自己 + 移交前的各条）上的班次日志条数（卡片上的「📝 N」，接班的人能看出上一班写了日志）。
+    往上找祖先是一层一层批量查，日志按任务一次分组计数，不会每条任务查一次。"""
+    from ..models import TaskLog
+
+    parent = {t.id: t.source_task_id for t in tasks}
+    todo = {p for p in parent.values() if p and p not in parent}
+    while todo:
+        rows = db.execute(select(Task.id, Task.source_task_id).where(Task.id.in_(todo))).all()
+        parent.update(dict(rows))
+        todo = {s for _i, s in rows if s and s not in parent}
+    cnt = dict(db.execute(select(TaskLog.task_id, func.count()).where(
+        TaskLog.task_id.in_(list(parent)), TaskLog.deleted_at.is_(None)).group_by(TaskLog.task_id)).all()) if parent else {}
+    out = {}
+    for t in tasks:
+        n, cur, seen = 0, t.id, set()
+        while cur and cur not in seen:
+            seen.add(cur)
+            n += cnt.get(cur, 0)
+            cur = parent.get(cur)
+        out[t.id] = n
+    return out
+
+
 def _check_equipment(db: Session, eid: int | None) -> None:
     from ..models import Equipment
 
@@ -189,6 +214,7 @@ def make_ctx(db: Session, tasks: list[Task], user: User | None = None) -> OutCtx
         who=permissions.who(db, user) if user is not None else None,
         projects=_project_briefs(db, {t.project_id for t in tasks if t.project_id}),
         equipment=_equipment_briefs(db, {t.equipment_id for t in tasks if t.equipment_id}),
+        log_counts=_log_counts(db, tasks),
         names=_names(db),
         ho_from={h.from_task_id: h for h in hos},
         ho_to={h.to_task_id: h for h in hos},
@@ -250,6 +276,7 @@ def task_out(task: Task, user: User, ctx: OutCtx) -> TaskOut:
         perms=perms,
         project=ctx.projects.get(task.project_id),
         equipment=ctx.equipment.get(task.equipment_id), transferable=can_transfer(task), kind=task.kind or "other",
+        log_count=(ctx.log_counts or {}).get(task.id, 0),
         chain_started_at=task.chain_started_at, handover_count=task.handover_count,
         age_hours=round(age, 1), overdue=overdue,
         handover_in=_ho_info(ctx.ho_to.get(task.id), True, names),
