@@ -220,6 +220,40 @@ function Get-CaddyCause {
     return $c
 }
 
+# 启动服务；启动不了时返回 Windows 当场给的错误（最里面那层，例如「服务已被禁用」），成功返回空。
+# 注意：服务被禁用时 Windows 直接拒绝，不会写事件日志，所以 Get-ScmError 查不到，只能靠这里
+function Start-Svc([string]$Name) {
+    try {
+        Start-Service -Name $Name -ErrorAction Stop
+        Start-Sleep -Seconds 10
+        return $null
+    } catch {
+        $ex = $_.Exception
+        $msg = $ex.Message
+        while ($ex.InnerException) { $ex = $ex.InnerException; $msg = $ex.Message }
+        return Limit-Text $msg 160
+    }
+}
+
+# 服务被设成「禁用」
+function Get-DisabledHint([string]$Name) {
+    $svc = Get-Service -Name $Name -ErrorAction SilentlyContinue
+    if ($svc -and [string]$svc.StartType -eq 'Disabled') {
+        return "服务 $Name 被设成了「禁用」：在「服务」里双击它，启动类型改回「自动」，再点「启动」"
+    }
+    return $null
+}
+
+# 第一条：被禁用；中间：查到的原因；最后：启动时 Windows 返回的错误（被禁用时就不重复了）
+function Join-Causes([string]$Name, $Found, [string]$StartErr) {
+    $c = @()
+    $d = Get-DisabledHint $Name
+    if ($d) { $c += $d }
+    $c += @($Found)
+    if ($StartErr -and -not $d) { $c += "启动时 Windows 返回的错误：$StartErr" }
+    return $c
+}
+
 # 原因列表 → 「可能原因：1) …；2) …」
 function Format-Causes($Causes, [string]$LogHint) {
     $list = @($Causes | Where-Object { $_ })
@@ -239,12 +273,12 @@ if ($dbSvcName) {
     if (-not $dbSvc) {
         $problems["svc:$dbSvcName"] = "数据库服务 $dbSvcName 不存在了（PostgreSQL 被卸载了？）。数据目录不要动，重装同一个大版本的 PostgreSQL，数据目录选原来的"
     } elseif ($dbSvc.Status -ne 'Running') {
-        try { Start-Service -Name $dbSvcName -ErrorAction Stop; Start-Sleep -Seconds 10 } catch { }
+        $startErr = Start-Svc $dbSvcName
         $dbSvc = Get-Service -Name $dbSvcName -ErrorAction SilentlyContinue
         if ($dbSvc -and $dbSvc.Status -eq 'Running') {
             Send-Alert "数据库服务 $dbSvcName 停了，已自动重新启动" $true
         } else {
-            $problems["svc:$dbSvcName"] = "数据库服务 $dbSvcName 停了，自动启动失败。$(Format-Causes (Get-DbCause $dbSvcName) 'PostgreSQL 数据目录下的 log 文件夹')"
+            $problems["svc:$dbSvcName"] = "数据库服务 $dbSvcName 停了，自动启动失败。$(Format-Causes (Join-Causes $dbSvcName (Get-DbCause $dbSvcName) $startErr) 'PostgreSQL 数据目录下的 log 文件夹')"
         }
     }
 }
@@ -260,14 +294,15 @@ foreach ($name in @($SvcApp, $SvcCaddy)) {
         } else {
             $why = Get-LastErrorLine (Join-Path $LogDir "$SvcCaddy.err.log") 15 '"level":"(error|fatal)"|Error:'
         }
-        try { Start-Service -Name $name -ErrorAction Stop; Start-Sleep -Seconds 10 } catch { }
+        $startErr = Start-Svc $name
         $svc = Get-Service -Name $name -ErrorAction SilentlyContinue
         if ($svc -and $svc.Status -eq 'Running') {
             $tail = ''
             if ($why) { $tail = "停之前日志里的错误：$why。" }
             Send-Alert "服务 $name 停了，已自动重新启动。$($tail)日志 $LogDir\$name.err.log" $true
         } else {
-            if ($name -eq $SvcApp) { $causes = Get-AppCause } else { $causes = Get-CaddyCause }
+            if ($name -eq $SvcApp) { $found = Get-AppCause } else { $found = Get-CaddyCause }
+            $causes = Join-Causes $name $found $startErr
             $problems["svc:$name"] = "服务 $name 停了，自动启动失败。$(Format-Causes $causes "$LogDir\$name.err.log")"
         }
     }

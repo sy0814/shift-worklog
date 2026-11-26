@@ -414,3 +414,4 @@
   - `watchdog.ps1`：先检查 PostgreSQL 服务（服务名从程序服务的依赖关系读注册表），停了先启动；三个服务启动不了时报警写「可能原因：1) …；2) …」（`Get-DbCause` / `Get-AppCause` / `Get-CaddyCause`：程序文件、数据目录、Python / .venv / .env / caddy.exe / Caddyfile 缺失、端口被占、依赖服务、磁盘满、日志最后一条错误、Windows 服务管理器的错误事件）；自动重启成功时附上停之前日志里的错误；系统不响应、备份失败也附原因；弹窗超过 450 字截断（全文在 watchdog.log）；去掉备份报警里重复的「。。」
   - `common.ps1`：`Get-ExitCodeHint` 把 0xC0000135（缺 DLL）等退出码翻译成人话，`Invoke-Native` 的报错带上
   - 部署指南三语 9.5 和常见问题加「PostgreSQL 程序文件不见了」怎么修。PowerShell 脚本没法在容器里运行，要在服务器上验证
+- 2026-11-27 **看门狗：服务被禁用时原因写「没查到」**（用户在服务器上测试：把 PostgreSQL 设成禁用）。禁用的服务 Windows 直接拒绝启动、不写事件日志，`Get-ScmError` 查不到。改成：启动用 `Start-Svc`，把 Windows 当场返回的错误（最里层异常）写进原因；另外先查启动类型是不是「禁用」（`Get-DisabledHint`），合并在 `Join-Causes`
