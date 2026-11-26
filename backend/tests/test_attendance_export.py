@@ -28,11 +28,11 @@ def grid(client, h, team_id, start, end):
 
 
 def test_default_from_schedule(client, leader_h, teams, ws):
-    # 1 班：11-21 白1，11-23 中1，11-25 夜1，11-27 休1
+    # 1 班：11-21 白1，11-23 中1，11-25 休，11-26 夜1（11-25 23:00 开始），11-28 休
     g = grid(client, leader_h, teams["T1"], "2026-11-21", "2026-11-28")
     row = g["cells"][str(ws["a"])]
     assert [row[d]["shift_kind"] or row[d]["status"] for d in
-            ["2026-11-21", "2026-11-23", "2026-11-25", "2026-11-27"]] == ["day", "middle", "night", "off"]
+            ["2026-11-21", "2026-11-23", "2026-11-25", "2026-11-26", "2026-11-28"]] == ["day", "middle", "off", "night", "off"]
     assert all(c["source"] == "default" for c in row.values())
     # 常白班：周六休息，周一上白班
     d = grid(client, leader_h, teams["DAY"], "2026-11-21", "2026-11-23")["cells"][str(ws["c"])]

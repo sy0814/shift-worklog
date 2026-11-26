@@ -254,7 +254,7 @@ def template(_: User = Depends(get_current_user)):
         "Popunite samo odstupanja od rasporeda (odsustvo, bolovanje, izostanak, zamena smene); ostali se računaju kao prisutni po rasporedu.",
         "Only fill in exceptions to the schedule (leave, sick, absent, shift swap); everyone else counts as present per the schedule.",
         "",
-        "日期：2026-11-21 或 21.11.2026；夜班算在开始那天 / Noćna smena se računa na dan početka / Night shift counts on its start date",
+        "日期：2026-11-21 或 21.11.2026；夜班算在下班那天（前一天 23:00 开始）/ Noćna (treća) smena se računa na dan kada se završava / Night shift counts on the day it ends",
         "工号或姓名至少填一个，优先按工号匹配 / Matični broj ili ime / Employee no. or name",
         "状态 Status：出勤 / 请假 / 病假 / 缺勤 / 休息；prisutan / odsustvo / bolovanje / izostanak / slobodan；present / leave / sick / absent / off",
         "班次 Shift（只在出勤且和本班组排班不同时填 / samo za zamenu smene / only for swaps）：白班/中班/夜班；prva/druga/treća；day/middle/night",

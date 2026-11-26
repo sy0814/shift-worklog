@@ -98,8 +98,9 @@ def _next_start(sched, hours: str, d, now):
 
 def _overlap(sched, row: dict, d, k, start, end, now):
     """有自定义上班时间、算在别的班（不是 k），但时间段有一部分落在班次 [start, end) 里的那一天的出勤
-    （看当天和前一天）。now 给了（当前班次）就只看还没结束的部分。返回 (出勤, 从, 到) 或 None。"""
-    for day in (d, d - timedelta(days=1)):
+    （看前一天、当天和第二天：第二天的出勤可能从当天晚上就开始）。now 给了（当前班次）就只看还没结束的部分。
+    返回 (出勤, 从, 到) 或 None。"""
+    for day in (d, d + timedelta(days=1), d - timedelta(days=1)):
         a = row.get(day)
         if a is None or a.status != "present" or not a.hours or a.shift_kind == k:
             continue
@@ -111,8 +112,8 @@ def _overlap(sched, row: dict, d, k, start, end, now):
 
 
 def _working_now(sched, row: dict, d, now):
-    """有自定义上班时间、而且现在正在时间段里的那一天的出勤（看当天和前一天）；没有返回 None。"""
-    for day in (d, d - timedelta(days=1)):
+    """有自定义上班时间、而且现在正在时间段里的那一天的出勤（看当天、第二天和前一天）；没有返回 None。"""
+    for day in (d, d + timedelta(days=1), d - timedelta(days=1)):
         a = row.get(day)
         if a is not None and a.status == "present" and a.hours and _in_hours(sched, a.hours, day, now):
             return a
@@ -140,7 +141,7 @@ def duty(which: str = Query(default="current", pattern="^(current|next)$"), db: 
     role_of = lambda w: roles.get(w.role_id or member)
     is_mgr = lambda w: (role_of(w) is not None and (role_of(w).permissions or {}).get("task.create") in ("dept", "all")
                         and (dept is None or w.department_id == dept))
-    eff = att.effective(db, workers, d - timedelta(days=1), d)
+    eff = att.effective(db, workers, d - timedelta(days=1), d + timedelta(days=1))
     rows: dict[int, list[tuple[Worker, str, bool]]] = {}
     hours_of: dict[int, str | None] = {}
     back_of: dict[int, datetime] = {}

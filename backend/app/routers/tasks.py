@@ -340,7 +340,7 @@ def assignable_ids(db: Session, sched, team_id: int, d, k: str) -> set[int]:
     slot_group = {t.id for t in sched.group_of(main, d, k)} if main else set()
     on_ids = {t.id for t in sched.teams_on(d, k)}  # 所有车间此刻在班的班组（被单独叫来的人不能是这些班组的）
     workers = list(db.scalars(select(Worker).where(Worker.is_active.is_(True))))
-    eff = att.effective(db, workers, d - timedelta(days=1), d, sched)
+    eff = att.effective(db, workers, d - timedelta(days=1), d + timedelta(days=1), sched)
     out = {w.id for w in workers
            if (a := eff[w.id][d]).status == "present" and a.shift_kind == k
            and (a.team_id in group or (team_id in slot_group and a.team_id not in on_ids))}

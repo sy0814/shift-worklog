@@ -176,7 +176,7 @@ def test_0009_converts_old_teams(engine):
                        "VALUES (1, 'Petar', 2, true, CURRENT_TIMESTAMP, '{}')"))
     migrate.upgrade(engine)
     with Session(engine) as db:
-        teams = {t.code: team_info(t) for t in db.query(Team)}
+        teams = {t.code: team_info(t) for t in db.query(Team).order_by(Team.id)}
         assert [t.is_main for t in teams.values()] == [True, True, True, True, False, False]
         assert teams["X6"].cycle is None
         new = Schedule(teams=tuple(teams.values()))
@@ -220,6 +220,95 @@ def test_0017_departments(engine):
         perms = json.loads(perms) if isinstance(perms, str) else perms
         assert perms["task.view"] == "all" and "worker.manage" not in perms
         assert "department_id" not in {x["name"] for x in inspect(c).get_columns("teams")}
+
+
+def test_0022_night_on_end_day(engine):
+    """0022：夜班改为记在下班那天。按旧规则和新规则算出的实际上班时间完全一样；夜班的出勤、加班挪到下一天；
+    前一晚上了夜班、休息日记的请假去掉（新规则下这天就是那个夜班）。"""
+    from datetime import date, datetime, time, timedelta
+
+    from app.schedule_service import _load_base
+    from sqlalchemy.orm import Session
+
+    cfg = migrate.alembic_config()
+    with engine.begin() as c:
+        cfg.attributes["connection"] = c
+        command.upgrade(cfg, "0021")
+        c.execute(text("INSERT INTO shift_config (id, day_start, middle_start, night_start) "
+                       "VALUES (1, '07:00:00', '15:00:00', '23:00:00')"))
+        teams = [(1, '["day","day","middle","middle","night","night","off","off"]', "2026-10-28", "cycle"),
+                 (2, '["07:00-12:00,23:00-03:00","off","night"]', "2026-11-01", "cycle"),
+                 (3, None, None, "manual")]
+        for tid, pat, start, kind in teams:
+            c.execute(text("INSERT INTO teams (id, department_id, code, name_zh, name_sr, name_en, kind, pattern, "
+                           "cycle_start, holiday_off, is_main, sort_order) VALUES (:i, 1, :c, :c, :c, :c, :k, :p, :s, "
+                           "false, true, :i)"), {"i": tid, "c": f"T{tid}", "k": kind, "p": pat, "s": start})
+        c.execute(text("INSERT INTO users (id, username, password_hash, full_name, role, lang, is_active, created_at, "
+                       "failed_logins, must_change_password) VALUES (1, 'admin', 'x', 'A', 'admin', 'zh', true, "
+                       "CURRENT_TIMESTAMP, 0, false)"))
+        for d, k in (("2026-11-10", "night"), ("2026-11-11", "day")):  # 不固定班组：一个夜班接一个白班
+            c.execute(text("INSERT INTO team_shift_overrides (team_id, day, shift_kind, hours, note, created_by, "
+                           "created_at) VALUES (3, :d, :k, NULL, 'x', 1, CURRENT_TIMESTAMP)"), {"d": d, "k": k})
+        c.execute(text("INSERT INTO workers (id, name, team_id, is_active, created_at, extra, department_id) "
+                       "VALUES (1, 'Petar', 1, true, CURRENT_TIMESTAMP, '{}', 1)"))
+        c.execute(text("INSERT INTO worker_schedules (worker_id, effective_from, team_id, pattern, holiday_off, note, "
+                       "created_at) VALUES (1, '2000-01-01', 1, NULL, false, '', CURRENT_TIMESTAMP)"))
+        # 1 班 11-01 夜班（旧规则 11-01 23:00 开始）：病假；11-02 夜班上了；11-03 休息日记了请假；11-04 休息日病假
+        for d, st in (("2026-11-01", "sick"), ("2026-11-03", "leave"), ("2026-11-04", "sick")):
+            c.execute(text("INSERT INTO attendance (worker_id, day, status, shift_kind, team_id, note, source, "
+                           "updated_by, updated_at) VALUES (1, :d, :s, NULL, NULL, '', 'manual', 1, CURRENT_TIMESTAMP)"),
+                      {"d": d, "s": st})
+        c.execute(text("INSERT INTO overtime (day, shift_kind, worker_id, team_id, until, note, created_by, created_at) "
+                       "VALUES ('2026-11-02', 'night', 1, NULL, '2026-11-03 06:00:00+00', '', 1, CURRENT_TIMESTAMP)"))
+
+    def old_windows(entry, d):  # 旧规则：夜班从当天 23:00 开始，凌晨开始的段在第二天
+        t = {"day": ("07:00", "15:00"), "middle": ("15:00", "23:00"), "night": ("23:00", "07:00")}
+        segs = [t[entry]] if entry in t else [] if entry == "off" else [tuple(x.split("-")) for x in entry.split(",")]
+        out = set()
+        for a, b in segs:
+            st = datetime.combine(d, time.fromisoformat(a))
+            if st.time() < time(7):
+                st += timedelta(days=1)
+            en = datetime.combine(st.date(), time.fromisoformat(b))
+            if en <= st:
+                en += timedelta(days=1)
+            out.add((st, en))
+        return out
+
+    old_pat = {1: ["day", "day", "middle", "middle", "night", "night", "off", "off"],
+               2: ["07:00-12:00,23:00-03:00", "off", "night"]}
+    old_start = {1: date(2026, 10, 28), 2: date(2026, 11, 1)}
+    old_ovr = {date(2026, 11, 10): "night", date(2026, 11, 11): "day"}
+
+    def old_entry(tid, d):
+        if tid == 3:
+            return old_ovr.get(d, "off")
+        return old_pat[tid][(d - old_start[tid]).days % len(old_pat[tid])]
+
+    migrate.upgrade(engine)
+    with Session(engine) as db:
+        sched = _load_base(db)
+        for tid in (1, 2, 3):
+            team = sched.team(tid)
+            old, new = set(), set()
+            for n in range(-5, 40):
+                d = date(2026, 11, 1) + timedelta(days=n)
+                old |= old_windows(old_entry(tid, d), d)
+                new |= set(sched.entry_hours(sched.team_entry(team, d), d))
+            lo, hi = datetime(2026, 11, 1), datetime(2026, 12, 1)
+            assert {w for w in old if lo <= w[0] < hi} == {w for w in new if lo <= w[0] < hi}, tid
+        assert sched.teams[0].cycle.pattern == ("day", "day", "middle", "middle", "off", "night", "night", "off")
+        rows = db.execute(text("SELECT day, status FROM attendance ORDER BY day")).all()
+        # 11-01 夜班病假 → 11-02；11-03 的请假去掉（11-03 的班 = 11-02 晚上上过的夜班）；11-04 不动
+        assert [(str(d), s) for d, s in rows] == [("2026-11-02", "sick"), ("2026-11-04", "sick")]
+        assert str(db.execute(text("SELECT day FROM overtime")).scalar()) == "2026-11-03"
+    with engine.begin() as c:  # 退回去：循环恢复
+        cfg.attributes["connection"] = c
+        command.downgrade(cfg, "0021")
+    with engine.connect() as c:
+        p = c.execute(text("SELECT pattern FROM teams WHERE id = 1")).scalar()
+        import json
+        assert (json.loads(p) if isinstance(p, str) else p) == old_pat[1]
 
 
 def test_alembic_ini_is_ascii():

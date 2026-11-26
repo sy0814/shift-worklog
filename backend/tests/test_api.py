@@ -66,7 +66,7 @@ def test_calendar(client, leader_h):
     teams = {t["code"]: str(t["id"]) for t in client.get("/api/teams", headers=leader_h).json()}
     s = days[0]["shifts"]
     assert (s[teams["T1"]], s[teams["T2"]], s[teams["T3"]], s[teams["T4"]], s[teams["DAY"]]) == \
-        ("day", "middle", "night", "off", "off")
+        ("day", "middle", "off", "night", "off")
 
 
 def test_shifts_now(client, leader_h):

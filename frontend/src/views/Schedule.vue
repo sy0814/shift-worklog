@@ -168,11 +168,11 @@ function openTeam(team) {
   teamEditing.value = team || null
   Object.assign(tf, team
     ? { name_zh: team.name_zh, name_sr: team.name_sr, name_en: team.name_en, kind: team.kind, is_main: team.is_main,
-        cyc: { pattern: [...(team.pattern || ['day', 'day', 'middle', 'middle', 'night', 'night', 'off', 'off'])],
+        cyc: { pattern: [...(team.pattern || ['day', 'day', 'middle', 'middle', 'off', 'night', 'night', 'off'])],
           cycle_start: team.cycle_start || todayStr, holiday_off: team.holiday_off },
         temporary: !!(team.active_from || team.active_to), active_from: team.active_from, active_to: team.active_to }
     : { name_zh: '', name_sr: '', name_en: '', kind: 'cycle', is_main: false,
-        cyc: { pattern: ['day', 'day', 'middle', 'middle', 'night', 'night', 'off', 'off'], cycle_start: todayStr, holiday_off: false },
+        cyc: { pattern: ['day', 'day', 'middle', 'middle', 'off', 'night', 'night', 'off'], cycle_start: todayStr, holiday_off: false },
         temporary: false, active_from: todayStr, active_to: null })
   teamDlg.value = true
 }
@@ -385,7 +385,10 @@ onMounted(async () => {
         <el-form label-width="auto" style="max-width: 520px">
           <el-form-item :label="t('schedule.dayStart')"><el-time-select v-model="cfg.day_start" start="00:00" step="00:30" end="23:30" format="HH:mm" /></el-form-item>
           <el-form-item :label="t('schedule.middleStart')"><el-time-select v-model="cfg.middle_start" start="00:00" step="00:30" end="23:30" format="HH:mm" /></el-form-item>
-          <el-form-item :label="t('schedule.nightStart')"><el-time-select v-model="cfg.night_start" start="00:00" step="00:30" end="23:30" format="HH:mm" /></el-form-item>
+          <el-form-item :label="t('schedule.nightStart')">
+            <el-time-select v-model="cfg.night_start" start="00:00" step="00:30" end="23:30" format="HH:mm" />
+            <small class="night-hint">{{ t('schedule.nightHint') }}</small>
+          </el-form-item>
           <el-form-item><el-button type="primary" @click="saveConfig">{{ t('common.save') }}</el-button></el-form-item>
         </el-form>
       </el-tab-pane>
@@ -443,4 +446,5 @@ onMounted(async () => {
 .teams-table { width: max-content; max-width: 100%; }
 .cyctext { font-family: ui-monospace, Menlo, Consolas, monospace; letter-spacing: 1px; }
 .small { font-size: 12px; }
+.night-hint { display: block; width: 100%; color: #909399; line-height: 1.5; margin-top: 4px; }
 </style>

@@ -80,7 +80,7 @@ deploy/Caddyfile, deploy/install/install.html
 ## 3. 核心概念（领域模型）
 
 ### 3.1 班次与排班（`shifts.py`）
-- 三个班次 `day` / `middle` / `night`，开始时间在 `shift_config`（默认 07 / 15 / 23）。**夜班归属开始那一天**（「班次日」）。
+- 三个班次 `day` / `middle` / `night`，开始时间在 `shift_config`（默认 07 / 15 / 23）。**夜班归属下班那一天**（「班次日」D = D-1 23:00 ～ D 23:00，顺序 夜 → 白 → 中，`shifts.ORDER`；2026-11-27 起，迁移 0022）。班次起止一律用 `Schedule.shift_window` / `shift_start`，不要自己拼日期；「现在是哪个班次日」用 `shift_at(now)`，23:00 以后它是第二天，不是 `now.date()`。
 - 每个班组一个**循环** `Cycle(pattern, start, holiday_off)`：pattern 每天一项，可以是 `day/middle/night/off` 或**自定义时间段**如 `07:00-12:00,14:00-17:00`（`check_hours` 校验）。自定义时间段按与哪个班重叠最多算作哪个班（`entry_kind`）。
 - `kind`：`cycle`（有循环）/ `manual`（不固定，平时休息）。`is_main`：主班组（1～4 班）单独显示；其他班组（常白班、临时组）**合并**到同一班次的第一个主班组（`group_of`）。
 - 优先级：`active_from/to` 有效期 → **班组调班**（`team_shift_overrides`，可为时间段）→ 循环 → 若是非主班组且结果为休息，再看**成员带出来的班次**（`member_fn`，有成员被单独安排上班就算在班）——**这一天有班组调班时不看**（明确写下的优先于推算的；trace 记 `member_ignored`）。用户面前的说法是四类：班组长期（循环）/ 班组某天（调班）/ 个人长期（`worker_schedules`，名册「长期排班」）/ 个人某天（出勤例外），见 `components/ScheduleGuide.vue`。

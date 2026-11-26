@@ -12,8 +12,11 @@ T = (rotating(1, 4), rotating(2, 6), rotating(3, 0), rotating(4, 2), day_team(5)
 def test_parse_and_check():
     assert parse_hours("day") is None
     assert check_hours(" 07:00-12:00 , 14:00-17:00") == "07:00-12:00,14:00-17:00"
-    assert check_hours("22:00-06:00") == "22:00-06:00"  # 最后一段可以跨午夜
-    for bad in ("7-12", "07:00-12:00,11:00-13:00", "20:00-02:00,03:00-05:00", "06:00-23:00", "25:00-26:00"):
+    assert check_hours("22:00-06:00") == "22:00-06:00"  # 跨午夜 = 前一天 22:00 到当天 06:00
+    assert check_hours("20:00-02:00,03:00-05:00") == "20:00-02:00,03:00-05:00"
+    assert check_hours("23:00-03:00,07:00-11:00") == "23:00-03:00,07:00-11:00"  # 23:00 以后开始的也算前一天晚上
+    for bad in ("7-12", "07:00-12:00,11:00-13:00", "03:00-05:00,20:00-02:00", "07:00-12:00,22:00-02:00",
+                "06:00-23:00", "25:00-26:00"):
         with pytest.raises(ValueError):
             check_hours(bad)
 
@@ -24,7 +27,8 @@ def test_entry_kind_by_overlap():
     assert s.entry_kind("13:00-21:00") == MIDDLE  # 白班 2h、中班 6h
     assert s.entry_kind("18:00-22:00") == MIDDLE
     assert s.entry_kind("22:00-06:00") == NIGHT
-    assert s.entry_kind("02:00-06:00") == NIGHT  # 凌晨的算前一天的夜班
+    assert s.entry_kind("02:00-06:00") == NIGHT  # 凌晨的算当天的夜班
+    assert s.entry_kind("23:00-03:00,07:00-11:00") == NIGHT  # 夜班 4h、白班 4h：一样多取前面的（班次日里夜班在前）
     assert s.entry_kind("off") == OFF
 
 
@@ -36,8 +40,12 @@ def test_entry_hours_and_team_with_custom_hours():
     assert s.shift_of(split, d) == DAY and split in s.teams_on(d, DAY)
     assert s.entry_hours(s.team_entry(split, d), d) == [(datetime(2026, 11, 24, 7), datetime(2026, 11, 24, 12)),
                                                           (datetime(2026, 11, 24, 14), datetime(2026, 11, 24, 17))]
-    assert s.entry_hours("night", d) == [(datetime(2026, 11, 24, 23), datetime(2026, 11, 25, 7))]
-    assert s.entry_hours("02:00-06:00", d) == [(datetime(2026, 11, 25, 2), datetime(2026, 11, 25, 6))]
+    # 夜班记在下班那天：11-24 的夜班 = 11-23 23:00 ~ 11-24 07:00
+    assert s.entry_hours("night", d) == [(datetime(2026, 11, 23, 23), datetime(2026, 11, 24, 7))]
+    assert s.entry_hours("02:00-06:00", d) == [(datetime(2026, 11, 24, 2), datetime(2026, 11, 24, 6))]
+    assert s.entry_hours("22:00-06:00", d) == [(datetime(2026, 11, 23, 22), datetime(2026, 11, 24, 6))]
+    assert s.entry_hours("23:00-24:00,00:00-04:00", d) == [(datetime(2026, 11, 23, 23), datetime(2026, 11, 24, 0)),
+                                                           (datetime(2026, 11, 24, 0), datetime(2026, 11, 24, 4))]
     assert s.shift_of(split, date(2026, 11, 28)) == OFF
     # 合并显示：并到白班主班组
     assert [t.id for t in s.group_of(split, d)][0] == s.main_team_on(d, DAY).id

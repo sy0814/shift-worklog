@@ -33,7 +33,7 @@ def test_every_night_shift_on_duty():
     occ = upcoming(r, AT(2026, 11, 21, 12), S, 2)
     assert occ == [AT(2026, 11, 21, 23), AT(2026, 11, 22, 23)]
     team, d, k = assignment(r, occ[0], S)
-    assert (team, d, k) == (T["T3"], date(2026, 11, 21), NIGHT)
+    assert (team, d, k) == (T["T3"], date(2026, 11, 22), NIGHT)  # 11-21 23:00 开始的是 11-22 的夜班
 
 
 def test_every_second_day_shift_global():
@@ -60,14 +60,14 @@ def test_day_team_shift_skips_weekend_and_holiday():
 
 
 def test_fixed_team_off_goes_to_next_shift():
-    # 11-21 10:00 派给 4 班（休息到 11-23 白班）→ 归到它的下一个班次
+    # 11-21 10:00 派给 4 班（11-21 的夜班早上已下班，11-22 休息，11-23 白班）→ 归到它的下一个班次
     r = Rule(kind="daily", at_time=time(10), assign="fixed", team_id=4)
     team, d, k = assignment(r, AT(2026, 11, 21, 10), S)
     assert team == T["T4"] and (d, k) == (date(2026, 11, 23), DAY)
-    # 在班班组：11-21 10:00 是 1 班白班；凌晨 2 点是前一天的夜班
+    # 在班班组：11-21 10:00 是 1 班白班；凌晨 2 点是当天的夜班
     r2 = Rule(kind="daily", at_time=time(10))
     assert assignment(r2, AT(2026, 11, 21, 10), S)[0] == T["T1"]
-    assert assignment(r2, AT(2026, 11, 22, 2), S)[1:] == (date(2026, 11, 21), NIGHT)
+    assert assignment(r2, AT(2026, 11, 22, 2), S)[1:] == (date(2026, 11, 22), NIGHT)
 
 
 def test_invalid_rules():

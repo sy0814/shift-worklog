@@ -2,13 +2,14 @@
 
 每个长期班组有一个**循环**：几天一循环、循环里每天上什么（白 / 中 / 夜 / 休）、循环第 1 天是哪天，
 以及「节假日休息」开关（打开后节假日休息，调休上班的日子按它的主要班次上班）。
-  例：倒班 1～4 班 = 8 天「白 白 中 中 夜 夜 休 休」；常白班 = 7 天「白×5 休 休」从周一开始 + 节假日休息。
+  例：倒班 1～4 班 = 8 天「白 白 中 中 休 夜 夜 休」；常白班 = 7 天「白×5 休 休」从周一开始 + 节假日休息。
 不固定班组（cycle 为空，例如临时班组）：默认休息，只按「班组调班」安排上班。
 临时班组有起止日期（active_from / active_to），范围以外一律休息。
 主班组（is_main，例如 1～4 班）：首页卡片、交接班单独显示；其他班组上哪个班，就合并到这个班次的主班组里显示。
 员工也可以有个人循环（见 worker_shift），不跟班组排班。
-夜班归属开始的那一天：11-21 23:00 ~ 11-22 07:00 记为 11-21 的夜班。
-交接顺序：夜班 → 白班 → 中班 → 夜班。
+夜班归属结束（下班）的那一天：11-21 23:00 ~ 11-22 07:00 记为 11-22 的夜班（和工厂的出勤表一致，
+表里 3 = 前一天 23:00 到当天 07:00）。所以一个「班次日」D 从 D-1 23:00 开始：夜班 → 白班 → 中班，到 D 23:00 结束。
+交接顺序：夜班 → 白班 → 中班 → 下一天的夜班。
 """
 
 import re
@@ -18,13 +19,14 @@ from datetime import date, datetime, time, timedelta
 
 DAY, MIDDLE, NIGHT, OFF = "day", "middle", "night", "off"
 KINDS = (DAY, MIDDLE, NIGHT, OFF)
-CYCLE = (DAY, DAY, MIDDLE, MIDDLE, NIGHT, NIGHT, OFF, OFF)  # 原来四班三倒的 8 天循环
+CYCLE = (DAY, DAY, MIDDLE, MIDDLE, OFF, NIGHT, NIGHT, OFF)  # 四班三倒的 8 天循环（中班后休一天，夜班记在下班那天）
 WEEKDAYS = (DAY, DAY, DAY, DAY, DAY, OFF, OFF)  # 周一到周五白班（从周一开始）
-ORDER = (DAY, MIDDLE, NIGHT)  # 一个「班次日」内的先后顺序
+ORDER = (NIGHT, DAY, MIDDLE)  # 一个「班次日」内的先后顺序（夜班从前一天晚上开始）
 MAX_CYCLE = 62
 
 # 自定义上班时间：循环里某一天不写 day / middle / night / off，而写时间段，例如 "07:00-12:00,14:00-17:00"
-# （最多 4 段，按时间先后；最后一段可以跨过午夜，例如 "22:00-06:00"）。
+# （最多 4 段，按时间先后；跨午夜的段、夜班开始（23:00）以后开始的段算前一天晚上，排在最前面，
+#  例如 "22:00-06:00" = 前一天 22:00 到当天 06:00；"23:00-03:00,07:00-11:00" = 前一天 23:00 到当天 03:00，再加当天 07:00 到 11:00）。
 # 分组、交接、任务归属班次时，按和白 / 中 / 夜哪个班重叠最多来算（见 Schedule.entry_kind）；
 # 首页「现在在不在上班」、加班从几点算起，用实际的时间段（见 Schedule.entry_hours）。
 # 推理过程（「为什么？」）：下面的函数可以带一个 trace 列表，按判定顺序追加每一步依据 {"code": ..., ...}。
@@ -53,7 +55,23 @@ def parse_hours(entry: str) -> list[tuple[time, time]] | None:
     return out
 
 
-def check_hours(entry: str) -> str:
+def _rel_minutes(a: time, b: time, night_start: time) -> tuple[int, int]:
+    """一段时间在「班次日」里的分钟数（当天 00:00 = 0）。前一天晚上的段为负：跨午夜的段（例如 22:00-06:00），
+    或者夜班开始（23:00）以后开始的段。"""
+    x, y = a.hour * 60 + a.minute, b.hour * 60 + b.minute
+    if y <= x:  # 跨午夜：从前一天晚上到当天
+        return x - 24 * 60, y
+    if x >= night_start.hour * 60 + night_start.minute:
+        return x - 24 * 60, y - 24 * 60
+    return x, y
+
+
+def evening_part(a: time, b: time, night_start: time) -> bool:
+    """这一段在前一天晚上开始（跨午夜，或夜班开始以后开始）。"""
+    return b <= a or a >= night_start
+
+
+def check_hours(entry: str, night_start: time = time(23)) -> str:
     """校验并规范化时间段写法；返回规范写法。"""
     iv = parse_hours(entry)
     if iv is None:
@@ -62,16 +80,12 @@ def check_hours(entry: str) -> str:
         raise ValueError("1..4 time ranges")
     total = 0
     prev_end = None
-    for i, (a, b) in enumerate(iv):
-        mins_a, mins_b = a.hour * 60 + a.minute, b.hour * 60 + b.minute
-        if mins_b <= mins_a:  # 跨午夜：只允许最后一段
-            if i != len(iv) - 1:
-                raise ValueError("only the last range may cross midnight")
-            mins_b += 24 * 60
-        if prev_end is not None and mins_a < prev_end:
+    for a, b in iv:
+        x, y = _rel_minutes(a, b, night_start)
+        if prev_end is not None and x < prev_end:
             raise ValueError("ranges must be in order and not overlap")
-        prev_end = mins_b
-        total += mins_b - mins_a
+        prev_end = y
+        total += y - x
     if total > 16 * 60:
         raise ValueError("at most 16 hours a day")
     return ",".join(f"{a:%H:%M}-{b:%H:%M}" if b != time(0, 0) else f"{a:%H:%M}-24:00" for a, b in iv)
@@ -182,24 +196,17 @@ class Schedule:
         return self.entry_kind(self.cycle_entry(cycle, d))
 
     def _slot_minutes(self) -> list[tuple[str, int, int]]:
-        """三个班次在一个班次日里的起止（分钟，夜班跨到第二天 = +1440）。"""
+        """三个班次在一个班次日里的起止（分钟，当天 00:00 = 0；夜班从前一天晚上开始 = 负数）。"""
         m = lambda t: t.hour * 60 + t.minute
         d, mid, n = m(self.day_start), m(self.middle_start), m(self.night_start)
-        return [(DAY, d, mid), (MIDDLE, mid, n), (NIGHT, n, d + 24 * 60)]
+        return [(NIGHT, n - 24 * 60, d), (DAY, d, mid), (MIDDLE, mid, n)]
 
     def entry_kind(self, entry: str) -> str:
         """班次写法原样返回；自定义时间段 → 和白 / 中 / 夜哪个班重叠最多就算哪个班（一样多取前面的）。"""
         iv = parse_hours(entry)
         if iv is None:
             return entry
-        mins = []
-        for a, b in iv:
-            x, y = a.hour * 60 + a.minute, b.hour * 60 + b.minute
-            if y <= x:
-                y += 24 * 60
-            if x < self.day_start.hour * 60 + self.day_start.minute:  # 凌晨开始的算前一个班次日的夜班部分
-                x, y = x + 24 * 60, y + 24 * 60
-            mins.append((x, y))
+        mins = [_rel_minutes(a, b, self.night_start) for a, b in iv]  # 夜班开始以后开始的段 = 前一天晚上
         best, best_overlap = DAY, -1
         for kind, s0, e0 in self._slot_minutes():
             ov = sum(max(0, min(y, e0) - max(x, s0)) for x, y in mins)
@@ -217,8 +224,8 @@ class Schedule:
         out = []
         for a, b in iv:
             start = datetime.combine(d, a)
-            if a < self.day_start:  # 凌晨开始的段，属于这个班次日的「夜里」，日期是第二天
-                start += timedelta(days=1)
+            if evening_part(a, b, self.night_start):  # 跨午夜或 23:00 以后开始：这个班次日的夜班，在前一天晚上
+                start -= timedelta(days=1)
             end = datetime.combine(start.date(), b)
             if end <= start:
                 end += timedelta(days=1)
@@ -303,12 +310,12 @@ class Schedule:
         """本地时间 dt 属于哪个班次日的哪个班次。"""
         d, t = dt.date(), dt.time()
         if t < self.day_start:
-            return d - timedelta(days=1), NIGHT
+            return d, NIGHT
         if t < self.middle_start:
             return d, DAY
         if t < self.night_start:
             return d, MIDDLE
-        return d, NIGHT
+        return d + timedelta(days=1), NIGHT  # 23:00 以后 = 第二天的夜班
 
     @staticmethod
     def next_shift(d: date, kind: str) -> tuple[date, str]:
@@ -317,13 +324,14 @@ class Schedule:
             return d, ORDER[i + 1]
         return d + timedelta(days=1), ORDER[0]
 
+    def shift_start(self, d: date, kind: str) -> datetime:
+        """班次开始（本地 naive 时间）。夜班从前一天晚上开始。"""
+        start_t = {DAY: self.day_start, MIDDLE: self.middle_start, NIGHT: self.night_start}[kind]
+        return datetime.combine(d - timedelta(days=1) if kind == NIGHT else d, start_t)
+
     def shift_window(self, d: date, kind: str) -> tuple[datetime, datetime]:
         """班次起止（本地 naive 时间）。"""
-        start_t = {DAY: self.day_start, MIDDLE: self.middle_start, NIGHT: self.night_start}[kind]
-        start = datetime.combine(d, start_t)
-        nd, nk = self.next_shift(d, kind)
-        end_t = {DAY: self.day_start, MIDDLE: self.middle_start, NIGHT: self.night_start}[nk]
-        return start, datetime.combine(nd, end_t)
+        return self.shift_start(d, kind), self.shift_start(*self.next_shift(d, kind))
 
     def handover_target(self, team: TeamInfo, d: date, kind: str) -> TeamInfo | None:
         """默认移交对象：本车间下一个班次的主班组（常白班 07-15 下班 → 当天中班）。"""

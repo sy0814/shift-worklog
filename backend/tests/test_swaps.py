@@ -23,7 +23,7 @@ def cell(client, h, team_id, wid, day):
 
 
 def test_swap_across_teams(client, admin_h, leader_h, teams, w):
-    day = "2026-11-21"
+    day = "2026-11-22"  # 1 班白班、4 班休息
     r = client.post("/api/attendance/swap", headers=leader_h,
                     json={"day": day, "worker_a": w["t1"], "worker_b": w["t4"], "note": "家里有事"})
     assert r.status_code == 200, r.text
@@ -71,8 +71,8 @@ def test_weekend_makeup_workday(client, admin_h, teams, w):
 
 
 def test_cover_without_shift_uses_covered_teams_shift(client, admin_h, teams, w):
-    # 11-29：3 班夜班（位置 4）。安排 1 班的人去顶 3 班，不指定班次 → 夜班
+    # 11-30：3 班夜班（11-29 23:00 开始）。安排 1 班的人去顶 3 班，不指定班次 → 夜班
     client.put("/api/attendance/batch", headers=admin_h, json={
-        "worker_ids": [w["t1"]], "start": "2026-11-29", "end": "2026-11-29", "status": "present", "team_id": teams["T3"]})
-    _, c = cell(client, admin_h, teams["T3"], w["t1"], "2026-11-29")
+        "worker_ids": [w["t1"]], "start": "2026-11-30", "end": "2026-11-30", "status": "present", "team_id": teams["T3"]})
+    _, c = cell(client, admin_h, teams["T3"], w["t1"], "2026-11-30")
     assert c["shift_kind"] == "night" and c["team_id"] == teams["T3"]
