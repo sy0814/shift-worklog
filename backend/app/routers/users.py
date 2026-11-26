@@ -103,14 +103,23 @@ class Relink(BaseModel):
 
 @router.put("/{user_id}/worker", response_model=UserOut)
 def relink(user_id: int, body: Relink, db: Session = Depends(get_db), admin: User = Depends(require_admin)):
-    """把账号改关联到名册里的另一个人（升级时自动建的名册记录不对时用；原来那条名册记录请自行停用）。"""
+    """把账号改关联到名册里的另一个人（例如原来的班长账号关联到名册里真正的那个人，账号用过的记录都跟着走；
+    原来那条名册记录请自行停用或删除）。那个人在名册里设成班长时自动开了账号、还没用过的话，那个空账号自动删掉；
+    用过的不能顶掉（409）。"""
+    from .. import usage
+
     u = db.get(User, user_id)
     w = db.get(Worker, body.worker_id)
     if u is None or w is None or u.role == "admin":
         raise HTTPException(status.HTTP_404_NOT_FOUND)
     other = db.scalar(select(User).where(User.worker_id == w.id))
     if other is not None and other.id != u.id:
-        raise HTTPException(status.HTTP_409_CONFLICT, "worker already has an account")
+        if other.last_login_at is not None or usage.user_refs(db, other.id):
+            raise HTTPException(status.HTTP_409_CONFLICT, "worker already has an account")
+        audit.log(db, user_id=admin.id, action="delete", entity="user", entity_id=other.id,
+                  old={"username": other.username, "worker_id": w.id, "reason": "relink"})
+        db.delete(other)
+        db.flush()
     old = u.worker_id
     u.worker_id, u.full_name, u.team_id = w.id, w.name, w.team_id
     audit.log(db, user_id=admin.id, action="update", entity="user", entity_id=u.id, field="worker_id",

@@ -88,3 +88,31 @@ def test_delete_unused_admin_account(client, admin_h):
     # 名册里的人的账号：去名册删
     staff = next(x for x in client.get("/api/users", headers=admin_h).json() if x["worker_id"])
     assert client.delete(f"/api/users/{staff['id']}", headers=admin_h).status_code == 400
+
+
+def test_relink_takes_over_unused_auto_account(client, admin_h, teams):
+    """原来的班长账号关联到名册里真正的那个人：那个人设成班长时自动开的账号没用过 → 自动删掉，旧账号接过来。"""
+    roles = {r["code"]: r["id"] for r in client.get("/api/roles", headers=admin_h).json()}
+    real = worker(client, admin_h, teams, "真正的班长")
+    client.patch(f"/api/workers/{real['id']}", headers=admin_h, json={"role_id": roles["leader"]})
+    auto = client.get(f"/api/workers/{real['id']}/account", headers=admin_h).json()
+    assert auto["user_id"]  # 设成班长自动开了账号
+    old = next(u for u in client.get("/api/users", headers=admin_h).json() if u["username"] == "t2_leader1")
+    login(client, "t2_leader1", "t2_leader1")  # 旧账号用过
+    r = client.put(f"/api/users/{old['id']}/worker", headers=admin_h, json={"worker_id": real["id"]})
+    assert r.status_code == 200, r.text
+    assert r.json()["worker_id"] == real["id"] and r.json()["full_name"] == "真正的班长"
+    users = client.get("/api/users", headers=admin_h).json()
+    assert all(u["id"] != auto["user_id"] for u in users)  # 空账号删掉了
+    assert client.get(f"/api/workers/{real['id']}/account", headers=admin_h).json()["user_id"] == old["id"]
+    login(client, "t2_leader1", "t2_leader1")  # 照样用原来的用户名密码登录
+    # 那个人自己的账号用过了 → 不能顶掉
+    other = worker(client, admin_h, teams, "有自己账号的人")
+    acc = client.put(f"/api/workers/{other['id']}/account", headers=admin_h, json={"password": "123456"}).json()
+    from app.db import SessionLocal
+    from app.models import User, utcnow
+    with SessionLocal() as db:
+        db.get(User, acc["user_id"]).last_login_at = utcnow()
+        db.commit()
+    r = client.put(f"/api/users/{old['id']}/worker", headers=admin_h, json={"worker_id": other["id"]})
+    assert r.status_code == 409

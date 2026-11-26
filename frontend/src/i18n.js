@@ -27,7 +27,7 @@ const messages = {
       deleteConfirm: '删除账号「{n}」？只有没登录过的账号能删，用过的请停用。',
       username: '用户名', fullName: '姓名', role: '角色', team: '班组', lang: '语言', active: '启用',
       admin: '管理员', leader: '班长', password: '初始密码', resetPassword: '重置密码', newPassword: '新密码',
-      oldPassword: '原密码', created: '创建时间', addAdmin: '新建管理员账号', admins: '系统管理员', staff: '名册里的人的账号', worker: '名册人员', status: '状态', lastLogin: '最后登录', relink: '改关联', relinkHint: '把这个账号改关联到名册里的另一个人（升级时自动建的名册记录不对时用；原来那条名册记录可以在员工名册里停用）', hint: '这里只新建系统管理员账号。班长、成员等的账号在「员工名册」里点「账号」开，姓名、班组、角色以名册为准。', switchUser: '换人',
+      oldPassword: '原密码', created: '创建时间', addAdmin: '新建管理员账号', admins: '系统管理员', staff: '名册里的人的账号', worker: '名册人员', status: '状态', lastLogin: '最后登录', relink: '改关联', relinkHint: '把这个账号（连同它用过的记录）改关联到名册里的另一个人，例如把原来的班长账号关联到名册里真正的那个人。那个人设成班长时自动开的账号如果还没登录过，会自动删掉。原来那条名册记录可以在员工名册里删除或停用。', hint: '这里只新建系统管理员账号。班长、成员等的账号在「员工名册」里点「账号」开，姓名、班组、角色以名册为准。', switchUser: '换人',
     },
     schedule: {
       calendar: '排班日历', config: '班次时间', baseDate: '基准日期', offset: '基准日循环位置',
@@ -262,7 +262,7 @@ const messages = {
       deleteConfirm: 'Obrisati nalog „{n}”? Može se obrisati samo nalog koji se nikad nije prijavio; inače ga deaktivirajte.',
       username: 'Korisničko ime', fullName: 'Ime i prezime', role: 'Uloga', team: 'Smena', lang: 'Jezik', active: 'Aktivan',
       admin: 'Administrator', leader: 'Šef smene', password: 'Početna lozinka', resetPassword: 'Resetuj lozinku', newPassword: 'Nova lozinka',
-      oldPassword: 'Stara lozinka', created: 'Kreirano', addAdmin: 'Novi administrator', admins: 'Administratori sistema', staff: 'Nalozi ljudi iz spiska', worker: 'Radnik', status: 'Status', lastLogin: 'Poslednja prijava', relink: 'Poveži drugačije', relinkHint: 'Poveži nalog sa drugom osobom iz spiska (ako je pri nadogradnji napravljen pogrešan zapis; stari zapis isključite u spisku radnika)', hint: 'Ovde se otvaraju samo administratori. Naloge šefova i članova otvarate u „Spisku radnika” → „Nalog”; ime, ekipa i uloga se uzimaju iz spiska.', switchUser: 'Promeni osobu',
+      oldPassword: 'Stara lozinka', created: 'Kreirano', addAdmin: 'Novi administrator', admins: 'Administratori sistema', staff: 'Nalozi ljudi iz spiska', worker: 'Radnik', status: 'Status', lastLogin: 'Poslednja prijava', relink: 'Poveži drugačije', relinkHint: 'Poveži ovaj nalog (sa svom istorijom) sa drugom osobom iz spiska, npr. stari nalog vođe smene sa pravom osobom. Ako je toj osobi nalog automatski napravljen i nikad se nije prijavila, taj nalog se briše. Stari zapis u spisku obrišite ili isključite.', hint: 'Ovde se otvaraju samo administratori. Naloge šefova i članova otvarate u „Spisku radnika” → „Nalog”; ime, ekipa i uloga se uzimaju iz spiska.', switchUser: 'Promeni osobu',
     },
     schedule: {
       calendar: 'Kalendar smena', config: 'Vreme smena', baseDate: 'Osnovni datum', offset: 'Pozicija u ciklusu',
@@ -497,7 +497,7 @@ const messages = {
       deleteConfirm: 'Delete account “{n}”? Only an account that never logged in can be deleted; otherwise deactivate it.',
       username: 'Username', fullName: 'Full name', role: 'Role', team: 'Team', lang: 'Language', active: 'Active',
       admin: 'Admin', leader: 'Team leader', password: 'Initial password', resetPassword: 'Reset password', newPassword: 'New password',
-      oldPassword: 'Old password', created: 'Created', addAdmin: 'New administrator', admins: 'System administrators', staff: 'Accounts of roster people', worker: 'Person', status: 'Status', lastLogin: 'Last sign-in', relink: 'Relink', relinkHint: 'Link this account to another person in the roster (if the upgrade created a wrong roster entry; disable the old entry in the roster)', hint: 'Only administrator accounts are created here. Accounts of leaders and members are opened in the roster → “Account”; name, team and role come from the roster.', switchUser: 'Switch person',
+      oldPassword: 'Old password', created: 'Created', addAdmin: 'New administrator', admins: 'System administrators', staff: 'Accounts of roster people', worker: 'Person', status: 'Status', lastLogin: 'Last sign-in', relink: 'Relink', relinkHint: 'Link this account (with its history) to another person in the roster, e.g. the old shift leader account to the real person. If that person got an automatic account that never logged in, it is removed. Delete or disable the old roster entry afterwards.', hint: 'Only administrator accounts are created here. Accounts of leaders and members are opened in the roster → “Account”; name, team and role come from the roster.', switchUser: 'Switch person',
     },
     schedule: {
       calendar: 'Shift calendar', config: 'Shift times', baseDate: 'Base date', offset: 'Cycle position on base date',

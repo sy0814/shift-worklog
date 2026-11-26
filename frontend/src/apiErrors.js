@@ -72,7 +72,7 @@ const T = {
   role_in_use: ['还有人是这个角色，不能删除', 'Uloga je u upotrebi', 'The role is in use'],
   role_builtin: ['内置角色不能删除', 'Ugrađena uloga ne može da se obriše', 'Built-in roles cannot be deleted'],
   role_name: ['请填写角色名称', 'Unesite naziv uloge', 'Enter a role name'],
-  has_account: ['这个人已经有账号了', 'Ta osoba već ima nalog', 'This person already has an account'],
+  has_account: ['这个人已经有自己的账号而且用过了（登录过或有记录），不能再关联别的账号；直接用他自己的账号，把旧账号停用就行', 'Ta osoba već ima nalog koji je korišćen; koristite njen nalog, a stari deaktivirajte', 'This person already has an account that has been used; use it and deactivate the old one'],
   need_username: ['请填写用户名', 'Unesite korisničko ime', 'Enter a username'],
   need_password: ['请填写密码', 'Unesite lozinku', 'Enter a password'],
   pw_short: ['密码至少 {x} 位', 'Lozinka mora imati bar {x} znakova', 'The password needs at least {x} characters'],
