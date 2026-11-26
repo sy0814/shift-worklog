@@ -97,20 +97,29 @@ def test_relink_takes_over_unused_auto_account(client, admin_h, teams):
     client.patch(f"/api/workers/{real['id']}", headers=admin_h, json={"role_id": roles["leader"]})
     auto = client.get(f"/api/workers/{real['id']}/account", headers=admin_h).json()
     assert auto["user_id"]  # 设成班长自动开了账号
-    old = next(u for u in client.get("/api/users", headers=admin_h).json() if u["username"] == "t2_leader1")
-    login(client, "t2_leader1", "t2_leader1")  # 旧账号用过
+    # 原来的班长账号（以前按人开、名册里是个占位的人）：自己建一个，别动共用的 t1_leader1 这些
+    holder = worker(client, admin_h, teams, "old_leader_x")
+    client.patch(f"/api/workers/{holder['id']}", headers=admin_h, json={"role_id": roles["leader"]})
+    oid = client.put(f"/api/workers/{holder['id']}/account", headers=admin_h,
+                     json={"username": "old_leader_x", "password": "Old2026!"}).json()["user_id"]
+    old = next(u for u in client.get("/api/users", headers=admin_h).json() if u["id"] == oid)
+    from app.db import SessionLocal
+    from app.models import User
+    with SessionLocal() as db:  # 用过：不用强制改密码，直接登录
+        db.get(User, oid).must_change_password = False
+        db.commit()
+    login(client, "old_leader_x", "Old2026!")  # 旧账号用过
     r = client.put(f"/api/users/{old['id']}/worker", headers=admin_h, json={"worker_id": real["id"]})
     assert r.status_code == 200, r.text
     assert r.json()["worker_id"] == real["id"] and r.json()["full_name"] == "真正的班长"
     users = client.get("/api/users", headers=admin_h).json()
     assert all(u["id"] != auto["user_id"] for u in users)  # 空账号删掉了
     assert client.get(f"/api/workers/{real['id']}/account", headers=admin_h).json()["user_id"] == old["id"]
-    login(client, "t2_leader1", "t2_leader1")  # 照样用原来的用户名密码登录
+    login(client, "old_leader_x", "Old2026!")  # 照样用原来的用户名密码登录
     # 那个人自己的账号用过了 → 不能顶掉
     other = worker(client, admin_h, teams, "有自己账号的人")
     acc = client.put(f"/api/workers/{other['id']}/account", headers=admin_h, json={"password": "123456"}).json()
-    from app.db import SessionLocal
-    from app.models import User, utcnow
+    from app.models import utcnow
     with SessionLocal() as db:
         db.get(User, acc["user_id"]).last_login_at = utcnow()
         db.commit()
