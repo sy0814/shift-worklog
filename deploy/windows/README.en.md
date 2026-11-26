@@ -434,6 +434,12 @@ powershell -ExecutionPolicy Bypass -File C:\WorkRecord\app\deploy\windows\backup
 
 1. Stop the system (administrator PowerShell):
 
+(pause the watchdog first, otherwise it restarts the services in the middle of the restore)
+
+```powershell
+Disable-ScheduledTask -TaskName WorkRecordWatchdog
+```
+
 ```powershell
 Stop-Service WorkRecordCaddy, WorkRecordApp
 ```
@@ -459,6 +465,12 @@ robocopy C:\WorkRecord\backups\uploads C:\WorkRecord\data\uploads /E
 
 ```powershell
 Start-Service WorkRecordApp, WorkRecordCaddy
+```
+
+(then turn the watchdog back on)
+
+```powershell
+Enable-ScheduledTask -TaskName WorkRecordWatchdog
 ```
 
 ### 10.4 Moving to a new server PC

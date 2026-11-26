@@ -413,6 +413,12 @@ powershell -ExecutionPolicy Bypass -File C:\WorkRecord\app\deploy\windows\backup
 
 1. 用管理员 PowerShell 停止系统：
 
+（先暂停看门狗，不然它会在恢复中途把服务重新启动）
+
+```powershell
+Disable-ScheduledTask -TaskName WorkRecordWatchdog
+```
+
 ```powershell
 Stop-Service WorkRecordCaddy, WorkRecordApp
 ```
@@ -438,6 +444,12 @@ robocopy C:\WorkRecord\backups\uploads C:\WorkRecord\data\uploads /E
 
 ```powershell
 Start-Service WorkRecordApp, WorkRecordCaddy
+```
+
+（最后恢复看门狗）
+
+```powershell
+Enable-ScheduledTask -TaskName WorkRecordWatchdog
 ```
 
 ### 10.4 换一台服务器电脑
