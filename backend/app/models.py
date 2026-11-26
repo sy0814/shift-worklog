@@ -470,6 +470,8 @@ class Attendance(Base):
     shift_kind: Mapped[str | None] = mapped_column(String(10), nullable=True)
     team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"), nullable=True)  # 顶哪个班组的班
     note: Mapped[str] = mapped_column(String(200), default="")
+    # 工厂出勤月表里的原始写法（AL、SL、BT……），出勤页原样显示；手工改的没有
+    code: Mapped[str | None] = mapped_column(String(10), nullable=True)
     source: Mapped[str] = mapped_column(String(10))  # import / manual
     updated_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

@@ -22,6 +22,7 @@ class DayAttendance:
     source: str  # default / import / manual
     note: str = ""
     hours: str | None = None  # 按排班有自定义上班时间时，例如 "07:00-12:00,14:00-17:00"
+    code: str | None = None  # 出勤月表里的原始写法（AL、SL、BT……）
 
 
 def default_for(sched: Schedule, entry: Entry, d: date, trace: list | None = None) -> DayAttendance:
@@ -60,7 +61,7 @@ def resolve(sched: Schedule, entry: Entry, a: Attendance | None, d: date,
     if base.hours and a.status == "present" and hours is None:
         note(trace, "hours_dropped", hours=base.hours)
     return DayAttendance(a.status, kind if a.status == "present" else None,
-                         a.team_id or entry.team_id, a.source, a.note, hours)
+                         a.team_id or entry.team_id, a.source, a.note, hours, getattr(a, "code", None))
 
 
 def effective(db: Session, workers: list[Worker], start: date, end: date,
@@ -129,3 +130,38 @@ def parse_shift(v) -> str | None:
     if v is None or str(v).strip() == "":
         return None
     return _SHIFT.get(str(v).strip().lower(), "invalid")
+
+
+# ---------------- 工厂出勤月表（SSZM）----------------
+# 一行一个人（Sap No. = 工号），一列一天：1 / 2 / 3 = 白 / 中 / 夜（夜班记在下班那天），/ = 休息，
+# 其余是缩写（表头说明里列着）。对应到系统的状态（用户 2026-11-27 定的），原来的缩写存进 code 和备注，出勤页原样显示。
+SHEET_CODES = {
+    "AL": "leave", "UL": "leave", "BT": "leave",  # 年假、无薪假、出差（不在现场）；PL…（各种带薪假）见 sheet_cell
+    "SL": "sick", "SLI": "sick", "SLP": "sick",
+    "PH": "off", "RH": "off", "SH": "off",  # 法定假、宗教节日（Slava）、用攒的工时调休
+    "EH": "present",  # 攒工时（来上班了）
+    "RW": "absent",  # 停工
+}
+SHEET_SHIFTS = {"1": "day", "2": "middle", "3": "night"}
+_SHEET_JUNK = " .·。,，、'\""
+
+
+def sheet_cell(v) -> tuple[str, str | None, str | None] | str | None:
+    """月表的一格 → (状态, 班次, 原始缩写)；空格子 → None（不改）；认不出 → "invalid"。
+    「2.」「2·」「3.」这类手误按数字认。"""
+    if v is None:
+        return None
+    if isinstance(v, float) and v.is_integer():
+        v = int(v)
+    s = str(v).strip().strip(_SHEET_JUNK).upper()
+    if s == "":
+        return None
+    if s in SHEET_SHIFTS:
+        return "present", SHEET_SHIFTS[s], None
+    if s in ("/", "\\"):
+        return "off", None, None
+    if s in SHEET_CODES:
+        return SHEET_CODES[s], None, s
+    if s.startswith("PL") and s[2:].isalpha() and len(s) <= 6:  # PLC、PLM、PLE、PLD、PLBD、PLW、PLCB……带薪假
+        return "leave", None, s
+    return "invalid"

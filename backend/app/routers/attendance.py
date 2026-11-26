@@ -3,7 +3,7 @@
 import io
 from datetime import date, datetime, timedelta
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import Response
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill
@@ -33,6 +33,7 @@ class Cell(BaseModel):
     source: str
     note: str = ""
     hours: str | None = None  # 自定义上班时间
+    code: str | None = None  # 出勤月表里的原始写法（AL、SL、BT……）
 
 
 class AttendanceGrid(BaseModel):
@@ -76,6 +77,11 @@ class ImportError_(BaseModel):
 class ImportOut(BaseModel):
     imported: int
     errors: list[ImportError_]
+    # 出勤月表：几个人、几天、和排班不一样记下的例外（imported）、和排班一样而清掉的旧例外
+    month: str | None = None
+    people: int = 0
+    days: int = 0
+    cleared: int = 0
 
 
 class PersonDay(BaseModel):
@@ -122,7 +128,8 @@ def grid(start: date, end: date, team_id: int | None = None, db: Session = Depen
 
 
 def _apply(db: Session, worker: Worker, day: date, status_: str, shift_kind: str | None, team_id: int | None,
-           note: str, source: str, user_id: int) -> None:
+           note: str, source: str, user_id: int, code: str | None = None) -> bool:
+    """写一条例外（status_ = default：删掉例外，恢复按排班）。返回有没有改动。"""
     existing = db.scalar(select(Attendance).where(Attendance.worker_id == worker.id, Attendance.day == day))
     eid = f"{worker.id}:{day}"
     if status_ == "default":
@@ -130,18 +137,22 @@ def _apply(db: Session, worker: Worker, day: date, status_: str, shift_kind: str
             audit.log(db, user_id=user_id, action="delete", entity="attendance", entity_id=eid,
                       old={"status": existing.status, "shift_kind": existing.shift_kind, "note": existing.note})
             db.delete(existing)
-        return
+            return True
+        return False
     new = {"status": status_, "shift_kind": shift_kind if status_ == "present" else None,
-           "team_id": team_id if status_ == "present" else None, "note": note.strip()}
+           "team_id": team_id if status_ == "present" else None, "note": note.strip(), "code": code}
     if existing is None:
         db.add(Attendance(worker_id=worker.id, day=day, source=source, updated_by=user_id,
                           updated_at=utcnow(), **new))
         audit.log(db, user_id=user_id, action="create", entity="attendance", entity_id=eid,
                   new=new | {"source": source})
-    elif audit.log_changes(db, existing, new | {"source": source}, user_id=user_id, entity="attendance",
-                           entity_id=eid):
+        return True
+    if audit.log_changes(db, existing, new | {"source": source}, user_id=user_id, entity="attendance",
+                         entity_id=eid):
         existing.updated_by = user_id
         existing.updated_at = utcnow()
+        return True
+    return False
 
 
 @router.put("/attendance", response_model=Cell)
@@ -284,10 +295,11 @@ def _parse_day(v) -> date | None:
 
 
 @router.post("/attendance/import", response_model=ImportOut)
-async def import_attendance(file: UploadFile = File(...), db: Session = Depends(get_db),
-                            admin: User = Depends(get_current_user)):
-    """按模板导入（系统管理员：全厂；出勤权限为「本车间」的车间管理员：只能导本车间的人）。
-    先全部校验，有任何一行出错就一行都不导入，返回错误清单。"""
+async def import_attendance(file: UploadFile = File(...), month: str | None = Form(default=None),
+                            db: Session = Depends(get_db), admin: User = Depends(get_current_user)):
+    """按模板导入，或导入工厂的出勤月表（有「Sap No.」那一列的；month = 页面上选的月份，例如 2026-11）。
+    系统管理员：全厂；出勤权限为「本车间」的车间管理员：只能导本车间的人。
+    先全部校验，有任何一处出错就一条都不导入，返回错误清单。"""
     who = permissions.who(db, admin)
     scope = who.scope("attendance.edit")
     permissions.require(scope in ("dept", "all"))
@@ -302,6 +314,8 @@ async def import_attendance(file: UploadFile = File(...), db: Session = Depends(
         wq = wq.where(Worker.department_id == who.dept_id)
     workers = list(db.scalars(wq))
     by_no = {w.employee_no.strip(): w for w in workers if w.employee_no}
+    if (sap := _find_sheet_header(ws)) is not None:
+        return _import_sheet(db, ws, sap, month, by_no, admin, file.filename or "xlsx")
     by_name: dict[str, list[Worker]] = {}
     for w in workers:
         by_name.setdefault(w.name.strip().lower(), []).append(w)
@@ -350,6 +364,102 @@ async def import_attendance(file: UploadFile = File(...), db: Session = Depends(
               new={"rows": len(rows)})
     db.commit()
     return ImportOut(imported=len(rows), errors=[])
+
+
+# ---------------- 工厂出勤月表 ----------------
+_WEEKDAYS = {  # 表里第二行的星期（英 / 塞 / 中），Python weekday()：周一 = 0
+    **{k: i for i, k in enumerate(("mon", "tue", "wed", "thu", "fri", "sat", "sun"))},
+    **{k: i for i, k in enumerate(("pon", "uto", "sre", "čet", "pet", "sub", "ned"))},
+    **{k: i for i, k in enumerate(("一", "二", "三", "四", "五", "六", "日"))},
+}
+
+
+def _find_sheet_header(ws) -> tuple[int, int] | None:
+    """出勤月表：前 6 行里找「Sap No.」那一格 → (行, 列)，都从 1 开始；不是月表返回 None。"""
+    for r in range(1, min(ws.max_row, 6) + 1):
+        for c in range(1, min(ws.max_column, 10) + 1):
+            v = ws.cell(r, c).value
+            if isinstance(v, str) and v.strip().lower().replace(" ", "").startswith("sapno"):
+                return r, c
+    return None
+
+
+def _import_sheet(db: Session, ws, sap: tuple[int, int], month: str | None, by_no: dict, admin: User,
+                  filename: str) -> ImportOut:
+    """导入出勤月表。日期按列的顺序算（表头的日期数字可能写错，不用），用第二行的星期核对月份。
+    每一格和排班比：一样的不记（以前有例外的清掉），不一样的记成例外；空格子不改。"""
+    import calendar
+
+    from ..schedule_service import load_schedule
+    from ..worker_history import Timelines
+
+    errors: list[ImportError_] = []
+    try:
+        y, m = (int(x) for x in (month or "").split("-"))
+        ndays = calendar.monthrange(y, m)[1]
+    except ValueError:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "month required (YYYY-MM)")
+    hr, sc = sap
+    first = sc + 1  # 第 1 天所在的列
+    days = [date(y, m, i + 1) for i in range(ndays)]
+    # 星期那一行：核对月份；多出来的列必须是空的
+    for i in range(ndays + 3):
+        v = ws.cell(hr + 1, first + i).value
+        s = str(v).strip().lower()[:3] if v is not None else ""
+        if i >= ndays:
+            if s:
+                errors.append(ImportError_(row=hr + 1, message=f"表里的天数比 {month} 的 {ndays} 天多 / more day columns than {ndays}"))
+            break
+        if not s:
+            errors.append(ImportError_(row=hr + 1, message=f"第 {i + 1} 天没有星期，表里的天数比 {month} 少？ / missing weekday for day {i + 1}"))
+            break
+        if s in _WEEKDAYS and _WEEKDAYS[s] != days[i].weekday():
+            errors.append(ImportError_(row=hr + 1, message=f"第 {i + 1} 天写的是 {v}，可 {days[i]} 是星期{'一二三四五六日'[days[i].weekday()]}，月份选错了？ / weekday mismatch, wrong month?"))
+            break
+    rows: list[tuple[Worker, list]] = []
+    seen: dict[str, int] = {}
+    for r in range(hr + 2, ws.max_row + 1):
+        no = ws.cell(r, sc).value
+        if no is None or str(no).strip() == "":
+            continue
+        no = str(int(no)) if isinstance(no, float) and no.is_integer() else str(no).strip()
+        w = by_no.get(no)
+        if w is None:
+            errors.append(ImportError_(row=r, message=f"工号 {no} 在名册里找不到（先在员工名册里填上工号）/ unknown Sap No. {no}"))
+            continue
+        if no in seen:
+            errors.append(ImportError_(row=r, message=f"工号 {no} 出现两次（第 {seen[no]} 行）/ duplicate Sap No."))
+            continue
+        seen[no] = r
+        cells = []
+        for i, d in enumerate(days):
+            v = ws.cell(r, first + i).value
+            x = att.sheet_cell(v)
+            if x == "invalid":
+                errors.append(ImportError_(row=r, message=f"工号 {no} {d:%m-%d}：认不出「{v}」/ cannot read {v!r}"))
+            cells.append(x)
+        rows.append((w, cells))
+    if errors:
+        return ImportOut(imported=0, errors=sorted(errors, key=lambda e: e.row), month=month)
+
+    sched = load_schedule(db)
+    tl = Timelines(db, [w for w, _ in rows])
+    written = cleared = 0
+    for w, cells in rows:
+        for d, x in zip(days, cells):
+            if x is None:
+                continue
+            st, sh, code = x
+            base = att.default_for(sched, tl.on(w.id, d), d)
+            same = code is None and st == base.status and (st != "present" or sh == base.shift_kind)
+            if same:
+                cleared += _apply(db, w, d, "default", None, None, "", "import", admin.id)
+            else:
+                written += _apply(db, w, d, st, sh, None, code or "", "import", admin.id, code=code)
+    audit.log(db, user_id=admin.id, action="import", entity="attendance", entity_id=filename,
+              new={"month": month, "people": len(rows), "exceptions": written, "cleared": cleared})
+    db.commit()
+    return ImportOut(imported=written, errors=[], month=month, people=len(rows), days=ndays, cleared=cleared)
 
 
 # ---------------- 某人某天 ----------------
