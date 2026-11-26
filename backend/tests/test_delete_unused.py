@@ -25,7 +25,8 @@ def test_delete_unused_worker_with_account(client, admin_h, leader_h, teams):
     assert acc["user_id"]
     assert client.delete(f"/api/workers/{w['id']}", headers=leader_h).status_code == 403  # 班长不能删名册
     assert client.delete(f"/api/workers/{w['id']}", headers=admin_h).status_code == 204
-    assert client.get(f"/api/workers/{w['id']}", headers=admin_h).status_code == 404
+    listed = client.get("/api/workers", headers=admin_h, params={"include_inactive": True}).json()
+    assert all(x["id"] != w["id"] for x in listed)
     assert all(u["id"] != acc["user_id"] for u in client.get("/api/users", headers=admin_h).json())
     hist = client.get("/api/audit", headers=admin_h, params={"entity": "worker"}).json()
     items = hist["items"] if isinstance(hist, dict) else hist
