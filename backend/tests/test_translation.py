@@ -267,14 +267,19 @@ def test_glossary_import_export(client, admin_h, leader_h):
 
 
 def test_queue_under_burst(client, leader_h, fake, monkeypatch):
-    """一波并发录入：请求立即返回，同时最多 WORKERS 个翻译调用，最后全部翻译完。"""
+    """一波并发录入：请求不等翻译，同时最多 WORKERS 个翻译调用，最后全部翻译完。
+
+    不用「请求耗时 < 1 秒」判断（CI 机器忙时 SQLite 并发写就可能超过 1 秒）：翻译先卡住，
+    等全部请求都返回了才放行。请求要是等翻译，就永远返回不了，测试会失败。"""
     import threading
     import time as _t
     from concurrent.futures import ThreadPoolExecutor
 
     active, peak, lock = [0], [0], threading.Lock()
+    release = threading.Event()
 
     def slow(_body):
+        assert release.wait(60), "翻译一直没放行"
         with lock:
             active[0] += 1
             peak[0] = max(peak[0], active[0])
@@ -291,8 +296,12 @@ def test_queue_under_burst(client, leader_h, fake, monkeypatch):
             assert r.status_code == 201
             return r.json()["id"], _t.monotonic() - t0
         with ThreadPoolExecutor(6) as ex:
-            results = list(ex.map(create, range(30)))
-        assert max(d for _, d in results) < 1.0  # 请求不等翻译
+            futs = [ex.submit(create, i) for i in range(30)]
+            # 翻译还卡着：请求要能全部返回（等翻译的话这里会超时）
+            results = [f.result(timeout=30) for f in futs]
+        assert all(client.get(f"/api/tasks/{i}", headers=leader_h).json()["translation_status"] != "done"
+                   for i, _ in results)
+        release.set()
         deadline = _t.monotonic() + 30
         ids = [i for i, _ in results]
         while _t.monotonic() < deadline:
@@ -303,6 +312,7 @@ def test_queue_under_burst(client, leader_h, fake, monkeypatch):
         assert all(s == "done" for s in sts)
         assert peak[0] <= translation_service.WORKERS
     finally:
+        release.set()
         translation_service.stop_workers()
 
 
