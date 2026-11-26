@@ -9,7 +9,7 @@ import { translateError } from '../apiErrors'
 
 const { t, locale } = useI18n()
 const st = ref(null)
-const form = reactive({ backup_dir: '', backup_copy_dir: '', archive_enabled: false, archive_months: 12, archive_dir: '' })
+const form = reactive({ backup_dir: '', backup_copy_dir: '', archive_enabled: false, archive_months: 12, archive_dir: '', alert_lang: 'zh' })
 const checks = reactive({})
 const busy = reactive({ save: false, backup: false, archive: false })
 
@@ -87,6 +87,16 @@ async function archiveNow() {
         </div>
         <small :class="['chk', checks.backup_copy_dir?.ok ? 'ok' : 'err']">{{ checks.backup_copy_dir ? checkText(checks.backup_copy_dir) : '' }}</small>
         <small class="muted">{{ t('stor.copyHint') }}</small>
+      </el-form-item>
+
+      <h4>{{ t('stor.alertLang') }}</h4>
+      <el-form-item>
+        <el-radio-group v-model="form.alert_lang">
+          <el-radio-button value="zh">中文</el-radio-button>
+          <el-radio-button value="sr">Srpski</el-radio-button>
+          <el-radio-button value="en">English</el-radio-button>
+        </el-radio-group>
+        <small class="muted">{{ t('stor.alertLangHint') }}</small>
       </el-form-item>
 
       <h4>{{ t('stor.archive') }}</h4>

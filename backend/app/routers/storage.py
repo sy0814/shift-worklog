@@ -1,6 +1,7 @@
-"""「系统设置 → 存储与备份」（仅管理员）：备份位置、第二份备份、最近一次备份结果、立即备份；原图归档。"""
+"""「系统设置 → 存储与备份」（仅管理员）：备份位置、第二份备份、最近一次备份结果、立即备份；原图归档；服务器报警语言。"""
 
 from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -20,9 +21,11 @@ class StorageIn(BaseModel):
     archive_enabled: bool = False
     archive_months: int = Field(default=12, ge=1, le=120)
     archive_dir: str = Field(default="", max_length=300)
+    alert_lang: Literal["zh", "sr", "en"] | None = None  # 服务器看门狗报警语言；不传 = 不改
 
 
 class StorageOut(StorageIn):
+    alert_lang: str
     default_backup_dir: str  # 没设置时用的目录
     status: dict | None  # 最近一次备份（backup.ps1 写的）
     archived: int  # 已归档的原图张数
@@ -33,7 +36,7 @@ class StorageOut(StorageIn):
 def _out(db: Session) -> StorageOut:
     import os
 
-    return StorageOut(**storage_service.backup_dirs(), **storage_service.get_cfg(db),
+    return StorageOut(**storage_service.backup_dirs(), **storage_service.get_cfg(db), alert_lang=storage_service.alert_lang(),
                       default_backup_dir=str(storage_service.data_dir().parent / "backups"),
                       status=storage_service.backup_status(), **storage_service.archive_stats(db),
                       windows=os.name == "nt")
@@ -68,10 +71,12 @@ def put_storage(body: StorageIn, db: Session = Depends(get_db), admin: User = De
         cp = Path(body.backup_copy_dir.strip())
         if cp == main or main in cp.parents or cp in main.parents:  # 互相包含会无限复制
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "backup_copy_dir: must be outside backup_dir")
-    old = storage_service.backup_dirs() | storage_service.get_cfg(db)
+    old = storage_service.backup_dirs() | storage_service.get_cfg(db) | {"alert_lang": storage_service.alert_lang()}
     storage_service.set_backup_dirs(body.backup_dir, body.backup_copy_dir)
     storage_service.set_cfg(db, body.model_dump())
-    new = storage_service.backup_dirs() | storage_service.get_cfg(db)
+    if body.alert_lang:
+        storage_service.set_alert_lang(body.alert_lang)
+    new = storage_service.backup_dirs() | storage_service.get_cfg(db) | {"alert_lang": storage_service.alert_lang()}
     for k in new:
         if old.get(k) != new[k]:
             audit.log(db, user_id=admin.id, action="update", entity="setting", entity_id=storage_service.KEY,

@@ -2,6 +2,7 @@
 - 备份目录（主）、第二份备份目录（另一块盘 / 网络共享 / 云盘同步文件夹）：写进 data 目录下的
   backup-target.txt / backup-copy.txt，由 Windows 计划任务里的 backup.ps1 读取；backup.ps1 把结果写进
   backup-status.json，这里读出来给页面显示
+- 服务器报警语言：watchdog-lang.txt（zh 默认 / sr / en），deploy/windows/watchdog.ps1 读
 - 原图归档：上传超过 N 个月的原图搬到归档目录（另一块盘），浏览图和缩略图留在原处，系统照常显示；
   归档盘没接上时，看「原图」会退回浏览图
 """
@@ -107,6 +108,19 @@ def backup_dirs() -> dict:
 def set_backup_dirs(backup_dir: str, copy_dir: str) -> None:
     _write_txt("backup-target.txt", backup_dir.strip())
     _write_txt("backup-copy.txt", copy_dir.strip())
+
+
+ALERT_LANGS = ("zh", "sr", "en")
+
+
+def alert_lang() -> str:
+    """服务器上看门狗报警（弹窗、事件日志）的语言：data 目录下的 watchdog-lang.txt，watchdog.ps1 读。"""
+    v = _read_txt("watchdog-lang.txt").strip().lower()
+    return v if v in ALERT_LANGS else "zh"
+
+
+def set_alert_lang(lang: str) -> None:
+    _write_txt("watchdog-lang.txt", "" if lang == "zh" else lang)  # 中文是默认，不留文件
 
 
 def backup_status() -> dict | None:
