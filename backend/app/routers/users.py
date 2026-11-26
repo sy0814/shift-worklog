@@ -51,6 +51,29 @@ def update_user(user_id: int, body: UserUpdate, db: Session = Depends(get_db),
     return u
 
 
+@router.delete("/{user_id}", status_code=204)
+def delete_user(user_id: int, db: Session = Depends(get_db), admin: User = Depends(require_admin)):
+    """删除管理员账号：只有没用过的（没登录过、没留下任何记录）。名册里的人的账号在员工名册里随人一起删。"""
+    from .. import usage
+
+    u = db.get(User, user_id)
+    if u is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND)
+    if u.id == admin.id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "cannot demote or disable yourself")
+    if u.worker_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "delete the worker in the roster instead")
+    refs = usage.user_refs(db, u.id)
+    if u.last_login_at is not None:
+        refs["login"] = 1
+    if refs:
+        raise HTTPException(status.HTTP_409_CONFLICT, "user in use: " + ",".join(sorted(refs)))
+    audit.log(db, user_id=admin.id, action="delete", entity="user", entity_id=u.id,
+              old={"username": u.username, "full_name": u.full_name, "role": u.role})
+    db.delete(u)
+    db.commit()
+
+
 @router.post("/{user_id}/reset-password", status_code=204)
 def reset_password(user_id: int, body: PasswordReset, db: Session = Depends(get_db),
                    admin: User = Depends(require_admin)):

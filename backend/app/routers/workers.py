@@ -219,6 +219,43 @@ def bulk_create(body: WorkerBulkCreate, db: Session = Depends(get_db), admin: Us
     return out
 
 
+@router.delete("/{worker_id}", status_code=204)
+def delete_worker(worker_id: int, db: Session = Depends(get_db), admin: User = Depends(get_current_user)):
+    """删除员工（连同他的账号、排班记录）：只有完全没用过的才能删（没有任务、出勤、加班、日志……账号没登录过、
+    没留下操作记录）。用过的只能把「在职」关掉，记录都要保留（操作记录只能追加）。"""
+    from .. import usage
+
+    w = db.get(Worker, worker_id)
+    if w is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND)
+    who = _manager(db, admin, w.department_id)
+    if _wide(db, w) and who.scope("worker.manage") != "all":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "cannot edit a factory-wide account")
+    refs = usage.worker_refs(db, w.id)
+    u = db.scalar(select(User).where(User.worker_id == w.id))
+    if u is not None:
+        if u.id == admin.id:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "cannot demote or disable yourself")
+        for k, n in usage.user_refs(db, u.id).items():
+            refs[k] = refs.get(k, 0) + n
+        if u.last_login_at is not None:
+            refs["login"] = 1
+    if refs:
+        raise HTTPException(status.HTTP_409_CONFLICT, "worker in use: " + ",".join(sorted(refs)))
+    old = {"name": w.name, "employee_no": w.employee_no, "team_id": w.team_id, "username": u.username if u else None}
+    if u is not None:
+        db.delete(u)
+    for s in db.scalars(select(WorkerSchedule).where(WorkerSchedule.worker_id == w.id)):
+        db.delete(s)
+    avatar = w.avatar_path
+    db.flush()
+    db.delete(w)
+    audit.log(db, user_id=admin.id, action="delete", entity="worker", entity_id=worker_id, old=old)
+    db.commit()
+    if avatar:
+        (Path(get_settings().upload_dir) / avatar).unlink(missing_ok=True)
+
+
 @router.patch("/{worker_id}", response_model=WorkerOut)
 def update_worker(worker_id: int, body: WorkerUpdate, db: Session = Depends(get_db),
                   admin: User = Depends(get_current_user)):

@@ -83,9 +83,15 @@ const T = {
   no_team: ['这个人没有班组', 'Osoba nema ekipu', 'This person has no team'],
   tr_off: ['没有配置翻译接口（管理员在「系统设置」里配置）', 'Prevod nije podešen', 'Translation is not configured'],
   pw_same: ['新密码不能和原密码、默认密码一样', 'Nova lozinka mora biti drugačija', 'Choose a different password'],
+  worker_used: ['这个人已经用过（{x}），不能删除；不再用了请把「在职」关掉', 'Radnik je korišćen ({x}) i ne može se obrisati; isključite „Aktivan”', 'This person has been used ({x}) and cannot be deleted; switch off “Active” instead'],
+  user_used: ['这个账号已经用过（{x}），不能删除；不再用了请停用', 'Nalog je korišćen ({x}) i ne može se obrisati; deaktivirajte ga', 'This account has been used ({x}) and cannot be deleted; deactivate it instead'],
+  roster_acc: ['名册里的人的账号请到「员工名册」里删人', 'Nalog radnika brišite u „Spisak radnika”', 'Delete roster accounts from the roster'],
   self: ['不能降级或停用自己', 'Ne možete sebi oduzeti prava', 'You cannot demote or disable yourself'],
 }
 const RULES = [
+  [/^worker in use: (.+)/, 'worker_used', 'refs'],
+  [/^user in use: (.+)/, 'user_used', 'refs'],
+  [/^delete the worker in the roster/, 'roster_acc'],
   [/^(?:this task|project tasks) cannot be handed over/, 'no_transfer'],
   [/^not your department/, 'not_dept'],
   [/^department name required/, 'dept_name'],
@@ -174,12 +180,26 @@ const RULES = [
 const IDX = { zh: 0, sr: 1, en: 2 }
 
 /** detail：服务器的英文说明；t：vue-i18n 的 t（翻译任务状态用） */
+// 「用过了不能删」里的表名 → 人能看懂的说法（同一种说法只出现一次）
+const REFS = {
+  tasks: ['任务', 'zadaci', 'tasks'], task_workers: ['任务', 'zadaci', 'tasks'], task_logs: ['班次日志', 'dnevnik smene', 'shift log'],
+  attendance: ['出勤记录', 'prisustvo', 'attendance'], overtime: ['加班', 'prekovremeni rad', 'overtime'],
+  audit_log: ['操作记录', 'evidencija izmena', 'audit log'], login: ['登录过', 'prijave', 'logins'],
+  inspection_templates: ['定期巡查', 'obilasci', 'inspections'], attachments: ['图片', 'slike', 'photos'],
+  task_handovers: ['移交', 'predaje', 'handovers'], projects: ['项目', 'projekti', 'projects'],
+}
+function refsText(list, i) {
+  const out = list.split(',').map((n) => (REFS[n.trim()] || [])[i] || n.trim())
+  return [...new Set(out)].join(i === 0 ? '、' : ', ')
+}
+
 export function translateError(detail, locale, t) {
   for (const [re, key, kind] of RULES) {
     const m = re.exec(detail)
     if (!m) continue
     let x = m[1] ?? ''
     if (kind === 'status' && t) x = t(`status.${x}`)
+    if (kind === 'refs') x = refsText(x, IDX[locale] ?? 0)
     return T[key][IDX[locale] ?? 0].replace('{x}', x)
   }
   return detail

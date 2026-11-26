@@ -60,6 +60,14 @@ const assignableRoles = computed(() => roles.value.filter((r) => auth.isAdmin ||
 const accOpen = ref(false)
 const accWorker = ref(null)
 function openAccount(w) { accWorker.value = w; accOpen.value = true }
+// 删除：只有完全没用过的人（录错的、测试的）能删，连同账号；用过的服务器会拒绝，提示改成「在职」关掉
+async function removeWorker(w) {
+  await ElMessageBox.confirm(t('workers.deleteConfirm', { n: w.name }), t('common.delete'),
+    { type: 'warning', confirmButtonText: t('common.delete'), cancelButtonText: t('common.cancel'), confirmButtonClass: 'el-button--danger' })
+  await api.delete(`/workers/${w.id}`)
+  ElMessage.success(t('workers.deleted', { n: w.name }))
+  load()
+}
 async function setRole(w, roleId) {
   Object.assign(w, (await api.patch(`/workers/${w.id}`, { role_id: roleId })).data)
   flash(w.id, 'role_id')
@@ -312,7 +320,8 @@ async function saveBulk() {
             <!-- 账号、排班放在同一格 -->
             <td class="c-ops">
               <RowActions :items="[...(canAccount(w) ? [{ label: t('acc.btn'), type: 'primary', onClick: () => openAccount(w) }] : []),
-                                   ...(!readonly ? [{ label: t('ws.btn'), type: 'primary', onClick: () => openSchedule(w) }] : [])]" />
+                                   ...(!readonly ? [{ label: t('ws.btn'), type: 'primary', onClick: () => openSchedule(w) },
+                                                    { label: t('common.delete'), type: 'danger', onClick: () => removeWorker(w) }] : [])]" />
             </td>
             <td v-for="f in fields" :key="f.id" :class="['cell', { on: isEditing(w, 'x' + f.id), ok: flashed === `${w.id}|x${f.id}` }]" @click="startEdit(w, 'x' + f.id)">
               <el-input v-if="isEditing(w, 'x' + f.id)" v-model="editing.value" size="small" class="cell-editor" maxlength="500"
