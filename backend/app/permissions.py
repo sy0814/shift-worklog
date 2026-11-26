@@ -35,6 +35,7 @@ PERMS: dict[str, tuple[str, ...]] = {
     "attendance.edit": ("none", "team", "dept", "all"),  # 改出勤、两人换班、批量安排
     "overtime.edit": ("none", "team", "dept", "all"),  # 设置加班
     "schedule.team_shift": ("none", "team", "dept", "all"),  # 班组调班（整个班组改班 / 两个班组互换）
+    "schedule.why": ("none", "team", "dept", "all"),  # 看排班原因（「为什么？」：某人 / 某班组某天的班是怎么来的）
     "inspection.manage": ("none", "team", "dept", "all"),  # 定期巡查项（team = 固定派给本班组的）
     "export": ("none", "team", "dept", "all"),  # 导出 Excel
     "worker.avatar": ("none", "team", "dept", "all"),  # 改员工头像
@@ -50,7 +51,7 @@ LEADER_PERMS = {
     "task.view": "dept", "task.create": "team", "task.edit": "team", "task.status": "team",
     "task.handover": "team", "task.discard": "team", "task.edit_done": "none",
     "photo.upload": "team", "photo.delete": "team", "translation.correct": "team",
-    "attendance.edit": "team", "overtime.edit": "team", "schedule.team_shift": "team",
+    "attendance.edit": "team", "overtime.edit": "team", "schedule.team_shift": "team", "schedule.why": "dept",
     "inspection.manage": "team", "export": "team", "worker.avatar": "team", "worker.pin": "team",
     "project.manage": "team", "equipment.manage": "dept", "worker.manage": "none", "team.manage": "none",
     "analysis": "none",

@@ -95,7 +95,7 @@ function openWhy(teamId, day) {
 const TIMES = Array.from({ length: 48 }, (_, i) => `${String(Math.floor(i / 2)).padStart(2, '0')}:${i % 2 ? '30' : '00'}`)
 const tsHours = computed(() => ts.ranges.filter((r) => r.a && r.b).map((r) => `${r.a}-${r.b}`).join(','))
 function openTeamShift(teamId, day) {
-  if (teamId != null && !canShift(teamId)) return auth.canWhy ? openWhy(teamId, day) : undefined
+  if (teamId != null && !canShift(teamId)) return auth.whyOk(teamId) ? openWhy(teamId, day) : undefined
   if (!canShiftAny.value) return
   const d = day || todayStr
   const cur = days.value.find((x) => x.day === d)
@@ -244,7 +244,7 @@ onMounted(async () => {
           </el-table-column>
           <el-table-column v-for="team in auth.teams" :key="team.id" :label="localName(team)" :width="narrow ? 84 : undefined" min-width="90" align="center">
             <template #default="{ row }">
-              <span :class="['cell', { admin: canShift(team.id) || auth.canWhy, changed: row.changed?.[team.id] }]" @click="openTeamShift(team.id, row.day)">
+              <span :class="['cell', { admin: canShift(team.id) || auth.whyOk(team.id), changed: row.changed?.[team.id] }]" @click="openTeamShift(team.id, row.day)">
                 <ShiftTag v-if="teamActive(team, row.day)" :kind="row.shifts[team.id]" :short="narrow" />
                 <small v-else class="muted">{{ t('schedule.inactive') }}</small>
                 <small v-if="row.hours?.[team.id]" class="hrs" :title="fullHours(row.hours[team.id])">{{ shortEntry(row.hours[team.id], t) }}</small>
@@ -268,7 +268,7 @@ onMounted(async () => {
 
         <el-dialog v-model="tsOpen" :title="t('schedule.teamShift')" width="min(480px, 94vw)" append-to-body>
           <p class="muted">{{ t('schedule.teamShiftHint') }}</p>
-          <template v-if="ts.why && auth.canWhy">
+          <template v-if="ts.why && auth.whyOk(ts.why.team)">
             <el-button link type="primary" size="small" @click="tsWhyOpen = !tsWhyOpen">{{ t('why.button') }} {{ localName(auth.teamById(ts.why.team)) }} · {{ ts.why.day }} {{ tsWhyOpen ? '▴' : '▾' }}</el-button>
             <div v-if="tsWhyOpen" class="why-box"><WhyPanel type="team" :id="ts.why.team" :day="ts.why.day" :hide="['team_override']" @navigate="tsOpen = false" /></div>
           </template>

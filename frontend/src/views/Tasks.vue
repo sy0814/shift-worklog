@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Plus } from '@element-plus/icons-vue'
 import api from '../api'
@@ -19,6 +19,13 @@ const outbox = useOutbox()
 const STATUS_SETS = { open: ['not_started', 'in_progress'], done: ['done'], all: [] }
 // 「我的任务 / 班组任务」（名册里的人才有）：成员（不能改班组任务的人）默认看自己的，班长等默认看班组的
 const hasMine = !!auth.user?.worker_id
+// 班组下拉只列能看的班组（和后端 visible_team_ids 一致）：「看任务」本车间 / 全厂 = 当前车间所有班组；
+// 本班组 = 自己的班组 + 当天合并显示的班组。选了看不到的班组只会是空列表，容易以为坏了
+const visibleTeams = computed(() => {
+  if (auth.isAdmin || ['dept', 'all'].includes(auth.scope('task.view'))) return auth.teams
+  const ids = new Set([...(auth.user?.group_team_ids || []), auth.user?.team_id])
+  return auth.teams.filter((t) => ids.has(t.id))
+})
 const filters = reactive({
   scope: hasMine && ['none', 'self'].includes(auth.scope('task.edit')) ? 'mine' : 'team',
   team_id: auth.user?.team_id ?? null,
@@ -91,7 +98,7 @@ function open(task) {
         <el-radio-button value="team">{{ t('task.scopeTeam') }}</el-radio-button>
       </el-radio-group>
       <el-select v-if="filters.scope === 'team'" v-model="filters.team_id" clearable :placeholder="t('task.allTeams')" style="width: 130px">
-        <el-option v-for="tm in auth.teams" :key="tm.id" :label="localName(tm)" :value="tm.id" />
+        <el-option v-for="tm in visibleTeams" :key="tm.id" :label="localName(tm)" :value="tm.id" />
       </el-select>
       <el-radio-group v-model="filters.statusSet">
         <el-radio-button value="open">{{ t('status.open') }}</el-radio-button>
