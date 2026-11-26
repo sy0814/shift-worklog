@@ -87,6 +87,16 @@ def local_now() -> datetime:
     return datetime.now(get_settings().tz).replace(tzinfo=None)
 
 
+def local_hours(a: datetime, b: datetime) -> float:
+    """两个工厂本地时间（naive）之间真实经过了几小时。夏令时切换那一夜和钟面差不一样
+    （3 月那次少 1 小时、10 月那次多 1 小时）。凡是算时长（加班、工时）都用这个或者 UTC 时间相减，
+    不要直接拿本地时间相减。"""
+    from datetime import timezone
+
+    tz = get_settings().tz
+    return (b.replace(tzinfo=tz).astimezone(timezone.utc) - a.replace(tzinfo=tz).astimezone(timezone.utc)).total_seconds() / 3600
+
+
 def slot(sched: Schedule, d: date, kind: str, dept=ALL) -> ShiftSlot:
     tz = get_settings().tz
     start, end = sched.shift_window(d, kind)

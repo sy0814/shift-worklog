@@ -106,3 +106,18 @@ def test_permissions_and_delete(client, leader_h, admin_h, teams):
     done = new_task(client, leader_h, status="done")
     assert add(client, leader_h, done["id"], "完成后补充").status_code == 403
     assert add(client, admin_h, done["id"], "管理员补充").status_code == 201
+
+
+def test_log_count_on_card(client, leader_h, teams):
+    """任务卡片上的日志条数：整条移交链（接班的人能看出上一班写了几条），删掉的不算。"""
+    t = new_task(client, leader_h)
+    assert client.get(f"/api/tasks/{t['id']}", headers=leader_h).json()["log_count"] == 0
+    add(client, leader_h, t["id"], "第一条")
+    x = add(client, leader_h, t["id"], "第二条").json()
+    client.delete(f"/api/task-logs/{x['id']}", headers=leader_h)
+    new = client.post("/api/handover", headers=leader_h, json={"task_ids": [t["id"]], "to_team_id": teams["T2"]}).json()[0]
+    assert new["log_count"] == 1
+    t2_h = login(client, "t2_leader1", "t2_leader1")
+    add(client, t2_h, new["id"], "接班后写的")
+    items = client.get("/api/tasks", headers=t2_h, params={"team_id": teams["T2"], "status": ["not_started"]}).json()["items"]
+    assert next(i for i in items if i["id"] == new["id"])["log_count"] == 2

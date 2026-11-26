@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from . import attendance_service as att
 from .config import get_settings
 from .models import Overtime, Worker
-from .schedule_service import load_schedule
+from .schedule_service import load_schedule, local_hours
 
 
 @dataclass
@@ -49,7 +49,7 @@ def expand(db: Session, start: date, end: date, workers: list[Worker] | None = N
     for o in rows:
         shift_end = sched.shift_window(o.day, o.shift_kind)[1]
         until = to_local(o.until)
-        hours = round(max(0.0, (until - shift_end).total_seconds() / 3600), 2)
+        hours = round(max(0.0, local_hours(shift_end, until)), 2)  # 真实时长（夏令时那一夜和钟面差不一样）
         if o.worker_id is not None:
             ids = [o.worker_id] if o.worker_id in by_id else []
         else:
@@ -62,7 +62,7 @@ def expand(db: Session, start: date, end: date, workers: list[Worker] | None = N
             end_w = shift_end
             if a is not None and a.hours and a.shift_kind == o.shift_kind:
                 end_w = sched.entry_hours(a.hours, o.day)[-1][1]
-            hours_w = round(max(0.0, (until - end_w).total_seconds() / 3600), 2)
+            hours_w = round(max(0.0, local_hours(end_w, until)), 2)
             key = (wid, o.day, o.shift_kind)
             if key not in best or best[key].until_local < until:
                 best[key] = WorkerOvertime(o.id, wid, o.day, o.shift_kind, end_w, until, hours_w, o.note,

@@ -6,10 +6,11 @@
 
 import os
 import shutil
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 from . import storage_service
+from .schedule_service import local_hours
 
 DISK_MIN_GB = 5  # 剩余空间少于 5 GB
 DISK_MIN_PCT = 10  # 或少于 10%
@@ -43,9 +44,9 @@ def current(now_local: datetime) -> list[dict]:
             at = datetime.strptime(str(st.get("at")), "%Y-%m-%d %H:%M")
         except ValueError:
             at = None
-        if at is None or now_local - at > timedelta(hours=BACKUP_MAX_AGE_H):
-            out.append({"code": "backup_old", "at": st.get("at"),
-                        "hours": round((now_local - at).total_seconds() / 3600) if at else None})
+        age = local_hours(at, now_local) if at else None  # 真实小时数（夏令时那天和钟面差 1 小时）
+        if age is None or age > BACKUP_MAX_AGE_H:
+            out.append({"code": "backup_old", "at": st.get("at"), "hours": round(age) if age is not None else None})
     # 磁盘：图片目录、程序数据目录、备份目录（同一块盘只报一次）
     seen = set()
     for p in (storage_service.upload_root(), storage_service.data_dir(), Path(target) if target else None):

@@ -59,7 +59,7 @@ const messages = {
       src_exif: '照片自带时间', src_file: '文件时间', src_upload: '上传时间（照片无时间信息）',
       waiting: '待上传', remove: '删除图片', confirmRemove: '删除这张图片？（会留下记录）',
     },
-    tlog: { title: '班次日志', none: '还没有日志', add: '添加日志', placeholder: '写下这个班的情况、发现的问题、做到哪一步……任何语言都可以，会自动翻译', confirmDelete: '删除这条日志？', outbox: '班次日志' },
+    tlog: { countHint: '班次日志 {n} 条（含移交前各班写的）', title: '班次日志', none: '还没有日志', add: '添加日志', placeholder: '写下这个班的情况、发现的问题、做到哪一步……任何语言都可以，会自动翻译', confirmDelete: '删除这条日志？', outbox: '班次日志' },
     outbox: {
       title: '待同步', none: '没有待同步的内容', syncNow: '立即同步', savedOffline: '网络不通，已存为草稿，联网后自动同步', statusSaved: '网络不通，已记在手机上（按现在的时间），联网后自动提交', pendingStatus: '这个状态还没提交到服务器，联网后自动提交', pendingShort: '待同步', statusTo: '改状态',
       synced: '已同步 {n} 条', photos: '{n} 张图片', newTask: '新任务', addPhotos: '补充图片', failed: '同步失败', discard: '丢弃草稿',
@@ -291,7 +291,7 @@ const messages = {
       src_exif: 'vreme iz fotografije', src_file: 'vreme fajla', src_upload: 'vreme otpremanja (fotografija nema vreme)',
       waiting: 'Čeka otpremanje', remove: 'Obriši sliku', confirmRemove: 'Obrisati ovu sliku? (ostaje zapis)',
     },
-    tlog: { title: 'Dnevnik smene', none: 'Još nema zapisa', add: 'Dodaj zapis', placeholder: 'Upišite stanje u smeni, uočene probleme, dokle se stiglo… na bilo kom jeziku, prevodi se automatski', confirmDelete: 'Obrisati ovaj zapis?', outbox: 'Dnevnik smene' },
+    tlog: { countHint: '{n} zapisa u dnevniku smene (i iz ranijih smena)', title: 'Dnevnik smene', none: 'Još nema zapisa', add: 'Dodaj zapis', placeholder: 'Upišite stanje u smeni, uočene probleme, dokle se stiglo… na bilo kom jeziku, prevodi se automatski', confirmDelete: 'Obrisati ovaj zapis?', outbox: 'Dnevnik smene' },
     outbox: {
       title: 'Čeka sinhronizaciju', none: 'Nema ničega za sinhronizaciju', syncNow: 'Sinhronizuj', savedOffline: 'Nema mreže – sačuvano kao nacrt, sinhronizuje se automatski', statusSaved: 'Nema mreže – zapamćeno na telefonu (sa trenutnim vremenom), šalje se automatski', pendingStatus: 'Ovaj status još nije poslat serveru; šalje se kad mreža proradi', pendingShort: 'čeka slanje', statusTo: 'Status',
       synced: 'Sinhronizovano: {n}', photos: '{n} slika', newTask: 'Novi zadatak', addPhotos: 'Dodatne slike', failed: 'Neuspešno', discard: 'Odbaci nacrt',
@@ -523,7 +523,7 @@ const messages = {
       src_exif: 'photo time', src_file: 'file time', src_upload: 'upload time (no time in photo)',
       waiting: 'Waiting to upload', remove: 'Delete photo', confirmRemove: 'Delete this photo? (it stays in the log)',
     },
-    tlog: { title: 'Shift log', none: 'No log entries yet', add: 'Add entry', placeholder: 'Write what happened this shift, problems found, how far you got… any language, it is translated automatically', confirmDelete: 'Delete this entry?', outbox: 'Shift log' },
+    tlog: { countHint: '{n} shift log entries (including earlier shifts)', title: 'Shift log', none: 'No log entries yet', add: 'Add entry', placeholder: 'Write what happened this shift, problems found, how far you got… any language, it is translated automatically', confirmDelete: 'Delete this entry?', outbox: 'Shift log' },
     outbox: {
       title: 'Pending sync', none: 'Nothing to sync', syncNow: 'Sync now', savedOffline: 'No network – saved as draft, will sync automatically', statusSaved: 'No network – saved on this phone (with the current time), will be sent automatically', pendingStatus: 'This status has not reached the server yet; it will be sent when online', pendingShort: 'pending', statusTo: 'Status',
       synced: 'Synced {n}', photos: '{n} photos', newTask: 'New task', addPhotos: 'Extra photos', failed: 'Sync failed', discard: 'Discard draft',

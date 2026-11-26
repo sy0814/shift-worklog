@@ -374,6 +374,7 @@ class TaskOut(BaseModel):
     project: "ProjectBrief | None" = None  # 属于哪个项目（子项目）
     equipment: EquipmentBrief | None = None  # 关联的设备
     kind: str = "other"  # 任务类型：fault / maintenance / inspection / other
+    log_count: int = 0  # 整条移交链上的班次日志条数（不含删掉的）
     transferable: bool = True  # 能不能移交（任务自己的设置，且项目子项目时项目也可移交）
     # 移交 / 废弃 / 警示
     chain_started_at: UTCDateTime

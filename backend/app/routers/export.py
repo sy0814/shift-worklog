@@ -99,7 +99,9 @@ def _text(task: Task, field: str, src_col: str, lang: str) -> tuple[str, str]:
 
 def _hours(t: Task) -> float | None:
     if t.start_at and t.end_at:
-        return round((_local(t.end_at) - _local(t.start_at)).total_seconds() / 3600, 2)
+        # 用 UTC 相减 = 真实经过的时间（本地时间相减在夏令时那一夜会差 1 小时）
+        utc = lambda d: d if d.tzinfo else d.replace(tzinfo=timezone.utc)
+        return round((utc(t.end_at) - utc(t.start_at)).total_seconds() / 3600, 2)
     return None
 
 

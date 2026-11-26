@@ -436,6 +436,12 @@ powershell -ExecutionPolicy Bypass -File C:\WorkRecord\app\deploy\windows\backup
 
 1. Zaustavite sistem (PowerShell kao administrator):
 
+(prvo pauzirajte čuvara, inače će ponovo pokrenuti servise usred vraćanja)
+
+```powershell
+Disable-ScheduledTask -TaskName WorkRecordWatchdog
+```
+
 ```powershell
 Stop-Service WorkRecordCaddy, WorkRecordApp
 ```
@@ -461,6 +467,12 @@ robocopy C:\WorkRecord\backups\uploads C:\WorkRecord\data\uploads /E
 
 ```powershell
 Start-Service WorkRecordApp, WorkRecordCaddy
+```
+
+(zatim ponovo uključite čuvara)
+
+```powershell
+Enable-ScheduledTask -TaskName WorkRecordWatchdog
 ```
 
 ### 10.4 Prelazak na novi serverski računar
