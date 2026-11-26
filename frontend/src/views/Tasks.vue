@@ -29,6 +29,7 @@ const visibleTeams = computed(() => {
 const filters = reactive({
   scope: hasMine && ['none', 'self'].includes(auth.scope('task.edit')) ? 'mine' : 'team',
   team_id: auth.user?.team_id ?? null,
+  worker_id: null, // 人员筛选：这个人是带队人或参与人员的任务
   statusSet: 'open',
   dates: null,
   q: '',
@@ -43,7 +44,10 @@ async function load(append = false) {
   try {
     const params = new URLSearchParams()
     if (filters.scope === 'mine') params.append('worker_id', auth.user.worker_id) // 自己是带队人或参与人员的（不限班组）
-    else if (filters.team_id) params.append('team_id', filters.team_id)
+    else {
+      if (filters.team_id) params.append('team_id', filters.team_id)
+      if (filters.worker_id) params.append('worker_id', filters.worker_id)
+    }
     for (const s of STATUS_SETS[filters.statusSet]) params.append('status', s)
     if (filters.dates) {
       params.append('date_from', filters.dates[0])
@@ -64,7 +68,19 @@ async function load(append = false) {
     loading.value = false
   }
 }
-watch(() => [filters.scope, filters.team_id, filters.statusSet, filters.dates], () => load())
+watch(() => [filters.scope, filters.team_id, filters.worker_id, filters.statusSet, filters.dates], () => load())
+// 选了人就不限班组（他顶过别的班组的班，任务也要能列出来）
+watch(() => filters.worker_id, (v) => { if (v) filters.team_id = null })
+
+// 人员筛选的选项：能看的班组里的人（看任务范围本车间 / 全厂的，再加上本车间没有班组的人，例如管理人员），按班组分组
+const people = ref([])
+api.get('/workers', { silent: true }).then((r) => { people.value = r.data }).catch(() => {})
+const peopleGroups = computed(() => {
+  const wide = auth.isAdmin || ['dept', 'all'].includes(auth.scope('task.view'))
+  const groups = visibleTeams.value.map((tm) => ({ label: localName(tm), list: people.value.filter((w) => w.team_id === tm.id) }))
+  if (wide) groups.push({ label: t('task.noTeam'), list: people.value.filter((w) => !w.team_id && (!auth.dept || w.department_id === auth.dept)) })
+  return groups.filter((g) => g.list.length)
+})
 // 离线草稿同步成功后刷新列表
 watch(() => outbox.lastSyncedTaskIds.length, () => load())
 onMounted(load)
@@ -99,6 +115,11 @@ function open(task) {
       </el-radio-group>
       <el-select v-if="filters.scope === 'team'" v-model="filters.team_id" clearable :placeholder="t('task.allTeams')" style="width: 130px">
         <el-option v-for="tm in visibleTeams" :key="tm.id" :label="localName(tm)" :value="tm.id" />
+      </el-select>
+      <el-select v-if="filters.scope === 'team'" v-model="filters.worker_id" filterable clearable :placeholder="t('task.person')" style="width: 150px">
+        <el-option-group v-for="g in peopleGroups" :key="g.label" :label="g.label">
+          <el-option v-for="w in g.list" :key="w.id" :label="w.name" :value="w.id" />
+        </el-option-group>
       </el-select>
       <el-radio-group v-model="filters.statusSet">
         <el-radio-button value="open">{{ t('status.open') }}</el-radio-button>

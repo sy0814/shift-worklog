@@ -199,4 +199,6 @@ def test_duty_managers(client, admin_h):
     assert "Mgr On" in names and "Mgr Off" not in names
     assert "Mgr Nosched" in d["managers_unscheduled"]
     assert d["counts"]["managers"] >= 1
+    c = d["counts"]
+    assert c["managers"] == c["managers_busy"] + c["managers_idle"]
     assert all(y["worker"]["name"] != "Mgr On" for t in d["teams"] for y in t["workers"])
