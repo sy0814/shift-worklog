@@ -53,7 +53,26 @@ function Invoke-Native {
     param([Parameter(Mandatory)][string]$File, [string[]]$Arguments = @(), [Parameter(Mandatory)][string]$What)
     $ErrorActionPreference = 'Continue'
     & $File @Arguments
-    if ($LASTEXITCODE -ne 0) { throw "$What 失败（退出码 $LASTEXITCODE）。请看上面的输出。" }
+    if ($LASTEXITCODE -ne 0) {
+        $hint = Get-ExitCodeHint $LASTEXITCODE
+        if ($hint) { $hint = "：$hint" }
+        throw "$What 失败（退出码 $LASTEXITCODE$hint）。请看上面的输出。"
+    }
+}
+
+# Windows 程序「没跑起来 / 崩溃」的常见退出码（负数 = 0xC0000xxx）是什么意思；普通的错误退出码返回空
+function Get-ExitCodeHint([long]$Code) {
+    $map = @{
+        '-1073741515' = '程序缺少 DLL 文件，安装不完整（被部分卸载、删除或被杀毒软件隔离），请重装这个软件'   # 0xC0000135
+        '-1073741701' = '程序的 DLL 文件损坏或 32 / 64 位不匹配，请重装这个软件'   # 0xC000007B
+        '-1073741819' = '程序崩溃（内存访问错误）'   # 0xC0000005
+        '-1073740791' = '程序崩溃（内部错误）'   # 0xC0000409
+        '-1073741510' = '程序被中断（关机或按了 Ctrl+C）'   # 0xC000013A
+        '-1073741801' = '内存不够'   # 0xC0000017
+    }
+    $k = [string]$Code
+    if ($map.ContainsKey($k)) { return $map[$k] }
+    return ''
 }
 
 function Update-PathFromRegistry {
