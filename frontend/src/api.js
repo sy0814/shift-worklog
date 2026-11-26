@@ -3,7 +3,7 @@ import { ElMessage } from 'element-plus'
 import router from './router'
 import { i18n } from './i18n'
 import { net, noteResponse } from './net'
-import { translateError } from './apiErrors'
+import { translateError, translateValidation } from './apiErrors'
 import { getDept } from './dept'
 
 const api = axios.create({ baseURL: '/api', timeout: 20000 })
@@ -36,8 +36,9 @@ api.interceptors.response.use(
       if (router.currentRoute.value.name !== 'change-password') router.push({ name: 'change-password' })
     } else if (!err.config?.silent) {
       const detail = err.response?.data?.detail
-      ElMessage.error(typeof detail === 'string'
-        ? translateError(detail, i18n.global.locale.value, i18n.global.t) : i18n.global.t('common.requestFailed'))
+      const loc = i18n.global.locale.value
+      ElMessage.error(typeof detail === 'string' ? translateError(detail, loc, i18n.global.t)
+        : Array.isArray(detail) && detail.length ? translateValidation(detail, loc) : i18n.global.t('common.requestFailed'))
     }
     return Promise.reject(err)
   },

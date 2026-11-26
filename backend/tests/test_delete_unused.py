@@ -125,3 +125,14 @@ def test_relink_takes_over_unused_auto_account(client, admin_h, teams):
         db.commit()
     r = client.put(f"/api/users/{old['id']}/worker", headers=admin_h, json={"worker_id": other["id"]})
     assert r.status_code == 409
+
+
+def test_reset_password_length_by_login_mode(client, admin_h, teams):
+    """账号管理重设密码：点头像登录的成员 4 位就行（以前一律要 6 位，报「请求失败」）；管理账号至少 6 位。"""
+    m = worker(client, admin_h, teams, "四位密码的成员")
+    uid = client.put(f"/api/workers/{m['id']}/account", headers=admin_h, json={"password": "1234"}).json()["user_id"]
+    assert client.post(f"/api/users/{uid}/reset-password", headers=admin_h, json={"password": "4321"}).status_code == 204
+    adm = client.post("/api/users", headers=admin_h, json={"username": "pw_admin", "password": "Pw2026!!", "full_name": "x"}).json()
+    r = client.post(f"/api/users/{adm['id']}/reset-password", headers=admin_h, json={"password": "4321"})
+    assert r.status_code == 400 and "at least 6" in r.json()["detail"]
+    assert client.post(f"/api/users/{adm['id']}/reset-password", headers=admin_h, json={"password": "654321"}).status_code == 204

@@ -77,9 +77,12 @@ def delete_user(user_id: int, db: Session = Depends(get_db), admin: User = Depen
 @router.post("/{user_id}/reset-password", status_code=204)
 def reset_password(user_id: int, body: PasswordReset, db: Session = Depends(get_db),
                    admin: User = Depends(require_admin)):
+    from .auth import check_secret
+
     u = db.get(User, user_id)
     if u is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
+    check_secret(db, u, body.password)  # 以前一律要求 6 位：给点头像登录的成员设 4 位密码会报「请求失败」
     u.password_hash = hash_password(body.password)
     u.failed_logins, u.locked_until = 0, None
     u.must_change_password = u.id != admin.id  # 别人重设的密码：登录后必须先改

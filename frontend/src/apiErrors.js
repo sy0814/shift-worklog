@@ -86,6 +86,8 @@ const T = {
   worker_used: ['这个人已经用过（{x}），不能删除；不再用了请把「在职」关掉', 'Radnik je korišćen ({x}) i ne može se obrisati; isključite „Aktivan”', 'This person has been used ({x}) and cannot be deleted; switch off “Active” instead'],
   user_used: ['这个账号已经用过（{x}），不能删除；不再用了请停用', 'Nalog je korišćen ({x}) i ne može se obrisati; deaktivirajte ga', 'This account has been used ({x}) and cannot be deleted; deactivate it instead'],
   roster_acc: ['名册里的人的账号请到「员工名册」里删人', 'Nalog radnika brišite u „Spisak radnika”', 'Delete roster accounts from the roster'],
+  bad_username: ['用户名只能用英文字母、数字和 . _ -（不能有空格、中文），至少 2 位', 'Korisničko ime: samo slova, brojevi i . _ - (bez razmaka), najmanje 2 znaka', 'Username: letters, digits and . _ - only (no spaces), at least 2 characters'],
+  bad_input: ['填写的内容不对：{x}', 'Neispravan unos: {x}', 'Invalid input: {x}'],
   self: ['不能降级或停用自己', 'Ne možete sebi oduzeti prava', 'You cannot demote or disable yourself'],
 }
 const RULES = [
@@ -191,6 +193,16 @@ const REFS = {
 function refsText(list, i) {
   const out = list.split(',').map((n) => (REFS[n.trim()] || [])[i] || n.trim())
   return [...new Set(out)].join(i === 0 ? '、' : ', ')
+}
+
+/** 表单校验没过（服务器 422，detail 是列表）：说清楚是哪一项、为什么，别只说「请求失败」 */
+export function translateValidation(detail, locale) {
+  const i = IDX[locale] ?? 0
+  const e = detail[0] || {}
+  const field = String((e.loc || []).slice(-1)[0] ?? '')
+  if (/password|secret|pin/.test(field) && e.type === 'string_too_short') return T.pw_short[i].replace('{x}', e.ctx?.min_length ?? '')
+  if (field === 'username') return T.bad_username[i]
+  return T.bad_input[i].replace('{x}', `${field} ${e.msg || ''}`.trim())
 }
 
 export function translateError(detail, locale, t) {
