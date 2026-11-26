@@ -45,7 +45,7 @@ const messages = {
     nav2: { tasks: '任务', workers: '员工名册', board: '交接班', glossary: '术语表' },
     status: { not_started: '未开始', in_progress: '进行中', done: '已完成', handed_over: '已移交', discarded: '已废弃', open: '未完成', all: '全部' },
     task: {
-      scopeMine: '我的任务', scopeTeam: '班组任务',
+      person: '人员（全部）', noTeam: '没有班组', scopeMine: '我的任务', scopeTeam: '班组任务',
       kind: '类型', kinds: { fault: '故障维修', maintenance: '计划检修', inspection: '巡查', other: '其他' },
       transferable: '可移交', notTransferable: '不可移交', transferableHint: '关掉 = 这条任务一直留在本班组，不能移交、不会自动移交',
       new: '新建任务', edit: '编辑任务', content: '工作内容', contentPh: '可以用中文、塞语或英语填写', workers: '参与人员', team: '班组',
@@ -221,7 +221,7 @@ const messages = {
       by: '{name} 设置于 {at}', note: '备注：{note}',
     },
     duty: {
-      breaks: '（{b} 休息）', backAt: '休息中，{t} 回来', startsAt: '{t} 上班', doneToday: '今天已下班', managers: '管理 {n} 人', mgrTitle: '管理人员', mgrNoSched: '这些管理人员还没设排班，系统不知道他们什么时候在班：{names}。请到「员工名册 → 长期排班」给他们设个人循环。', onDuty: '在岗 {n} 人', offHours: '休息中 {n}', untilT: '到 {t}', untilHint: '算在别的班，这个班次里上到 {t}', busy: '忙碌 {n}', idle: '空闲 {n}', absent: '请假/缺勤 {n}', title: '{shift} 人员状态', support: '支援',
+      breaks: '（{b} 休息）', backAt: '休息中，{t} 回来', startsAt: '{t} 上班', doneToday: '今天已下班', managers: '管理 {n} 人', mgrShort: '管理', staffShort: '电工', mgrTitle: '管理人员', mgrNoSched: '这些管理人员还没设排班，系统不知道他们什么时候在班：{names}。请到「员工名册 → 长期排班」给他们设个人循环。', onDuty: '在岗 {n} 人', offHours: '休息中 {n}', untilT: '到 {t}', untilHint: '算在别的班，这个班次里上到 {t}', busy: '忙碌 {n}', idle: '空闲 {n}', absent: '请假/缺勤 {n}', title: '{shift} 人员状态', support: '支援',
       st: { off_hours: '休息中', busy: '忙碌', idle: '空闲', leave: '请假', sick: '病假', absent: '缺勤', off: '调休' },
       none: '这个班次没有安排人员', select: '勾选人员后可快捷添加任务', addTask: '给选中的人添加任务（{n}）', noTask: '没有未完成的任务', clickHint: '点击查看人员',
     },
@@ -277,7 +277,7 @@ const messages = {
     nav2: { tasks: 'Zadaci', workers: 'Radnici', board: 'Primopredaja', glossary: 'Rečnik' },
     status: { not_started: 'Nije započeto', in_progress: 'U toku', done: 'Završeno', handed_over: 'Predato', discarded: 'Odbačeno', open: 'Nezavršeno', all: 'Sve' },
     task: {
-      scopeMine: 'Moji zadaci', scopeTeam: 'Zadaci ekipe',
+      person: 'Radnik (svi)', noTeam: 'Bez ekipe', scopeMine: 'Moji zadaci', scopeTeam: 'Zadaci ekipe',
       kind: 'Vrsta', kinds: { fault: 'Kvar', maintenance: 'Planirano održavanje', inspection: 'Obilazak', other: 'Ostalo' },
       transferable: 'Može se predati', notTransferable: 'bez predaje', transferableHint: 'Isključeno = zadatak ostaje u ovoj ekipi i ne može se predati',
       new: 'Novi zadatak', edit: 'Izmena zadatka', content: 'Opis posla', contentPh: 'Možete pisati na srpskom, kineskom ili engleskom', workers: 'Učesnici', team: 'Smena',
@@ -453,7 +453,7 @@ const messages = {
       by: 'Postavio/la {name}, {at}', note: 'Napomena: {note}',
     },
     duty: {
-      breaks: ' (pauza {b})', backAt: 'Pauza, vraća se u {t}', startsAt: 'Počinje u {t}', doneToday: 'Završio za danas', managers: 'Rukovodstvo {n}', mgrTitle: 'Rukovodstvo', mgrNoSched: 'Ovi rukovodioci još nemaju raspored, pa sistem ne zna kad su na smeni: {names}. Podesite im lični ciklus u „Radnici → Dugoročni raspored”.', onDuty: 'Na smeni {n}', offHours: 'Pauza {n}', untilT: 'do {t}', untilHint: 'Radi u drugoj smeni; u ovoj je do {t}', busy: 'Zauzeto {n}', idle: 'Slobodno {n}', absent: 'Odsutno {n}', title: '{shift} – stanje radnika', support: 'Pomoć',
+      breaks: ' (pauza {b})', backAt: 'Pauza, vraća se u {t}', startsAt: 'Počinje u {t}', doneToday: 'Završio za danas', managers: 'Rukovodstvo {n}', mgrShort: 'Rukovodstvo', staffShort: 'Električari', mgrTitle: 'Rukovodstvo', mgrNoSched: 'Ovi rukovodioci još nemaju raspored, pa sistem ne zna kad su na smeni: {names}. Podesite im lični ciklus u „Radnici → Dugoročni raspored”.', onDuty: 'Na smeni {n}', offHours: 'Pauza {n}', untilT: 'do {t}', untilHint: 'Radi u drugoj smeni; u ovoj je do {t}', busy: 'Zauzeto {n}', idle: 'Slobodno {n}', absent: 'Odsutno {n}', title: '{shift} – stanje radnika', support: 'Pomoć',
       st: { off_hours: 'Pauza', busy: 'Zauzet', idle: 'Slobodan', leave: 'Odsustvo', sick: 'Bolovanje', absent: 'Izostanak', off: 'Slobodan dan' },
       none: 'Za ovu smenu nema raspoređenih radnika', select: 'Označite radnike da biste brzo dodali zadatak', addTask: 'Dodaj zadatak izabranima ({n})', noTask: 'Nema otvorenih zadataka', clickHint: 'Kliknite za radnike',
     },
@@ -509,7 +509,7 @@ const messages = {
     nav2: { tasks: 'Tasks', workers: 'Workers', board: 'Handover', glossary: 'Glossary' },
     status: { not_started: 'Not started', in_progress: 'In progress', done: 'Done', handed_over: 'Handed over', discarded: 'Discarded', open: 'Open', all: 'All' },
     task: {
-      scopeMine: 'My tasks', scopeTeam: 'Team tasks',
+      person: 'Person (all)', noTeam: 'No team', scopeMine: 'My tasks', scopeTeam: 'Team tasks',
       kind: 'Type', kinds: { fault: 'Breakdown repair', maintenance: 'Planned maintenance', inspection: 'Inspection', other: 'Other' },
       transferable: 'Can be handed over', notTransferable: 'not transferable', transferableHint: 'Off = the task stays with this team and cannot be handed over',
       new: 'New task', edit: 'Edit task', content: 'Work', contentPh: 'Chinese, Serbian or English', workers: 'Workers', team: 'Team',
@@ -685,7 +685,7 @@ const messages = {
       by: 'Set by {name} at {at}', note: 'Note: {note}',
     },
     duty: {
-      breaks: ' (break {b})', backAt: 'On break, back at {t}', startsAt: 'Starts at {t}', doneToday: 'Done for today', managers: '{n} managers', mgrTitle: 'Managers', mgrNoSched: 'These managers have no schedule yet, so the system cannot tell when they are on shift: {names}. Give them a personal cycle under “Workers → Long-term schedule”.', onDuty: '{n} on shift', offHours: '{n} on break', untilT: 'until {t}', untilHint: 'Belongs to another shift; here until {t}', busy: '{n} busy', idle: '{n} free', absent: '{n} absent', title: '{shift} – people', support: 'Support',
+      breaks: ' (break {b})', backAt: 'On break, back at {t}', startsAt: 'Starts at {t}', doneToday: 'Done for today', managers: '{n} managers', mgrShort: 'Managers', staffShort: 'Electricians', mgrTitle: 'Managers', mgrNoSched: 'These managers have no schedule yet, so the system cannot tell when they are on shift: {names}. Give them a personal cycle under “Workers → Long-term schedule”.', onDuty: '{n} on shift', offHours: '{n} on break', untilT: 'until {t}', untilHint: 'Belongs to another shift; here until {t}', busy: '{n} busy', idle: '{n} free', absent: '{n} absent', title: '{shift} – people', support: 'Support',
       st: { off_hours: 'On break', busy: 'Busy', idle: 'Free', leave: 'Leave', sick: 'Sick', absent: 'Absent', off: 'Day off' },
       none: 'Nobody is scheduled for this shift', select: 'Tick people to add a task quickly', addTask: 'Add a task for selected ({n})', noTask: 'No open tasks', clickHint: 'Click to see people',
     },

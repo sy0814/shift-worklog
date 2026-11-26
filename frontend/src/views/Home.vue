@@ -130,14 +130,23 @@ function open(id) {
         <div class="label">{{ t(`shift.${c.key}`) }}</div>
         <div class="teams">{{ mainTeam(c.s) }}</div>
         <div class="meta"><ShiftTag :kind="c.s.kind" /> {{ fmt(c.s.start) }} – {{ fmt(c.s.end) }}</div>
+        <!-- 两行：管理人员、电工（班组里的人），各自在岗 / 忙碌 / 空闲 -->
         <div v-if="c.d" class="counts">
-          <span class="cnt mgr">👔 {{ t('duty.managers', { n: c.d.counts.managers ?? 0 }) }}</span>
-          <span class="cnt">👷 {{ t('duty.onDuty', { n: c.d.counts.on_duty }) }}</span>
-          <span class="cnt busy">{{ t('duty.busy', { n: c.d.counts.busy }) }}</span>
-          <span class="cnt idle">{{ t('duty.idle', { n: c.d.counts.idle }) }}</span>
-          <span v-if="c.d.counts.absent" class="cnt absent">{{ t('duty.absent', { n: c.d.counts.absent }) }}</span>
-          <span v-if="c.d.counts.off_hours" class="cnt absent">{{ t('duty.offHours', { n: c.d.counts.off_hours }) }}</span>
-          <span class="hint">{{ t('duty.clickHint') }} ›</span>
+          <div class="crow">
+            <span class="who mgr">👔 {{ t('duty.mgrShort') }}</span>
+            <span class="cnt">{{ t('duty.onDuty', { n: c.d.counts.managers ?? 0 }) }}</span>
+            <span class="cnt busy">{{ t('duty.busy', { n: c.d.counts.managers_busy ?? 0 }) }}</span>
+            <span class="cnt idle">{{ t('duty.idle', { n: c.d.counts.managers_idle ?? 0 }) }}</span>
+          </div>
+          <div class="crow">
+            <span class="who">👷 {{ t('duty.staffShort') }}</span>
+            <span class="cnt">{{ t('duty.onDuty', { n: c.d.counts.on_duty }) }}</span>
+            <span class="cnt busy">{{ t('duty.busy', { n: c.d.counts.busy }) }}</span>
+            <span class="cnt idle">{{ t('duty.idle', { n: c.d.counts.idle }) }}</span>
+            <span v-if="c.d.counts.absent" class="cnt absent">{{ t('duty.absent', { n: c.d.counts.absent }) }}</span>
+            <span v-if="c.d.counts.off_hours" class="cnt absent">{{ t('duty.offHours', { n: c.d.counts.off_hours }) }}</span>
+            <span class="hint">{{ t('duty.clickHint') }} ›</span>
+          </div>
         </div>
       </el-card>
     </div>
@@ -181,9 +190,11 @@ function open(id) {
 .shift-card.current { border-left: 4px solid #67c23a; }
 .shift-card.next { border-left: 4px solid #409eff; }
 .mine .teams, .today-item.mine span { color: #409eff; }
-.counts { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 10px; font-size: 13px; }
+.counts { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; font-size: 13px; }
+.crow { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.crow .who { min-width: 4.5em; font-weight: 600; }
 .cnt { color: #303133; }
-.cnt.mgr { color: var(--el-color-primary); font-weight: 600; }
+.who.mgr { color: var(--el-color-primary); }
 .cnt.busy { color: #b88230; }
 .cnt.idle { color: #529b2e; }
 .cnt.absent { color: #909399; }

@@ -55,7 +55,9 @@ class DutyTeam(BaseModel):
 
 
 class DutyCounts(BaseModel):
-    managers: int = 0  # 管理人员在班（忙碌 + 空闲）；下面这些不含管理人员
+    managers: int = 0  # 管理人员在班（忙碌 + 空闲）；下面 on_duty 起不含管理人员
+    managers_busy: int = 0
+    managers_idle: int = 0
     on_duty: int
     busy: int
     idle: int
@@ -235,7 +237,9 @@ def duty(which: str = Query(default="current", pattern="^(current|next)$"), db: 
         teams.append(DutyTeam(team_id=tid, workers=out))
     managers = sorted((entry(w, st, sup, tid) for w, st, sup, tid in mgr_rows),
                       key=lambda r: (_status_order(r.status), r.worker.name))
-    counts["managers"] = sum(r.status in ("busy", "idle") for r in managers)
+    counts["managers_busy"] = sum(r.status == "busy" for r in managers)
+    counts["managers_idle"] = sum(r.status == "idle" for r in managers)
+    counts["managers"] = counts["managers_busy"] + counts["managers_idle"]
 
     tz = get_settings().tz
     return DutyOut(
