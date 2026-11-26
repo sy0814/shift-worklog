@@ -144,7 +144,7 @@
 
 - 目录 `C:\WorkRecord\`：`app`（程序，更新时覆盖，保留 `.venv`、`.env`）、`data`、`tools`、`logs`、`backups`。服务 `WorkRecordApp`（uvicorn 只听 127.0.0.1:8000）、`WorkRecordCaddy`（80/443，内部 CA 签 HTTPS；80 端口只提供根证书 `/ca.crt` 和三语安装说明 `/install`）。
 - 每天 03:40 计划任务备份（pg_dump 保留 30 天 + 图片 + 证书 + 配置，可再复制一份到另一个目录）；备份位置在「系统设置 → 存储与备份」改。
-- **看门狗** `watchdog.ps1`（计划任务 WorkRecordWatchdog，每 5 分钟）：服务停了先自动启动再报警，系统不响应、备份失败 / 超过 26 小时没成功、磁盘少于 5 GB 或 10% 都报警；报警 = 服务器弹窗 + Windows 事件日志 + `logs\watchdog.log`（用户选的，不发邮件），同一问题 60 分钟一次。备份和磁盘问题网页首页也给管理员显示（`GET /api/alerts`，阈值和脚本一致）。更新时先暂停、完成后重新打开
+- **看门狗** `watchdog.ps1`（计划任务 WorkRecordWatchdog，每 5 分钟）：PostgreSQL 和两个服务停了先自动启动再报警，启动不了时报警里写「可能原因」（看门狗自己查：程序文件 / 数据目录 / 配置缺失、端口被占、依赖服务没起来、磁盘满、日志最后的错误、Windows 记的服务错误；备份失败把退出码翻译出来，`common.ps1` 的 `Get-ExitCodeHint`），系统不响应、备份失败 / 超过 26 小时没成功、磁盘少于 5 GB 或 10% 都报警；报警 = 服务器弹窗 + Windows 事件日志 + `logs\watchdog.log`（用户选的，不发邮件），同一问题 60 分钟一次。备份和磁盘问题网页首页也给管理员显示（`GET /api/alerts`，阈值和脚本一致）。更新时先暂停、完成后重新打开
 - 程序服务直接用**基础 Python** 运行 `backend/run_server.py`（不用 venv 的 python.exe 转接程序，否则停服务会留下进程占着 8000 端口，报 10048）；配置由 `common.ps1` 的 `Get-AppServiceXml` 生成，update 时重写；停 / 启服务和看门狗会清掉残留的 Python
 - **更新**：`update.ps1 -Online` 自己从 GitHub 下载 master 的 ZIP（地址在 `common.ps1` 的 `$UpdateZipUrl`，仓库是公开的；改成私有就要换下载方式），解压到临时目录后运行**新下载的那份** update.ps1；不带 `-Online` = 用脚本所在目录的代码更新
 - 改访问地址：`set-address.ps1 <IP>`（根证书不变，手机不用重装）。

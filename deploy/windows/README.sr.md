@@ -373,12 +373,13 @@ Skripta za instalaciju / ažuriranje pravi zakazani zadatak **WorkRecordWatchdog
 
 | Šta proverava | Kad postoji problem |
 |---|---|
-| Da li oba servisa rade | Automatski ih pokreće; javi jednom i kad je ponovno pokretanje uspelo, upozori ako nije |
+| Da li baza (PostgreSQL) i oba servisa rade | Automatski ih pokreće; javi jednom i kad je ponovno pokretanje uspelo (sa poslednjom greškom iz loga pre zaustavljanja), a ako nije uspelo upozori i navede **moguće uzroke** koje je pronašao |
 | Da li sistem odgovara | Servis radi, ali sistem ne odgovara: upozorenje |
 | Rezervna kopija | Kopija nije uspela ili više od 26 sati nema uspešne kopije: upozorenje |
 | Prostor na disku | Manje od 5 GB ili 10% slobodno na disku sa podacima programa ili sa kopijama: upozorenje |
 
 - **Kako upozorava**: **iskačući prozor na serverskom računaru** (svima koji su prijavljeni), plus Windows **dnevnik događaja** (Event Viewer → Windows Logs → Application, izvor `WorkRecord`) i `C:\WorkRecord\logs\watchdog.log`. Neka na serveru uvek neko bude prijavljen, da bi se prozor video.
+- Kad servis ne može da se pokrene, upozorenje navodi „可能原因 (mogući uzroci): 1) …; 2) …“. Čuvar sam proverava: nedostaju programske datoteke (npr. PostgreSQL deinstaliran do pola), nedostaje direktorijum sa podacima, port zauzima drugi program (5432 / 8000 / 80 / 443), nedostaje Python, `.venv`, `.env` ili `caddy.exe`, pun disk, servis od kog zavisi ne radi, poslednja greška u logu i greška servisa koju je Windows zabeležio. Uz svaki uzrok piše šta da uradite. Upozorenje o neuspeloj kopiji objašnjava i izlazni kod (npr. `-1073741515` = programu nedostaje DLL, instalacija je nepotpuna).
 - Isti problem iskače **najviše jednom u 60 minuta**; kad se reši, dobijete još jednu poruku da je otklonjen.
 - Neuspela kopija i pun disk se **prikazuju i kao crveno obaveštenje na početnoj strani** kad se administrator prijavi.
 - Tokom ažuriranja skripta pauzira čuvara i na kraju ga ponovo uključi. **Ako ažuriranje pukne na pola, čuvar ostaje pauziran**: rešite problem i ponovo pokrenite `update.ps1`.
@@ -491,6 +492,7 @@ Enable-ScheduledTask -TaskName WorkRecordWatchdog
 | Šta vidite | Uzrok i rešenje |
 |---|---|
 | Servis neće da se pokrene; `logs\WorkRecordApp.err.log` stalno prijavljuje grešku `10048` (svaka adresa soketa sme da se koristi samo jednom) | Port 8000 drži zaostali stari proces (starije verzije su ga mogle ostaviti pri zaustavljanju servisa). Pokrenite `update.ps1` jednom i problem je trajno rešen: zaustavljanje servisa više ne ostavlja proces, a čuvar i skripta za ažuriranje sami čiste zaostale procese. Brzo ručno rešenje: u administratorskom PowerShell-u pokrenite `Get-NetTCPConnection -LocalPort 8000 -State Listen` da dobijete broj procesa, proverite da je python, pokrenite `Stop-Process -Id <broj> -Force`, pa pokrenite servis. |
+| Upozorenje „servis baze postgresql-… je stao“, uzrok „nedostaju programske datoteke PostgreSQL-a“, kopija ne uspeva sa izlaznim kodom `-1073741515` | PostgreSQL je deinstaliran do pola (ovo se stvarno desilo 2026-11). **Direktorijum sa podacima je obično i dalje tu, podaci nisu izgubljeni.** Prvo kopirajte ceo `C:\Program Files\PostgreSQL\<verzija>\data` na sigurno mesto; zatim preuzmite instalaciju **iste glavne verzije** i ponovo instalirajte, sa istim instalacionim direktorijumom i direktorijumom podataka i istom lozinkom za postgres; posle toga pokrenite servis baze i oba servisa i jednom ručno pokrenite `backup.ps1`. Ako nema ni direktorijuma sa podacima, uradite „10.3 Vraćanje podataka“ iznad. |
 | „…cannot be loaded because running scripts is disabled on this system” | Niste prvo pokrenuli `Set-ExecutionPolicy -Scope Process Bypass -Force`, ili ste je pokrenuli u drugom prozoru. Pokrenite je prvo u istom prozoru. |
 | Poruka „请右键以管理员身份运行 PowerShell” | „Pokrenite PowerShell kao administrator.” Otvorite ga ponovo kao u 6.1. |
 | Poruka „没有找到 PostgreSQL” | „PostgreSQL nije pronađen.” Instalirajte ga (korak 2) na podrazumevano mesto. |

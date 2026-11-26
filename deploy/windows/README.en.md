@@ -371,12 +371,13 @@ The install / update script creates a scheduled task **WorkRecordWatchdog** that
 
 | What it checks | When there is a problem |
 |---|---|
-| Are both services running | Starts them automatically; tells you once even if the restart worked, alerts if it could not start them |
+| Are the database (PostgreSQL) and both services running | Starts them automatically; tells you once even if the restart worked (with the last error from the log before it stopped), alerts if it could not start them and lists the **likely causes** it found |
 | Does the system respond | Service is running but the system does not answer: alert |
 | Backup | Backup failed, or no successful backup for more than 26 hours: alert |
 | Disk space | Less than 5 GB or 10% free on the disk with the program data or the backups: alert |
 
 - **How it alerts**: a **popup on the server PC** (sent to everyone logged in), plus the Windows **event log** (Event Viewer → Windows Logs → Application, source `WorkRecord`) and `C:\WorkRecord\logs\watchdog.log`. Keep someone logged in on the server so the popup is seen.
+- When a service cannot be started the alert says "可能原因 (likely causes): 1) …; 2) …". The watchdog checks for itself: program files missing (e.g. PostgreSQL half uninstalled), data directory missing, a port taken by another program (5432 / 8000 / 80 / 443), Python, `.venv`, `.env` or `caddy.exe` missing, disk full, a service it depends on not running, the last error in the log, and the service error Windows recorded. Each cause says what to do. A failed backup alert also explains the exit code (e.g. `-1073741515` = the program is missing a DLL, the installation is incomplete).
 - The same problem pops up **at most once every 60 minutes**; when it is fixed you get one more message saying it has recovered.
 - Failed backups and low disk space are **also shown as a red notice on the home page** when an administrator logs in.
 - During an update the script pauses the watchdog and turns it back on at the end. **If the update fails halfway, the watchdog stays paused**: fix the problem and run `update.ps1` again.
@@ -489,6 +490,7 @@ Enable-ScheduledTask -TaskName WorkRecordWatchdog
 | What you see | Cause and fix |
 |---|---|
 | The service will not start; `logs\WorkRecordApp.err.log` keeps showing error `10048` ("only one usage of each socket address") | Port 8000 is held by a leftover old process (older versions could leave one behind when the service was stopped). Run `update.ps1` once to fix it for good: stopping the service no longer leaves a process, and the watchdog and update script clean up leftovers automatically. Quick manual fix: in an administrator PowerShell run `Get-NetTCPConnection -LocalPort 8000 -State Listen` to get the process id, check it is python, run `Stop-Process -Id <id> -Force`, then start the service. |
+| Alert "database service postgresql-… stopped", cause "PostgreSQL program files are missing", backup fails with exit code `-1073741515` | PostgreSQL was half uninstalled (this really happened in 2026-11). **The data directory is usually still there, so no data is lost.** First copy the whole `C:\Program Files\PostgreSQL\<version>\data` folder somewhere safe; then download the installer of the **same major version** and reinstall, choosing the original installation and data directories and the original postgres password; afterwards start the database service and both services and run `backup.ps1` once by hand. If the data directory is gone too, follow "10.3 Restore data" above. |
 | "…cannot be loaded because running scripts is disabled on this system" | You did not run `Set-ExecutionPolicy -Scope Process Bypass -Force` first, or ran it in another window. Run it in the same window first. |
 | Message「请右键以管理员身份运行 PowerShell」 | "Run PowerShell as administrator." Reopen it as in 6.1. |
 | Message「没有找到 PostgreSQL」 | "PostgreSQL not found." Install it (step 2), using the default location. |
