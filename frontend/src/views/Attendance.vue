@@ -221,7 +221,7 @@ const exportOpen = ref(false)
       <el-button v-if="auth.can('overtime.edit')" @click="openOvertime({ mode: 'team', team_id: teamId })">{{ t('ot.add') }}</el-button>
       <el-button v-if="auth.can('export')" @click="exportOpen = true">{{ t('exp.title') }}</el-button>
       <template v-if="auth.isAdmin">
-        <el-button @click="download('/attendance/template', {}, 'attendance_template.xlsx')">{{ t('att.template') }}</el-button>
+        <el-button @click="download('/attendance/template', { month: month }, `attendance_${month}.xlsx`)">{{ t('att.template') }}</el-button>
         <el-button type="primary" @click="fileInput.click()">{{ t('att.import') }}</el-button>
         <input ref="fileInput" type="file" accept=".xlsx" hidden @change="importFile" />
       </template>

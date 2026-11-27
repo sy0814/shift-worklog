@@ -237,45 +237,37 @@ def swap(body: AttendanceSwap, db: Session = Depends(get_db), user: User = Depen
 
 
 # ---------------- Excel 模板与导入 ----------------
-TEMPLATE_HEADERS = ["日期 Datum Date", "工号 Matični br. No.", "姓名 Ime Name", "状态 Status", "班次 Smena Shift",
-                    "备注 Napomena Note"]
-
-
 @router.get("/attendance/template")
-def template(_: User = Depends(get_current_user)):
+def template(month: str | None = None, team_id: int | None = None, db: Session = Depends(get_db),
+             user: User = Depends(get_current_user), dept: int | None = Depends(get_dept)):
+    """下载出勤月表（工厂的格式，见 app/attendance_sheet.py）：这个月每个人每天按系统里的出勤填好（排班 + 已有的修改），
+    改好请假、调班这些再导入。也就是这个月的出勤导出。能导入的人才能下载（管理员；出勤权限为本车间 / 全厂的人）。"""
+    import calendar
+
+    from .. import attendance_sheet as sheet
+    from ..schedule_service import local_now
+
+    who = permissions.who(db, user)
+    permissions.require(who.scope("attendance.edit") in ("dept", "all"))
+    try:
+        y, m = (int(x) for x in (month or f"{local_now():%Y-%m}").split("-"))
+        start = date(y, m, 1)
+    except ValueError:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "month required (YYYY-MM)")
+    end = date(y, m, calendar.monthrange(y, m)[1])
+    if team_id:
+        workers = [w for w in worker_history.members(db, team_id, start, end) if w.is_active]
+    else:
+        workers = _workers(db, None, dept=dept)
+    teams = list(db.scalars(select(Team).order_by(Team.sort_order, Team.id)))
     wb = Workbook()
     ws = wb.active
-    ws.title = "attendance"
-    ws.append(TEMPLATE_HEADERS)
-    for c in ws[1]:
-        c.font = Font(bold=True)
-        c.fill = PatternFill("solid", fgColor="DDEBF7")
-    ws.append([date.today(), "", "Petar Petrović", "请假", "", "年假"])
-    ws.append([date.today(), "", "张伟", "出勤", "夜班", "顶 3 班夜班"])
-    for col, width in zip("ABCDEF", (14, 14, 20, 12, 12, 30)):
-        ws.column_dimensions[col].width = width
-    for r in (2, 3):
-        ws.cell(r, 1).number_format = "yyyy-mm-dd"
-    dv = DataValidation(type="list", formula1='"出勤,请假,病假,缺勤,休息"', allow_blank=False)
-    ws.add_data_validation(dv)
-    dv.add("D2:D2000")
-    help_ = wb.create_sheet("说明 Uputstvo Help")
-    for line in [
-        "只需填写和排班不一样的情况（请假、病假、缺勤、调班/加班）；没填的人按排班默认出勤。",
-        "Popunite samo odstupanja od rasporeda (odsustvo, bolovanje, izostanak, zamena smene); ostali se računaju kao prisutni po rasporedu.",
-        "Only fill in exceptions to the schedule (leave, sick, absent, shift swap); everyone else counts as present per the schedule.",
-        "",
-        "日期：2026-11-21 或 21.11.2026；夜班算在下班那天（前一天 23:00 开始）/ Noćna (treća) smena se računa na dan kada se završava / Night shift counts on the day it ends",
-        "工号或姓名至少填一个，优先按工号匹配 / Matični broj ili ime / Employee no. or name",
-        "状态 Status：出勤 / 请假 / 病假 / 缺勤 / 休息；prisutan / odsustvo / bolovanje / izostanak / slobodan；present / leave / sick / absent / off",
-        "班次 Shift（只在出勤且和本班组排班不同时填 / samo za zamenu smene / only for swaps）：白班/中班/夜班；prva/druga/treća；day/middle/night",
-    ]:
-        help_.append([line])
-    help_.column_dimensions["A"].width = 120
+    ws.title = f"{m:02d}-{y}"
+    sheet.write_month(ws, y, m, sheet.group_by_team(workers, teams), att.effective(db, workers, start, end))
     buf = io.BytesIO()
     wb.save(buf)
     return Response(buf.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    headers={"Content-Disposition": 'attachment; filename="attendance_template.xlsx"'})
+                    headers={"Content-Disposition": f'attachment; filename="attendance_{y}-{m:02d}.xlsx"'})
 
 
 def _parse_day(v) -> date | None:
@@ -314,11 +306,11 @@ async def import_attendance(file: UploadFile = File(...), month: str | None = Fo
         wq = wq.where(Worker.department_id == who.dept_id)
     workers = list(db.scalars(wq))
     by_no = {w.employee_no.strip(): w for w in workers if w.employee_no}
-    if (sap := _find_sheet_header(ws)) is not None:
-        return _import_sheet(db, ws, sap, month, by_no, admin, file.filename or "xlsx")
     by_name: dict[str, list[Worker]] = {}
     for w in workers:
         by_name.setdefault(w.name.strip().lower(), []).append(w)
+    if (sap := _find_sheet_header(ws)) is not None:
+        return _import_sheet(db, ws, sap, month, by_no, by_name, admin, file.filename or "xlsx")
 
     rows, errors = [], []
     for i, r in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
@@ -384,59 +376,109 @@ def _find_sheet_header(ws) -> tuple[int, int] | None:
     return None
 
 
-def _import_sheet(db: Session, ws, sap: tuple[int, int], month: str | None, by_no: dict, admin: User,
-                  filename: str) -> ImportOut:
-    """导入出勤月表。日期按列的顺序算（表头的日期数字可能写错，不用），用第二行的星期核对月份。
-    每一格和排班比：一样的不记（以前有例外的清掉），不一样的记成例外；空格子不改。"""
+def _sheet_dates(ws, hr: int, first: int, month: str | None) -> tuple[list[date], str, list[ImportError_]]:
+    """月表每一列是哪天。按优先顺序：
+    1. 日期那一行本身就是日期（工厂新表用公式算出来的，Excel 存了结果）→ 直接用
+    2. 表上面写了 Year / Month（年、月）→ 按列的顺序算
+    3. 都没有（老的表）→ 用页面上选的月份按列的顺序算，再用星期那一行核对
+    返回 (日期列表, "YYYY-MM", 错误)。"""
     import calendar
 
+    errors: list[ImportError_] = []
+    head = []
+    for i in range(31):
+        v = ws.cell(hr, first + i).value
+        if isinstance(v, datetime):
+            v = v.date()
+        if not isinstance(v, date):
+            break
+        head.append(v)
+    if head:
+        ym = f"{head[0]:%Y-%m}"
+        if any(f"{d:%Y-%m}" != ym for d in head) or [d.day for d in head] != list(range(1, len(head) + 1)):
+            errors.append(ImportError_(row=hr, message="日期那一行不是同一个月从 1 号起连着的日期 / dates must be one month from day 1"))
+        return head, ym, errors
+    y = m = None
+    for r in range(1, hr):
+        label = str(ws.cell(r, 1).value or "").strip().lower()
+        val = next((ws.cell(r, c).value for c in range(2, 6) if isinstance(ws.cell(r, c).value, (int, float))), None)
+        if val is None:
+            continue
+        if label.startswith(("year", "godina", "年")):
+            y = int(val)
+        elif label.startswith(("month", "mesec", "月")):
+            m = int(val)
+    from_sheet = y is not None and m is not None
+    if not from_sheet:
+        try:
+            y, m = (int(x) for x in (month or "").split("-"))
+        except ValueError:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "month required (YYYY-MM)")
+    if not (1 <= m <= 12 and 2000 <= y <= 2100):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "month required (YYYY-MM)")
+    ym = f"{y:04d}-{m:02d}"
+    ndays = calendar.monthrange(y, m)[1]
+    days = [date(y, m, i + 1) for i in range(ndays)]
+    if not from_sheet:  # 星期那一行（文字）核对月份；多出来的列必须是空的
+        for i in range(ndays + 3):
+            v = ws.cell(hr + 1, first + i).value
+            s = str(v).strip().lower()[:3] if v is not None else ""
+            if i >= ndays:
+                if s:
+                    errors.append(ImportError_(row=hr + 1, message=f"表里的天数比 {ym} 的 {ndays} 天多 / more day columns than {ndays}"))
+                break
+            if not s:
+                errors.append(ImportError_(row=hr + 1, message=f"第 {i + 1} 天没有星期，表里的天数比 {ym} 少？ / missing weekday for day {i + 1}"))
+                break
+            if s in _WEEKDAYS and _WEEKDAYS[s] != days[i].weekday():
+                errors.append(ImportError_(row=hr + 1, message=f"第 {i + 1} 天写的是 {v}，可 {days[i]} 是星期{'一二三四五六日'[days[i].weekday()]}，月份选错了？ / weekday mismatch, wrong month?"))
+                break
+    return days, ym, errors
+
+
+def _import_sheet(db: Session, ws, sap: tuple[int, int], month: str | None, by_no: dict, by_name: dict,
+                  admin: User, filename: str) -> ImportOut:
+    """导入出勤月表（工厂的格式：Year / Month、日期行、星期行，一行一个人：姓名、Sap No.、每天一格）。
+    人按 Sap No. 对名册工号，没填工号的按姓名（不能重名）。每一格和排班比：一样的不记（以前有例外的清掉），
+    不一样的记成例外；空格子不改。"""
     from ..schedule_service import load_schedule
     from ..worker_history import Timelines
 
-    errors: list[ImportError_] = []
-    try:
-        y, m = (int(x) for x in (month or "").split("-"))
-        ndays = calendar.monthrange(y, m)[1]
-    except ValueError:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "month required (YYYY-MM)")
     hr, sc = sap
     first = sc + 1  # 第 1 天所在的列
-    days = [date(y, m, i + 1) for i in range(ndays)]
-    # 星期那一行：核对月份；多出来的列必须是空的
-    for i in range(ndays + 3):
-        v = ws.cell(hr + 1, first + i).value
-        s = str(v).strip().lower()[:3] if v is not None else ""
-        if i >= ndays:
-            if s:
-                errors.append(ImportError_(row=hr + 1, message=f"表里的天数比 {month} 的 {ndays} 天多 / more day columns than {ndays}"))
-            break
-        if not s:
-            errors.append(ImportError_(row=hr + 1, message=f"第 {i + 1} 天没有星期，表里的天数比 {month} 少？ / missing weekday for day {i + 1}"))
-            break
-        if s in _WEEKDAYS and _WEEKDAYS[s] != days[i].weekday():
-            errors.append(ImportError_(row=hr + 1, message=f"第 {i + 1} 天写的是 {v}，可 {days[i]} 是星期{'一二三四五六日'[days[i].weekday()]}，月份选错了？ / weekday mismatch, wrong month?"))
-            break
+    days, month, errors = _sheet_dates(ws, hr, first, month)
     rows: list[tuple[Worker, list]] = []
-    seen: dict[str, int] = {}
+    seen: dict[int, int] = {}
     for r in range(hr + 2, ws.max_row + 1):
         no = ws.cell(r, sc).value
-        if no is None or str(no).strip() == "":
+        name = ws.cell(r, sc - 1).value if sc > 1 else None
+        no = str(int(no)) if isinstance(no, float) and no.is_integer() else str(no or "").strip()
+        name = str(name or "").strip()
+        if not no and not name:
             continue
-        no = str(int(no)) if isinstance(no, float) and no.is_integer() else str(no).strip()
-        w = by_no.get(no)
-        if w is None:
-            errors.append(ImportError_(row=r, message=f"工号 {no} 在名册里找不到（先在员工名册里填上工号）/ unknown Sap No. {no}"))
+        who = f"{name} {no}".strip()
+        if no:
+            w = by_no.get(no)
+            if w is None:
+                errors.append(ImportError_(row=r, message=f"工号 {no} 在名册里找不到（先在员工名册里填上工号）/ unknown Sap No. {no}"))
+                continue
+        else:
+            cands = by_name.get(name.lower(), [])
+            if len(cands) != 1:
+                errors.append(ImportError_(row=r, message=(f"「{name}」重名，请填 Sap No. / duplicate name" if cands else
+                                                           f"「{name}」在名册里找不到，请填 Sap No. / unknown name")))
+                continue
+            w = cands[0]
+        if w.id in seen:
+            errors.append(ImportError_(row=r, message=f"{who} 出现两次（第 {seen[w.id]} 行）/ duplicate person"))
             continue
-        if no in seen:
-            errors.append(ImportError_(row=r, message=f"工号 {no} 出现两次（第 {seen[no]} 行）/ duplicate Sap No."))
-            continue
-        seen[no] = r
+        seen[w.id] = r
         cells = []
         for i, d in enumerate(days):
             v = ws.cell(r, first + i).value
             x = att.sheet_cell(v)
             if x == "invalid":
-                errors.append(ImportError_(row=r, message=f"工号 {no} {d:%m-%d}：认不出「{v}」/ cannot read {v!r}"))
+                errors.append(ImportError_(row=r, message=f"{who} {d:%m-%d}：认不出「{v}」/ cannot read {v!r}"))
             cells.append(x)
         rows.append((w, cells))
     if errors:
@@ -459,7 +501,7 @@ def _import_sheet(db: Session, ws, sap: tuple[int, int], month: str | None, by_n
     audit.log(db, user_id=admin.id, action="import", entity="attendance", entity_id=filename,
               new={"month": month, "people": len(rows), "exceptions": written, "cleared": cleared})
     db.commit()
-    return ImportOut(imported=written, errors=[], month=month, people=len(rows), days=ndays, cleared=cleared)
+    return ImportOut(imported=written, errors=[], month=month, people=len(rows), days=len(days), cleared=cleared)
 
 
 # ---------------- 某人某天 ----------------
