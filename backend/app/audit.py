@@ -38,12 +38,20 @@ def log(
     new: Any = None,
     extra: dict | None = None,
 ) -> None:
+    # entity_id / field 是 String(50)：PostgreSQL 超长会报错（例如手机上很长的导入文件名），截断，完整的放进 extra
+    eid = str(entity_id)
+    if len(eid) > 50:
+        extra = (extra or {}) | {"entity_id": eid}
+        eid = eid[:49] + "…"
+    if field is not None and len(field) > 50:
+        extra = (extra or {}) | {"field": field}
+        field = field[:49] + "…"
     db.add(
         AuditLog(
             user_id=user_id,
             action=action,
             entity=entity,
-            entity_id=str(entity_id),
+            entity_id=eid,
             field=field,
             old_value=_s(old),
             new_value=_s(new),
