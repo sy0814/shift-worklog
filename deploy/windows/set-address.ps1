@@ -11,11 +11,30 @@
 
 只改 HTTPS 入口的地址并重启它；数据、程序、密码都不动。
 根证书不变，所以手机不用重装证书，只要改用新地址打开即可。
+
+也可以在网页「系统设置 → 访问地址」里改：网页把新地址写进 data\site-hosts-request.txt，
+再启动计划任务 WorkRecordSetAddress，它以 SYSTEM 运行「set-address.ps1 -FromFile」，结果写进 data\site-hosts-status.json。
 #>
-param([Parameter(Mandatory = $true, Position = 0)][string]$SiteHosts)
+param([Parameter(Position = 0)][string]$SiteHosts = '', [switch]$FromFile)
 
 . (Join-Path $PSScriptRoot 'common.ps1')
+$requestFile = Join-Path $DataDir 'site-hosts-request.txt'
+$statusFile = Join-Path $DataDir 'site-hosts-status.json'
+
+# 网页上改的：把结果写给网页看（成功 / 失败和原因）
+function Write-AddressStatus([bool]$Ok, [string]$Hosts, [string]$Message) {
+    $o = [ordered]@{ ok = $Ok; at = (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'); hosts = $Hosts; message = $Message }
+    Write-Utf8NoBom $statusFile ($o | ConvertTo-Json)
+}
+
+if ($FromFile) {
+    if (-not (Test-Path $requestFile)) { exit 0 }
+    $SiteHosts = ([string](Get-Content -Path $requestFile -Raw -Encoding UTF8)).Trim()
+    Remove-Item -Path $requestFile -Force -ErrorAction SilentlyContinue
+}
+try {
 Assert-Admin
+if (-not $SiteHosts) { throw '没有填地址。例：.\set-address.ps1 192.168.1.60' }
 
 # 检查地址格式：IPv4 或电脑名 / 域名，逗号分隔
 $hosts = @($SiteHosts -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
@@ -55,6 +74,11 @@ for ($i = 0; $i -lt 20; $i++) {
 }
 if (-not $ok) { throw "HTTPS 服务没有正常启动，请查看日志：$LogDir\$SvcCaddy.err.log" }
 Write-Ok 'HTTPS 服务已重启'
+if ($FromFile) { Write-AddressStatus $true $SiteHosts "原来的地址：$old" }
+} catch {
+    if ($FromFile) { Write-AddressStatus $false $SiteHosts $_.Exception.Message }
+    throw
+}
 
 $first = $hosts[0]
 Write-Host ''

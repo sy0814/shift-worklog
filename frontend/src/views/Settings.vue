@@ -6,6 +6,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../api'
 import TriNames from '../components/TriNames.vue'
 import StorageCard from '../components/StorageCard.vue'
+import ServerAddressCard from '../components/ServerAddressCard.vue'
 import DepartmentsCard from '../components/DepartmentsCard.vue'
 import { LANGS, i18n } from '../i18n'
 import { branding, loadBranding } from '../branding'
@@ -140,6 +141,7 @@ onMounted(async () => {
 
     <!-- 存储与备份 -->
     <StorageCard />
+    <ServerAddressCard />
 
     <el-card v-if="cur" shadow="never" class="mb">
       <template #header>
