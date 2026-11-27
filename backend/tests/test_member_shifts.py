@@ -122,3 +122,40 @@ def test_split_hours_assignable_in_next_shift(client, admin_h, monkeypatch):
         s = load_schedule(db)
         assert w["id"] in tasks_router.assignable_ids(db, s, mid.id, D, "middle")
         assert w["id"] in tasks_router.assignable_ids(db, s, main.id, D, "day")  # 白班本来就能
+
+
+PATTERNS = ["06:00-11:00,14:00-17:00", "07:00-12:00,14:00-17:00", "22:00-06:00", "13:00-21:00",
+            "20:00-02:00,03:00-05:00", "05:00-09:00,18:00-22:00", "12:00-20:00", "23:00-03:00,07:00-11:00"]
+
+
+def test_on_duty_iff_in_hours_all_day(client, admin_h, monkeypatch):
+    """不变量：任何时刻，首页「当前班次」里这个人算在岗（空闲 / 忙碌）⇔ 他此刻真的在自己的时间段里；
+    最多出现一次。每种写法、两天里每半小时都查一遍（只挑几个时间点的测试漏过了 06:00-11:00 那个 bug）。"""
+    from app.work_hours import in_hours
+
+    t = client.post("/api/teams", headers=admin_h, json={"name_zh": "全天检查组", "kind": "manual", "is_main": False}).json()
+    start = D - timedelta(days=3)
+    people = {}
+    for i, p in enumerate(PATTERNS):
+        w = client.post("/api/workers", headers=admin_h, json={"name": f"Inv {i}", "team_id": t["id"]}).json()
+        r = client.put(f"/api/workers/{w['id']}/schedule", headers=admin_h, json={
+            "effective_from": str(start), "team_id": t["id"], "personal": True, "pattern": [p] * 7,
+            "cycle_start": str(start)})
+        assert r.status_code == 200, (p, r.text)
+        people[w["id"]] = p
+    with SessionLocal() as db:
+        sched = load_schedule(db)
+    base = datetime.combine(D, datetime.min.time())
+    bad = []
+    for step in range(96):
+        now = base + timedelta(minutes=30 * step)
+        monkeypatch.setattr(duty_router, "local_now", lambda now=now: now)
+        du = client.get("/api/duty", headers=admin_h).json()
+        rows = [y for x in du["teams"] for y in x["workers"]] + du["top"] + du["managers"]
+        for wid, p in people.items():
+            mine = [r["status"] for r in rows if r["worker"]["id"] == wid]
+            working = any(in_hours(sched, p, now.date() + timedelta(days=k), now) for k in (-1, 0, 1))
+            on = [s for s in mine if s in ("idle", "busy")]
+            if len(mine) > 1 or (len(on) == 1) != working:
+                bad.append(f"{now:%m-%d %H:%M} {p}: {mine} working={working}")
+    assert not bad, "\n".join(bad[:20])
