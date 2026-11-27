@@ -75,7 +75,7 @@ def test_stats(client, admin_h, leader_h, teams):
     assert codes.index("STAT-MILL") < codes.index("STAT-PUMP")
 
     # 时间线：新的在前；第 1 件事带着链上两班的日志、经过两个班组
-    tl = client.get(f"/api/equipment-stats/{mill}/timeline", headers=leader_h).json()
+    tl = client.get(f"/api/equipment-stats/{mill}/timeline", headers=leader_h, params=rng).json()
     assert len(tl) == 4
     first = next(x for x in tl if x["task_id"] == a["id"])
     assert first["last_task_id"] == b["id"] and first["status"] == "done" and first["hours"] is not None
@@ -83,7 +83,7 @@ def test_stats(client, admin_h, leader_h, teams):
     assert first["team_ids"] == [teams["T1"], teams["T2"]]
 
     # 导出
-    x = client.get("/api/equipment-stats/xlsx", headers=admin_h, params={"lang": "en"})
+    x = client.get("/api/equipment-stats/xlsx", headers=admin_h, params={"lang": "en"} | rng)
     assert x.status_code == 200
     ws = load_workbook(io.BytesIO(x.content)).active
     head = [c.value for c in ws[2]]

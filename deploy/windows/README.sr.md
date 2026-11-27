@@ -221,12 +221,14 @@ Jezik se menja gore desno (中文 / Srpski / English).
 
 Posle prijave otvorite meni **Upravljanje** gore i uradite redom:
 
-1. **Nalozi:** nalozi šefova smena već postoje (`t1_leader1`–`t4_leader1`, `day_leader1`–`day_leader3`). **Njihova početna lozinka je ista kao korisničko ime, što nije bezbedno.**
-   - U „Upravljanje → Nalozi” za svaki nalog kliknite „Resetuj lozinku”, postavite novu lozinku i javite je šefu smene.
-   - Svaki nalog šefa pripada jednoj osobi u „Spisku radnika” (u početku se zove kao nalog, npr. „t1_leader1”): u spisku promenite ime u pravo ime šefa; ako ta osoba već postoji u spisku, na stranici „Nalozi” kliknite „Poveži drugačije”, pa isključite višak u spisku.
-   - Naloge za ostale otvarate u spisku radnika preko „Nalog”: šefovi i zamenici dobijaju korisničko ime + lozinku; članovi koriste „Lični nalog” (prijava: ekipa → svoja slika → lična lozinka). Šta koja uloga sme podešava se u „Upravljanje → Uloge i prava”.
+1. **Raspored → Ekipe:** nova instalacija **nema ekipa ni naloga šefova smena**; dodajte ih sami.
+   - Kliknite „Nova ekipa”: za smenske ekipe 1–4 koristite „Brzo → Četiri ekipe (8 dana)”, označite „Glavna ekipa” i podesite „Prvi dan ciklusa”; za dnevnu smenu „Pon–pet prva smena” i označite „Praznicima slobodno”.
+   - Zatim uporedite „Kalendar smena” sa fabričkom tabelom prisustva (treća smena se računa na dan kada se završava: „3” = od 23:00 prethodnog dana do 07:00). Državne praznike unesite u „Praznici / radne subote”.
 2. **Radnici:** kliknite „Dodaj više”, izaberite ekipu, nalepite jedno ime po redu i sačuvajte. Uradite to za svaku ekipu.
-3. **Raspored** (gornji meni): u „Kalendaru smena” proverite da današnje smene odgovaraju stvarnosti. Ako ne odgovaraju, u „Ekipe” izmenite ciklus te ekipe (dužina ciklusa, smena za svaki dan, prvi dan ciklusa; samo administrator). Državne praznike unesite u „Praznici / radne subote”.
+   - Unesite **matični broj** (Sap No. iz tabele prisustva): koristi se za uvoz prisustva i za prijavu.
+   - U koloni „Uloga” izaberite pravu ulogu za šefove i zamenike. Dodavanjem osobe **nalog se otvara automatski**: šefovi se prijavljuju korisničkim imenom + lozinkom, korisničko ime je matični broj (radi i jedno i drugo); članovi koriste „Lični nalog” (ekipa → svoja slika → lična lozinka). Lozinka je „Podešavanja → Podrazumevana lozinka za nove radnike” (podrazumevano `123456`) i **mora se promeniti pri prvoj prijavi**.
+   - Šta koja uloga sme podešava se u „Upravljanje → Uloge i prava”. „Upravljanje → Nalozi” služi samo za nove administratorske naloge.
+3. **Podešavanja → Podrazumevana lozinka za nove radnike:** promenite `123456` pre dodavanja ljudi.
 4. **Podešavanja:**
    - Ako DeepSeek ključ niste uneli tokom instalacije, unesite ga u polje „API ključ”, kliknite „**Testiraj vezu**”, i kada se pojavi zeleno „Veza radi” sa primerima prevoda, kliknite „**Sačuvaj**”.
    - U „Podešavanju upozorenja” možete promeniti posle koliko sati se nezavršen zadatak označava crveno.

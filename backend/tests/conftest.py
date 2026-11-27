@@ -7,6 +7,7 @@ os.environ["DATABASE_URL"] = os.environ.get("TEST_DATABASE_URL") or f"sqlite:///
 os.environ["ADMIN_PASSWORD"] = "admin123"
 os.environ["UPLOAD_DIR"] = f"{_tmp}/uploads"
 os.environ["RUN_SCHEDULER"] = "false"
+os.environ["SEED_DEMO"] = "true"  # 测试用示例班组（1～4 班、常白班）和班长账号
 os.environ["DEEPSEEK_API_KEY"] = ""  # 默认不翻译；翻译测试里单独打开
 
 import pytest  # noqa: E402
