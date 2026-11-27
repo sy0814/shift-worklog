@@ -347,7 +347,7 @@ def assignable_ids(db: Session, sched, team_id: int, d, k: str) -> set[int]:
     # 算在别的班、但自定义上班时间有一段落在这个班次里的人（例如白班 07-12、14-17 的人在中班的前两小时），
     # 这个班次的主班组那一组也能给他安排任务（首页中班名单里也列着他）
     if team_id in slot_group:
-        from .duty import _overlap
+        from ..work_hours import overlap as _overlap
 
         start, end = sched.shift_window(d, k)
         for w in workers:

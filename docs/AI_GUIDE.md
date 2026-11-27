@@ -44,6 +44,7 @@ backend/
     schedule_service.py   从库里构造 Schedule（含「成员带出来的班次」）、local_now()
     worker_history.py     员工班组 / 个人排班变更记录（Timelines）、账号同步
     attendance_service.py 出勤：默认按排班推算 + 例外记录（effective()）
+    work_hours.py         自定义上班时间的「实际时间」：午休 / 跨班次分界 / 落在别的班次里（首页在岗、能分配任务共用）
     overtime_service.py   加班展开
     translator.py         ★ 只负责调翻译接口、校验 JSON（换模型只改这里）
     translation_service.py 翻译队列（2 个线程）、写回、定时重试、名称翻译；调度器也在这里启动
@@ -109,7 +110,7 @@ deploy/Caddyfile, deploy/install/install.html
 - 某人某天的判定只在 `attendance_service.resolve(sched, entry, 例外记录, d, trace=None)` 一处：先 `default_for`（排班），再叠例外。`effective` 逐天调它；不要在别处另写一份。
 - 返回 `DayAttendance(status, shift_kind, team_id, source, note, hours)`。在岗、可分配人员、工时、导出、AI 分析都从这里取。
 - 加班 `overtime`：某班次后加班到几点（`overtime_service.expand`）。
-- 首页人员状态 `routers/duty.py`：**管理人员**（角色 `task.create` 为 dept / all、本车间）从班组里拿出来放 `DutyOut.managers`，`counts.managers` 单独数，其他 counts 不含他们；在不在班照常按 `attendance_service.resolve`（他们靠个人循环）；没有班组也没有个人循环的列在 `managers_unscheduled`
+- 首页人员状态 `routers/duty.py`：`duty()` 按步骤拆开——`_overtime`（谁在加班）→ `_place`（每个人按出勤放进哪个班组、什么状态）→ `_open_tasks`（手上的任务）→ `_row`（一行）→ 计数；**管理人员**（角色 `task.create` 为 dept / all、本车间）从班组里拿出来放 `DutyOut.managers`，`counts.managers` 单独数，其他 counts 不含他们；在不在班照常按 `attendance_service.resolve`（他们靠个人循环）；没有班组也没有个人循环的列在 `managers_unscheduled`
 
 ### 3.4 任务
 - 三语列 `content_zh/sr/en` + `source_lang`；遗留问题 `leftover_*`、废弃原因 `discard_reason_*` 各自翻译；`translation_status`、`manual_fields`（人工校对过的列，机器不覆盖）。

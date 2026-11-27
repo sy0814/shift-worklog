@@ -103,7 +103,7 @@ def test_personal_custom_hours_api(client, admin_h, teams):
 
 
 def test_duty_helpers():
-    from app.routers.duty import _in_hours, _working_now
+    from app.work_hours import in_hours as _in_hours, working_now as _working_now
     from app.attendance_service import DayAttendance
 
     s = Schedule(teams=T)
@@ -118,7 +118,7 @@ def test_duty_helpers():
 
 def test_duty_overlap_into_next_shift():
     """白班 07-12、14-17 的人算白班，但在中班名单里也列出来（到 17:00，计入在岗）。"""
-    from app.routers.duty import _overlap
+    from app.work_hours import overlap as _overlap
     from app.attendance_service import DayAttendance
 
     s = Schedule(teams=T)
