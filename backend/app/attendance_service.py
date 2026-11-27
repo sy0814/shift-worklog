@@ -143,6 +143,7 @@ SHEET_CODES = {
     "RW": "absent",  # 停工
 }
 SHEET_SHIFTS = {"1": "day", "2": "middle", "3": "night"}
+_SHEET_HOURS = __import__("re").compile(r"^([123])\s*[-–—]\s*\d{1,2}\s*H?$")
 _SHEET_JUNK = " .·。,，、'\""
 
 
@@ -158,6 +159,8 @@ def sheet_cell(v) -> tuple[str, str | None, str | None] | str | None:
         return None
     if s in SHEET_SHIFTS:
         return "present", SHEET_SHIFTS[s], None
+    if m := _SHEET_HOURS.match(s):  # 1-8H / 1-10H / 1-12H：只按那个班算（用户 2026-11-27：只算 8 小时，不管时长）
+        return "present", SHEET_SHIFTS[m[1]], None
     if s in ("/", "\\"):
         return "off", None, None
     if s in SHEET_CODES:

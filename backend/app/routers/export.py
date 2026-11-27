@@ -222,31 +222,13 @@ def build_workbook(db: Session, start: date, end: date, team_id: int | None, wor
     ws2.append([T["note_hours"]])
     ws2.freeze_panes = "B2"
 
-    # ---- 出勤表 ----
-    ws3 = wb.create_sheet(T["sheet_att"])
-    _header(ws3, T["att"] + [d.strftime("%m-%d") for d in days])
-    for w in workers:
-        cells = []
-        for d in days:
-            a = eff[w.id][d]
-            key = a.shift_kind if a.status == "present" else a.status
-            cells.append(T["code"].get(key, ""))
-        ws3.append([w.name, w.employee_no or "", tname(w.team_id)] + cells)
-        r = ws3.max_row
-        for j, d in enumerate(days):
-            a = eff[w.id][d]
-            c = ws3.cell(r, 4 + j)
-            c.alignment = Alignment(horizontal="center")
-            if a.status in FILLS:
-                c.fill = PatternFill("solid", fgColor=FILLS[a.status])
-            if a.source != "default":
-                c.font = Font(italic=True, bold=True)
-    ws3.column_dimensions["A"].width = 20
-    for j in range(len(days)):
-        ws3.column_dimensions[get_column_letter(4 + j)].width = 5
-    ws3.freeze_panes = "D2"
-    ws3.append([])
-    ws3.append([T["legend"]])
+    # ---- 出勤：工厂的出勤月表格式（和「出勤 → 下载出勤月表」一样），每个月一张；时间段以外的日子留空 ----
+    from .. import attendance_sheet as sheet
+
+    team_order = sorted(teams.values(), key=lambda t: (t.sort_order, t.id))
+    for y, m in sheet.months_between(start, end):
+        ws3 = wb.create_sheet(f"{T['sheet_att']} {m:02d}-{y}"[:31])
+        sheet.write_month(ws3, y, m, sheet.group_by_team(workers, team_order), eff)
 
     # ---- 班次日志（导出的这些任务上写的）----
     from ..models import TaskLog

@@ -37,6 +37,29 @@ def pair(teams, code_of):
     return code_of[p[0].id] if p else None
 
 
+@pytest.fixture(scope="module")
+def today_pairs(teams, code_of):
+    """常白班今天合并过的主班组：常白班下班以后，班长照样能改今天搭班班组的任务（permissions.group_ids），
+    所以「不搭班的班组」要把它们也排除（否则晚上测试时，今天和下一个班搭的不是同一个班组就会误报）。"""
+    with SessionLocal() as db:
+        sched = load_schedule(db)
+        day = sched.team(teams["DAY"])
+        return {code_of[t.id] for t in sched.paired_teams(day, local_now().date())}
+
+
+@pytest.fixture(scope="module")
+def pair_later(teams, pair):
+    """搭班的班组自己在这之前还有别的班（例如常白班 15:00 下班后显示星期一的白班，搭班的班组今晚还上中班）：
+    它的首页先显示自己那个班，到搭班那个班才合并常白班（permissions.group_ids）。"""
+    if pair is None:
+        return False
+    with SessionLocal() as db:
+        sched = load_schedule(db)
+        d, k = sched.shift_at(local_now())
+        shown = lambda t: (d, k) if sched.is_on(t, d, k) else sched.next_shift_of_team(t, d, k)
+        return shown(sched.team(teams["DAY"])) != shown(sched.team(teams[pair]))
+
+
 def h(client, code):
     return login(client, LOGIN[code], LOGIN[code])
 
@@ -69,10 +92,10 @@ def test_lead_worker(client, admin_h, teams):
     assert r["lead"]["name"] == "Mem B" and [w["name"] for w in r["workers"]] == ["Lead A"]
 
 
-def test_day_team_pairing_permission(client, teams, pair):
+def test_day_team_pairing_permission(client, teams, pair, today_pairs, pair_later):
     hd = h(client, "DAY")
     day_task = new_task(client, hd, content="Day team task")
-    others = [c for c in ("T1", "T2", "T3", "T4") if c != pair]
+    others = [c for c in ("T1", "T2", "T3", "T4") if c != pair and c not in today_pairs]
     # 不搭班的倒班班长：看得到但不能改
     ho = h(client, others[0])
     assert client.get(f"/api/tasks/{day_task['id']}", headers=ho).json()["can_edit"] is False
@@ -80,13 +103,16 @@ def test_day_team_pairing_permission(client, teams, pair):
     if pair is None:
         pytest.skip("今天常白班不上班，没有搭班")
     hp = h(client, pair)
+    if pair_later:  # 还没到搭班的那个班：搭班班长暂时不能改
+        assert client.get(f"/api/tasks/{day_task['id']}", headers=hp).json()["can_edit"] is (pair in today_pairs)
+        return
     assert client.get(f"/api/tasks/{day_task['id']}", headers=hp).json()["can_edit"] is True
     assert client.post(f"/api/tasks/{day_task['id']}/status", headers=hp, json={"status": "in_progress"}).status_code == 200
     rot_task = new_task(client, hp, content="Rotating team task")
     assert client.get(f"/api/tasks/{rot_task['id']}", headers=hd).json()["can_edit"] is True
 
 
-def test_board_merges_day_team(client, admin_h, teams, pair):
+def test_board_merges_day_team(client, admin_h, teams, pair, today_pairs, pair_later):
     hd = h(client, "DAY")
     t = new_task(client, hd, content="Merged board task")
     b = client.get("/api/board", headers=hd).json()  # 不传班组 = 本班组
@@ -96,9 +122,12 @@ def test_board_merges_day_team(client, admin_h, teams, pair):
         return
     assert b["team_ids"] == [teams[pair], teams["DAY"]] and b["team_id"] == teams[pair]
     b2 = client.get("/api/board", headers=h(client, pair)).json()
+    if pair_later:
+        assert teams["DAY"] not in b2["team_ids"]
+        return
     assert t["id"] in [x["id"] for x in b2["todo"]] and b2["team_ids"] == b["team_ids"]
     # 别的倒班班组看不到常白班的任务
-    other = next(c for c in ("T1", "T2", "T3", "T4") if c != pair)
+    other = next(c for c in ("T1", "T2", "T3", "T4") if c != pair and c not in today_pairs)
     b3 = client.get("/api/board", headers=admin_h, params={"team_id": teams[other]}).json()
     assert t["id"] not in [x["id"] for x in b3["todo"]] and b3["team_ids"] == [teams[other]]
 

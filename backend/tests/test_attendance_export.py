@@ -96,10 +96,14 @@ def test_import_all_or_nothing(client, admin_h, leader_h, teams, ws):
     assert cells[str(ws["b"])]["2026-11-24"]["status"] == "absent"
 
 
-def test_template_downloads(client, leader_h):
-    r = client.get("/api/attendance/template", headers=leader_h)
-    wb = load_workbook(io.BytesIO(r.content))
-    assert wb.worksheets[0]["D1"].value.startswith("状态") and len(wb.worksheets) == 2
+def test_template_downloads(client, admin_h, leader_h):
+    """下载出勤月表（工厂的格式）：Year / Month、日期行、Sap No.，按系统出勤填好。班长（出勤权限本班组）不能下载。"""
+    assert client.get("/api/attendance/template", headers=leader_h).status_code == 403
+    r = client.get("/api/attendance/template", headers=admin_h, params={"month": "2026-11"})
+    assert r.status_code == 200 and "2026-11" in r.headers["content-disposition"]
+    ws = load_workbook(io.BytesIO(r.content)).worksheets[0]
+    assert (ws["A1"].value, ws["C1"].value, ws["A2"].value, ws["C2"].value, ws["B3"].value) == ("Year", 2026, "Month", 11, "Sap No.")
+    assert ws["C3"].value.startswith("=IF(MONTH(DATE($C$1,$C$2,COLUMN(A1)))") and ws["F1"].value.startswith("Note:")
 
 
 def test_person_day(client, leader_h, ws):
@@ -122,7 +126,8 @@ def test_export(client, admin_h, leader_h, teams, ws):
                    params={"start": day, "end": day, "team_id": teams["T1"], "lang": "sr"})
     assert r.status_code == 200 and "spreadsheetml" in r.headers["content-type"]
     wb = load_workbook(io.BytesIO(r.content))
-    assert wb.sheetnames == ["Zadaci", "Opterećenje", "Prisustvo", "Dnevnik smene"]
+    att_sheet = f"Prisustvo {day[5:7]}-{day[:4]}"  # 出勤：工厂的月表格式，每个月一张
+    assert wb.sheetnames == ["Zadaci", "Opterećenje", att_sheet, "Dnevnik smene"]
     logs = list(wb["Dnevnik smene"].iter_rows(values_only=True))
     lg = dict(zip(logs[0], next(x for x in logs if x[0] == tk["id"])))
     assert lg["Sadržaj"] == "托辊轴承已换新" and lg["Opis posla"] == "导出测试：更换托辊"
@@ -136,8 +141,12 @@ def test_export(client, admin_h, leader_h, teams, ws):
     load = {x[0]: dict(zip(next(wb["Opterećenje"].iter_rows(values_only=True)), x))
             for x in wb["Opterećenje"].iter_rows(min_row=2, values_only=True) if x[0]}
     assert load["Att Petar"]["Ukupno sati"] >= 2.5 and load["Att Petar"]["Zadaci"] >= 1
-    att = list(wb["Prisustvo"].iter_rows(values_only=True))
-    assert att[0][:3] == ("Ime", "Matični br.", "Ekipa")
+    sh = wb[att_sheet]
+    assert (sh["A1"].value, sh["C1"].value, sh["C2"].value) == ("Year", int(day[:4]), int(day[5:7]))
+    row = next(r for r in sh.iter_rows(min_row=5, values_only=True) if r[0] == "Att Petar")
+    d = int(day[8:])
+    assert row[1] == "E100" and row[1 + d] in ("1", "2", "3", "/", "SL", "AL", "RW")  # 导出那天有内容
+    assert all(v in (None, "") for k, v in enumerate(row[2:], start=1) if k != d)  # 时间段以外留空
 
     # 按人员导出
     r = client.get("/api/export/tasks", headers=admin_h, params={"start": day, "end": day, "worker_id": ws["b"]})

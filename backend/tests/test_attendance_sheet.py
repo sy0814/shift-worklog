@@ -60,6 +60,8 @@ def cells(client, h, wid, team_id, start="2026-12-01", end="2026-12-31"):
 
 
 def test_sheet_cell():
+    assert att.sheet_cell("1-12h") == att.sheet_cell("1-8H") == ("present", "day", None)
+    assert att.sheet_cell("3-10h") == ("present", "night", None) and att.sheet_cell("4-8h") == "invalid"
     assert att.sheet_cell(1) == ("present", "day", None) and att.sheet_cell(3.0) == ("present", "night", None)
     assert att.sheet_cell("2.") == att.sheet_cell("2·") == ("present", "middle", None)
     assert att.sheet_cell("/") == ("off", None, None) and att.sheet_cell("") is None and att.sheet_cell(None) is None
@@ -122,3 +124,40 @@ def test_import_month_sheet_errors(client, admin_h, ws):
     assert r["errors"] and r["imported"] == 0
     # 没选月份
     assert imp(client, admin_h, ok, month="").status_code == 400
+
+
+def test_new_factory_layout_and_roundtrip(client, admin_h, teams, ws):
+    """工厂新的表：第 1、2 行 Year / Month，第 3 行日期（公式），A 列姓名、B 列 Sap No.；1-12h 只按那个班算；
+    没填 Sap No. 的按姓名。系统下载的月表原样导回去，什么都不变。"""
+    from openpyxl import load_workbook
+
+    r = client.get("/api/attendance/template", headers=admin_h, params={"month": "2027-01", "team_id": teams["T1"]})
+    wb = load_workbook(io.BytesIO(r.content))
+    sh = wb.worksheets[0]
+    assert sh["C1"].value == 2027 and sh["C2"].value == 1
+    again = client.post("/api/attendance/import", headers=admin_h, data={"month": "2026-05"},  # 页面上选错了月份也没关系
+                        files={"file": ("t.xlsx", r.content, "application/octet-stream")}).json()
+    assert again["errors"] == [] and again["month"] == "2027-01" and (again["imported"], again["cleared"]) == (0, 0)
+    assert again["people"] >= 2 and again["days"] == 31
+    # 改几格再导：1-12h = 白班；Sheet A 去掉工号只留姓名
+    rows = {c.value: c.row for c in sh["B"] if c.value in (10700001, 10700002)}
+    a, b = rows[10700001], rows[10700002]
+    t1 = S.teams[0]
+    day5 = date(2027, 1, 5)
+    sh.cell(a, 2).value = None  # 只按姓名
+    sh.cell(a, 2 + 5).value = "1-12h" if planned(t1, day5) != 1 else "2-12h"
+    sh.cell(b, 2 + 6).value = "PLD"
+    buf = io.BytesIO()
+    wb.save(buf)
+    out = client.post("/api/attendance/import", headers=admin_h,
+                      files={"file": ("t.xlsx", buf.getvalue(), "application/octet-stream")}).json()
+    assert out["errors"] == [] and out["imported"] == 2, out
+    s1 = cells(client, admin_h, ws["s1"], teams["T1"], "2027-01-01", "2027-01-31")
+    assert s1["2027-01-05"]["status"] == "present" and s1["2027-01-05"]["code"] is None
+    assert s1["2027-01-05"]["shift_kind"] == ("day" if planned(t1, day5) != 1 else "middle")
+    s2 = cells(client, admin_h, ws["s2"], teams["T1"], "2027-01-01", "2027-01-31")
+    assert (s2["2027-01-06"]["status"], s2["2027-01-06"]["code"]) == ("leave", "PLD")
+    # 下载回来：改过的格子写回原样的缩写
+    r = client.get("/api/attendance/template", headers=admin_h, params={"month": "2027-01", "team_id": teams["T1"]})
+    sh = load_workbook(io.BytesIO(r.content)).worksheets[0]
+    assert next(x for x in sh.iter_rows(min_row=5, values_only=True) if x[1] == 10700002)[2 + 6 - 1] == "PLD"
