@@ -5,6 +5,7 @@
 // 显示的不是「此刻在班」的班时，标题旁边写明是哪个班，免得看错
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 import api from '../api'
 import { localName } from '../i18n'
 import { useAuth } from '../stores/auth'
@@ -18,16 +19,28 @@ import HandoverDialog from './HandoverDialog.vue'
 const { t } = useI18n()
 const auth = useAuth()
 const outbox = useOutbox()
+const router = useRouter()
 const props = defineProps({ teamId: { type: Number, default: 0 } })
 const teamId = computed(() => props.teamId)
 const board = ref(null)
+const noTeams = ref(false) // 车间里还没有班组（刚装好的系统）：显示怎么开始，不弹错误
 const loading = ref(false)
 const selected = ref([])
 
 async function load() {
   loading.value = true
   try {
-    const r = await api.get('/board', { params: { team_id: teamId.value || undefined } })
+    if (!auth.teams.length) { noTeams.value = true; board.value = null; return } // 登录时已经取了班组列表
+    let r
+    try {
+      r = await api.get('/board', { params: { team_id: teamId.value || undefined }, silent: true })
+    } catch (e) {
+      noTeams.value = e.response?.status === 404 && /^no teams/.test(e.response?.data?.detail || '')
+      if (!noTeams.value) throw e
+      board.value = null
+      return
+    }
+    noTeams.value = false
     board.value = r.data
     if (!r.headers['x-from-cache']) { // 联网时顺便缓存任务详情，离线也能打开
       const ids = [...board.value.received, ...board.value.todo].filter((x) => ['not_started', 'in_progress'].includes(x.status)).map((x) => x.id)
@@ -108,7 +121,10 @@ const sections = computed(() => board.value && [
       <el-button type="primary" size="small" :disabled="!selected.length" @click="hoOpen = true">{{ t('ho.batch') }}</el-button>
     </div>
 
-    <div v-loading="loading">
+    <el-empty v-if="noTeams" :description="t('board.noTeams')" :image-size="80">
+      <el-button v-if="auth.isAdmin" type="primary" @click="router.push('/schedule?tab=teams')">{{ t('board.addTeams') }}</el-button>
+    </el-empty>
+    <div v-else v-loading="loading">
       <template v-for="sec in sections" :key="sec.key">
         <h3 class="sec">{{ sec.title }} <el-tag size="small" round>{{ sec.list.length }}</el-tag></h3>
         <div class="list">

@@ -78,6 +78,7 @@ const messages = {
       confirmDiscard: '废弃后不能恢复，确定？',
     },
     board: {
+      noTeams: '这个车间还没有班组。先到「排班 → 班组管理」添加班组，再到「员工名册」加人。', addTeams: '去添加班组',
       title: '交接班', onDuty: '当前在班 · {shift}', next: '下一班 · {date} {shift}', prev: '上一班', nextTeam: '默认移交给',
       received: '上一班移交过来', todo: '本班待办', doneRecent: '本班完成', doneLast: '上个班完成（{date} {shift}）', outRecent: '最近 12 小时移交出去', empty: '无',
     },
@@ -313,6 +314,7 @@ const messages = {
       confirmDiscard: 'Odbacivanje se ne može poništiti. Nastaviti?',
     },
     board: {
+      noTeams: 'Ovaj pogon još nema ekipa. Prvo dodajte ekipe u „Raspored → Ekipe”, zatim ljude u „Spisak radnika”.', addTeams: 'Dodaj ekipe',
       title: 'Primopredaja', onDuty: 'Sada na smeni · {shift}', next: 'Sledeća smena · {date} {shift}', prev: 'Prethodna smena', nextTeam: 'Podrazumevano predati',
       received: 'Predato od prethodne smene', todo: 'Zadaci smene', doneRecent: 'Završeno u ovoj smeni', doneLast: 'Završeno u prethodnoj smeni ({date} {shift})', outRecent: 'Predato u poslednjih 12 h', empty: 'Nema',
     },
@@ -548,6 +550,7 @@ const messages = {
       confirmDiscard: 'This cannot be undone. Continue?',
     },
     board: {
+      noTeams: 'This workshop has no teams yet. First add teams under “Schedule → Teams”, then people in the roster.', addTeams: 'Add teams',
       title: 'Handover', onDuty: 'On shift · {shift}', next: 'Next shift · {date} {shift}', prev: 'Previous shift', nextTeam: 'Hands over to',
       received: 'Received from previous shift', todo: 'Team to-do', doneRecent: 'Done this shift', doneLast: 'Done in last shift ({date} {shift})', outRecent: 'Handed over in last 12 h', empty: 'None',
     },

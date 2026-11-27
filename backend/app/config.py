@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     translate_max_attempts: int = 20  # 后台重试上限，超过后标记 failed，等管理员手动重试
     translate_retry_seconds: int = 120  # 后台重试间隔
     run_scheduler: bool = True  # 测试时关闭
+    seed_demo: bool = False  # 第一次启动时建示例班组和班长账号（测试、开发、试用）；正式安装不建
 
     upload_dir: str = "./data/uploads"
     max_upload_mb: int = 30

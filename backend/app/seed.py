@@ -1,4 +1,7 @@
-"""首次启动时写入初始数据：5 个班组、班次时间、内置角色、管理员和班长账号（班长同时建名册记录）。"""
+"""首次启动时写入初始数据：默认车间、班次时间、内置角色、系统管理员账号。
+
+班组、员工、班长账号由用户自己在网页上加（用户 2026-11-27：新装的系统不要内置班组和账号）。
+示例数据（1～4 班、常白班，7 个班长账号，密码同用户名）只在 SEED_DEMO=true 时建：测试、开发、试用用。"""
 
 import csv
 from datetime import date, time, timedelta
@@ -61,22 +64,30 @@ def ensure_default_department(db: Session) -> Department:
 
 
 def seed(db: Session) -> None:
-    if db.scalar(select(Team).limit(1)) is not None:
+    if db.get(ShiftConfig, 1) is not None:  # 已经初始化过（班次时间是第一次启动时建的）
         return
     s = get_settings()
     dept = ensure_default_department(db)
+    db.add(ShiftConfig(id=1, day_start=time(7), middle_start=time(15), night_start=time(23)))
+    db.add(User(username=s.admin_username, password_hash=hash_password(s.admin_password),
+                full_name="管理员", role="admin", lang="zh"))
+    ensure_builtin_roles(db)
+    db.flush()
+    if s.seed_demo:
+        seed_demo(db, dept)
+    audit.log(db, user_id=None, action="seed", entity="system", entity_id="init")
+    db.commit()
+
+
+def seed_demo(db: Session, dept: Department) -> None:
+    """示例数据：1～4 班四班三倒 + 常白班，7 个班长（名册里同名的人 + 账号，密码同用户名）。"""
     teams: dict[str, Team] = {}
     for i, (code, zh, sr, en, kind, off) in enumerate(TEAMS):
         t = Team(code=code, name_zh=zh, name_sr=sr, name_en=en, sort_order=i, department_id=dept.id,
                  **team_cycle(kind, off))
         db.add(t)
         teams[code] = t
-    db.add(ShiftConfig(id=1, day_start=time(7), middle_start=time(15), night_start=time(23)))
     db.flush()
-
-    db.add(User(username=s.admin_username, password_hash=hash_password(s.admin_password),
-                full_name="管理员", role="admin", lang="zh"))
-    ensure_builtin_roles(db)
     leader = db.scalar(select(Role).where(Role.code == "leader"))
     for username, code in LEADERS:
         # 班长也是名册里的人：先建名册记录（角色 = 班长），账号关联到它
@@ -87,8 +98,6 @@ def seed(db: Session) -> None:
         db.add(User(username=username, password_hash=hash_password(username), full_name=username, role="staff",
                     team_id=teams[code].id, worker_id=w.id, lang="zh"))
     db.flush()
-    audit.log(db, user_id=None, action="seed", entity="system", entity_id="init")
-    db.commit()
 
 
 GLOSSARY_SEED = Path(__file__).with_name("glossary_seed.csv")

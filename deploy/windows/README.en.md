@@ -219,12 +219,14 @@ The menu language can be switched at the top right (中文 / Srpski / English).
 
 After logging in, open the **Admin** menu at the top and do the following:
 
-1. **Accounts:** team leader accounts already exist (`t1_leader1`–`t4_leader1`, `day_leader1`–`day_leader3`). **Their initial password is the same as the user name, which is not safe.**
-   - Under "Admin → Accounts" click "Reset password" for each one, set a new password and tell each team leader.
-   - Each leader account belongs to a person in the "Workers" roster (named like the account at first, e.g. "t1_leader1"): rename the person in the roster to the leader's real name; if the person already exists in the roster, use "Relink" on the Accounts page and then disable the extra roster entry.
-   - Accounts for other people are opened in the roster with "Account": leaders and deputies get a username + password; members use the "Personal account" (sign in: choose team → tap own photo → personal password). What each role may do is set under "Admin → Roles & permissions".
+1. **Schedule → Teams:** a new installation has **no teams and no team leader accounts**; add your own.
+   - Click "New team": for rotating teams 1–4 use "Quick fill → Four-team rotation (8 days)", tick "Main team" and set "First day of cycle"; for the day team use "Mon–Fri day shift" and tick "Off on holidays".
+   - Then compare the "Shift calendar" with the factory attendance sheet (a night shift counts on the day it ends: "3" = 23:00 the day before until 07:00). Enter public holidays under "Holidays / make-up workdays".
 2. **Workers:** click "Bulk add", choose a team, paste one name per line, and save. Do this for each team.
-3. **Schedule** (top menu): check in the "Shift calendar" that today's shifts match reality. If not, edit that team's cycle under "Teams" (cycle length, shift for each day, first day of the cycle; admin only). Enter public holidays under "Holidays / make-up workdays".
+   - Fill in the **employee no.** (the Sap No. in the attendance sheet): attendance import and sign-in use it.
+   - In the "Role" column choose the right role for team leaders and deputies. Adding a person **opens an account automatically**: leaders sign in with username + password, the username is the employee no. (either works); members use the "Personal account" (choose team → tap own photo → personal password). The password is "Settings → Default password for new workers" (default `123456`) and **must be changed at first sign-in**.
+   - What each role may do is set under "Admin → Roles & permissions". "Admin → Accounts" is only for creating system administrator accounts.
+3. **Settings → Default password for new workers:** change it from `123456` before adding people.
 4. **Settings:**
    - If you did not enter the DeepSeek key during installation, enter it under "API key", click "**Test connection**", and when you see the green "Works" with sample translations, click "**Save**".
    - Under "Alert settings" you can change after how many hours an unfinished task is marked red.

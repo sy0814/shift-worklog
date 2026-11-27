@@ -339,3 +339,25 @@ def test_0021_schedule_why(engine):
         command.downgrade(cfg, "0020")
     with engine.connect() as c:
         assert "schedule.why" not in perms(c, "leader")
+
+
+def test_fresh_install_has_no_demo_teams(tmp_path, monkeypatch):
+    """正式安装（SEED_DEMO 没开）：只有默认车间、班次时间、内置角色、管理员；没有班组、员工、班长账号。再启动一次不重复建。"""
+    from sqlalchemy.orm import Session
+
+    from app import seed as seed_mod
+    from app.config import get_settings
+    from app.models import Department, Role, ShiftConfig, Team, User, Worker
+
+    eng = make_engine(f"sqlite:///{tmp_path}/fresh.db")
+    migrate.upgrade(eng)
+    monkeypatch.setattr(get_settings(), "seed_demo", False)
+    for _ in range(2):
+        with Session(eng) as db:
+            seed_mod.seed(db)
+    with Session(eng) as db:
+        assert db.query(Team).count() == 0 and db.query(Worker).count() == 0
+        assert [u.role for u in db.query(User)] == ["admin"]
+        assert db.query(Department).count() == 1 and db.get(ShiftConfig, 1) is not None
+        assert {r.code for r in db.query(Role)} >= {"leader", "deputy", "member"}
+    eng.dispose()

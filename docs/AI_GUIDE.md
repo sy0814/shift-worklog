@@ -207,7 +207,7 @@ npm run build    # 输出到 backend/static
 - **排班场景测试** `tests/test_scenarios.py`：读 `docs/SCHEDULE_SCENARIOS.md` 的设置和表格，不用数据库，直接调 `Schedule` / `attendance_service.resolve` / `schedule_service.vote_member_shifts`。失败信息写明哪一行、表里写的、系统算出的和「为什么？」的依据。
 - 翻译测试用 `tests/test_translation.py` 的 `fake` fixture（假 DeepSeek，给每种语言加前缀）。
 - 时间相关的测试：monkeypatch 路由模块里的 `local_now`（例如 `app.routers.duty.local_now`）。
-- 示例账号：`admin` / `.env` 的 `ADMIN_PASSWORD`；`t1_leader1`…`t4_leader1`、`day_leader1`…`day_leader3`，密码同用户名。
+- 示例账号：`admin` / `.env` 的 `ADMIN_PASSWORD`；`t1_leader1`…`t4_leader1`、`day_leader1`…`day_leader3`，密码同用户名——**只在 `SEED_DEMO=true` 时建**（`seed.seed_demo`；测试的 conftest 打开）。正式安装只有管理员、默认车间、班次时间、内置角色，没有班组；没有班组时首页交接班显示「先添加班组」，不调 `/api/board`。
 - 测试真实翻译：用占位 Key 启动（`DEEPSEEK_API_KEY=sk-placeholder`）时，开发环境的出站代理会替换成真 Key（只限这个开发环境）。
 
 ## 7. 主要接口一览（前缀 `/api`）
