@@ -158,12 +158,17 @@ def _place(db: Session, slot: _Slot, workers: list[Worker], eff: dict, ot: dict,
             out.add(w.team_id, w, a.status, False)  # 本该上这个班，但请假 / 调走了
         elif (x := work_hours.overlap(sched, eff[w.id], d, k, slot.start, slot.end,
                                       now if slot.current else None)) is not None:
-            # 算在别的班（例如白班 07-12、14-17），但有一段时间落在这个班次里：也列出来、计入在岗，写明到几点
+            # 算在别的班（例如白班 07-12、14-17），但有一段时间落在这个班次里：也列出来、计入在岗，写明到几点。
+            # 当前班次里还没到点（例如 06:00-11:00 的人，夜班 04:00 时）→ 休息中，写几点上班，不算在岗
             a2, ov_from, ov_until = x
             team = a2.team_id or w.team_id
             out.hours[w.id] = a2.hours
             out.overlap[w.id] = (ov_from, ov_until)
-            out.add(team, w, "on", team != w.team_id)
+            st = "on"
+            if slot.current and now < ov_from:
+                st = "off_hours"
+                out.back[w.id] = ov_from
+            out.add(team, w, st, team != w.team_id)
     return out
 
 
