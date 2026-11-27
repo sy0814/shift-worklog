@@ -331,6 +331,11 @@ Promena adrese ima dva dela: prvo računar mora **zaista da dobije novu IP adres
 
 **② Recite sistemu novu adresu** (izaberite jedno):
 
+**Način 0: na veb stranici (najlakše).** U „Podešavanja → Adresa pristupa” upišite novu adresu, kliknite „Sačuvaj i primeni” i posle oko 10 sekundi otvorite novu adresu. Pazite na redosled:
+- IP još nije promenjen: prvo upišite obe adrese „stara, nova” i sačuvajte; zatim uradite ①; na kraju obrišite staru adresu.
+- IP je već promenjen (stara adresa ne radi): na **samom serverskom računaru** otvorite `http://127.0.0.1:8000`, prijavite se kao administrator i promenite ovde.
+- Stranica prikazuje trenutne IP adrese servera; kliknite jednu da se upiše.
+
 **Način A: skripta za adresu (preporučeno).** U PowerShell-u kao administrator ukucajte jednu po jednu, sa vašom novom IP adresom u poslednjem redu:
 
 ```powershell

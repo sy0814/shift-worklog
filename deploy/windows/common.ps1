@@ -26,7 +26,8 @@ $TaskBackup = 'WorkRecordBackup'
 # update.ps1 -Online 从这里下载最新代码（GitHub 上 master 分支的 ZIP）。仓库改成私有后要换成别的下载方式
 $UpdateZipUrl = 'https://github.com/sy0814/shift-worklog/archive/refs/heads/master.zip'
 if ($env:WORKRECORD_UPDATE_URL) { $UpdateZipUrl = $env:WORKRECORD_UPDATE_URL }
-$TaskWatchdog = 'WorkRecordWatchdog'   # 看门狗：每 5 分钟检查服务、备份、磁盘（watchdog.ps1）
+$TaskWatchdog = 'WorkRecordWatchdog'
+$TaskAddress = 'WorkRecordSetAddress'   # 网页「系统设置 → 访问地址」保存后由程序启动（没有定时触发），以 SYSTEM 运行 set-address.ps1 -FromFile   # 看门狗：每 5 分钟检查服务、备份、磁盘（watchdog.ps1）
 
 # Caddy：从官方 GitHub Releases 下载（caddyserver.com 的下载接口现在要登录，会返回 401）
 $CaddyLatestApi = 'https://api.github.com/repos/caddyserver/caddy/releases/latest'
@@ -309,6 +310,15 @@ function Register-Watchdog {
     $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
     $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 4)
     Register-ScheduledTask -TaskName $TaskWatchdog -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
+}
+
+# 改访问地址的计划任务：网页上保存新地址后，程序用 schtasks /Run 启动它（程序服务自己不能重启 HTTPS 服务）
+function Register-AddressTask {
+    $script = Join-Path $AppDir 'deploy\windows\set-address.ps1'
+    $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$script`" -FromFile"
+    $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+    $settings = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 5)
+    Register-ScheduledTask -TaskName $TaskAddress -Action $action -Principal $principal -Settings $settings -Force | Out-Null
 }
 
 # 更新、卸载时先暂停看门狗，免得它把刚停下的服务又启动起来

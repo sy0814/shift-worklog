@@ -150,7 +150,7 @@
 - **看门狗** `watchdog.ps1`（计划任务 WorkRecordWatchdog，每 5 分钟）：PostgreSQL 和两个服务停了先自动启动再报警，启动不了时报警里写「可能原因」（看门狗自己查：程序文件 / 数据目录 / 配置缺失、端口被占、依赖服务没起来、磁盘满、日志最后的错误、Windows 记的服务错误；备份失败把退出码翻译出来，`common.ps1` 的 `Get-ExitCodeHint`），系统不响应、备份失败 / 超过 26 小时没成功、磁盘少于 5 GB 或 10% 都报警；报警 = 服务器弹窗 + Windows 事件日志 + `logs\watchdog.log`（用户选的，不发邮件）；报警语言在「系统设置 → 存储与备份 → 服务器报警语言」（存 `data\watchdog-lang.txt`，zh 默认 / sr / en，用户 2026-11-27 定的），脚本里每句报警都用 `T '中' '塞' '英'` 写，同一问题 60 分钟一次。备份和磁盘问题网页首页也给管理员显示（`GET /api/alerts`，阈值和脚本一致）。更新时先暂停、完成后重新打开
 - 程序服务直接用**基础 Python** 运行 `backend/run_server.py`（不用 venv 的 python.exe 转接程序，否则停服务会留下进程占着 8000 端口，报 10048）；配置由 `common.ps1` 的 `Get-AppServiceXml` 生成，update 时重写；停 / 启服务和看门狗会清掉残留的 Python
 - **更新**：`update.ps1 -Online` 自己从 GitHub 下载 master 的 ZIP（地址在 `common.ps1` 的 `$UpdateZipUrl`，仓库是公开的；改成私有就要换下载方式），解压到临时目录后运行**新下载的那份** update.ps1；不带 `-Online` = 用脚本所在目录的代码更新
-- 改访问地址：`set-address.ps1 <IP>`（根证书不变，手机不用重装）。
+- 改访问地址：「系统设置 → 访问地址」（管理员；`app/server_address.py`：写 `data\site-hosts-request.txt` → `schtasks /Run` 计划任务 `WorkRecordSetAddress`（install / update 注册，SYSTEM 运行 `set-address.ps1 -FromFile`）→ 结果 `data\site-hosts-status.json`；格式检查和脚本一致；页面列出本机 IP，填的 IP 不在本机上时提醒），或在服务器上 `set-address.ps1 <IP>`。根证书不变，手机不用重装。电脑 IP 已经改了、旧地址打不开时，在服务器上开 `http://127.0.0.1:8000`（程序直接提供页面）来改。
 - 脚本规则（UTF-8 BOM + CRLF、PowerShell 5.1 的引号和错误处理坑、icacls 用 SID、`alembic.ini` 纯 ASCII）见 AI_GUIDE 不变量 9 和常见坑。`backup.ps1` 没法在容器里检查语法，改了要请用户在服务器上跑一次留意输出。
 
 ## 开发约定（摘要，细节见 AI_GUIDE）

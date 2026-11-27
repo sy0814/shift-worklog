@@ -329,6 +329,11 @@ Changing the address has two parts: first the PC must **really get the new IP**,
 
 **② Tell the system the new address** (choose one):
 
+**Way 0: on the web page (easiest).** Under "Settings → Access address" enter the new address, click "Save and apply", and after about 10 seconds open the new address. Mind the order:
+- IP not changed yet: first enter both "old, new" and save; then do ①; finally come back and remove the old address.
+- IP already changed (the old address no longer opens): on the **server computer itself** open `http://127.0.0.1:8000`, sign in as administrator and change it there.
+- The page lists this server's current IPs; click one to fill it in.
+
 **Way A: the address script (recommended).** In an administrator PowerShell, type one line at a time, with your new IP on the last line:
 
 ```powershell

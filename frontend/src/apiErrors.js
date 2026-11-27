@@ -88,9 +88,17 @@ const T = {
   roster_acc: ['名册里的人的账号请到「员工名册」里删人', 'Nalog radnika brišite u „Spisak radnika”', 'Delete roster accounts from the roster'],
   bad_username: ['用户名只能用英文字母、数字和 . _ -（不能有空格、中文），至少 2 位', 'Korisničko ime: samo slova, brojevi i . _ - (bez razmaka), najmanje 2 znaka', 'Username: letters, digits and . _ - only (no spaces), at least 2 characters'],
   bad_input: ['填写的内容不对：{x}', 'Neispravan unos: {x}', 'Invalid input: {x}'],
+  addr_bad: ['地址格式不对：{x}（只能填 IP 地址或电脑名，不要带 http:// 或端口号）', 'Neispravna adresa: {x} (samo IP ili ime računara, bez http:// i porta)', 'Invalid address: {x} (IP or computer name only, no http:// or port)'],
+  addr_empty: ['请填地址', 'Unesite adresu', 'Enter an address'],
+  addr_win: ['只有装在 Windows 服务器上才能在网页上改；请在服务器上运行 set-address.ps1', 'Samo na Windows serveru; pokrenite set-address.ps1 na serveru', 'Only on the Windows server; run set-address.ps1 there'],
+  addr_task: ['服务器上还没有改地址的计划任务：先在服务器上运行一次 update.ps1', 'Na serveru nema zakazanog zadatka; prvo pokrenite update.ps1', 'The address task is missing on the server; run update.ps1 there first'],
   self: ['不能降级或停用自己', 'Ne možete sebi oduzeti prava', 'You cannot demote or disable yourself'],
 }
 const RULES = [
+  [/^bad address: (.+)/, 'addr_bad'],
+  [/^address required/, 'addr_empty'],
+  [/^address: only on the Windows server/, 'addr_win'],
+  [/^address: address task not found/, 'addr_task'],
   [/^worker in use: (.+)/, 'worker_used', 'refs'],
   [/^user in use: (.+)/, 'user_used', 'refs'],
   [/^delete the worker in the roster/, 'roster_acc'],

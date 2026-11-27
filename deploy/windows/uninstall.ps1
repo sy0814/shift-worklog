@@ -19,6 +19,7 @@ foreach ($n in @($SvcCaddy, $SvcApp)) {
 Write-Step '删除防火墙规则和备份任务（看门狗任务已在最前面删除）'
 Get-NetFirewallRule -DisplayName 'WorkRecord HTTP/HTTPS' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
 Unregister-ScheduledTask -TaskName $TaskBackup -Confirm:$false -ErrorAction SilentlyContinue
+Unregister-ScheduledTask -TaskName $TaskAddress -Confirm:$false -ErrorAction SilentlyContinue
 if ($RemoveProgram) {
     Write-Step '删除程序文件'
     Set-Location $env:TEMP

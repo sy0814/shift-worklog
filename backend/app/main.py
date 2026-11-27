@@ -10,7 +10,7 @@ from . import departments as _departments  # noqa: F401  注册员工车间跟�
 from .db import SessionLocal, engine
 from . import migrate, translation_service
 from .config import get_settings
-from .routers import analysis as analysis_router, attendance, departments as departments_router, branding, duty, equipment, equipment_stats, explain as explain_router, task_logs, overtime, inspections, audit_log, auth, export, handover, llm_settings, projects, roles, schedule, storage, tasks, translation, users, workers
+from .routers import analysis as analysis_router, attendance, departments as departments_router, branding, duty, equipment, equipment_stats, explain as explain_router, task_logs, overtime, inspections, audit_log, auth, export, handover, llm_settings, projects, roles, schedule, server_address as server_address_router, storage, tasks, translation, users, workers
 from .seed import seed, seed_glossary
 from .security import require_admin
 
@@ -38,6 +38,7 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="工作记录系统", lifespan=lifespan)
 app.include_router(auth.router)
+app.include_router(server_address_router.router)
 app.include_router(departments_router.router)
 app.include_router(branding.router)
 app.include_router(overtime.router)
