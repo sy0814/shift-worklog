@@ -78,6 +78,33 @@ def test_split_hours_shown_once_with_break(client, admin_h, monkeypatch):
     assert k == "middle" and not rows
 
 
+def test_early_start_in_night_shift(client, admin_h, monkeypatch):
+    """06:00-11:00,14:00-17:00（算白班）：06-07 落在夜班里。夜班 04:00 时还没到点 → 休息中、06:00 上班，
+    不能显示成空闲；06:30 才算在岗。"""
+    t = client.post("/api/teams", headers=admin_h, json={"name_zh": "早到组", "kind": "manual", "is_main": False}).json()
+    w = client.post("/api/workers", headers=admin_h, json={"name": "Early Bird", "team_id": t["id"]}).json()
+    start = D - timedelta(days=2)
+    r = client.put(f"/api/workers/{w['id']}/schedule", headers=admin_h, json={
+        "effective_from": str(start), "team_id": t["id"], "personal": True,
+        "pattern": ["06:00-11:00,14:00-17:00"] * 7, "cycle_start": str(start)})
+    assert r.status_code == 200, r.text
+
+    def at(h):
+        monkeypatch.setattr(duty_router, "local_now", lambda: datetime.combine(D, datetime.min.time()) + timedelta(hours=h))
+        du = client.get("/api/duty", headers=admin_h).json()
+        rows = [y for x in du["teams"] for y in x["workers"] if y["worker"]["id"] == w["id"]]
+        rows += [y for y in du["top"] if y["worker"]["id"] == w["id"]]
+        return du["shift_kind"], rows
+
+    k, rows = at(4)
+    assert k == "night" and [r["status"] for r in rows] == ["off_hours"]
+    assert rows[0]["back_at"].startswith(f"{D}T06:00")
+    k, rows = at(6.5)
+    assert k == "night" and [r["status"] for r in rows] == ["idle"]  # 已经在上班：在岗
+    k, rows = at(9)
+    assert k == "day" and [r["status"] for r in rows] == ["idle"]
+
+
 def test_split_hours_assignable_in_next_shift(client, admin_h, monkeypatch):
     """白班 07-12、14-17 的人：中班的主班组也能给他安排任务（他 15-17 还在）。"""
     from app.routers import tasks as tasks_router
@@ -95,3 +122,40 @@ def test_split_hours_assignable_in_next_shift(client, admin_h, monkeypatch):
         s = load_schedule(db)
         assert w["id"] in tasks_router.assignable_ids(db, s, mid.id, D, "middle")
         assert w["id"] in tasks_router.assignable_ids(db, s, main.id, D, "day")  # 白班本来就能
+
+
+PATTERNS = ["06:00-11:00,14:00-17:00", "07:00-12:00,14:00-17:00", "22:00-06:00", "13:00-21:00",
+            "20:00-02:00,03:00-05:00", "05:00-09:00,18:00-22:00", "12:00-20:00", "23:00-03:00,07:00-11:00"]
+
+
+def test_on_duty_iff_in_hours_all_day(client, admin_h, monkeypatch):
+    """不变量：任何时刻，首页「当前班次」里这个人算在岗（空闲 / 忙碌）⇔ 他此刻真的在自己的时间段里；
+    最多出现一次。每种写法、两天里每半小时都查一遍（只挑几个时间点的测试漏过了 06:00-11:00 那个 bug）。"""
+    from app.work_hours import in_hours
+
+    t = client.post("/api/teams", headers=admin_h, json={"name_zh": "全天检查组", "kind": "manual", "is_main": False}).json()
+    start = D - timedelta(days=3)
+    people = {}
+    for i, p in enumerate(PATTERNS):
+        w = client.post("/api/workers", headers=admin_h, json={"name": f"Inv {i}", "team_id": t["id"]}).json()
+        r = client.put(f"/api/workers/{w['id']}/schedule", headers=admin_h, json={
+            "effective_from": str(start), "team_id": t["id"], "personal": True, "pattern": [p] * 7,
+            "cycle_start": str(start)})
+        assert r.status_code == 200, (p, r.text)
+        people[w["id"]] = p
+    with SessionLocal() as db:
+        sched = load_schedule(db)
+    base = datetime.combine(D, datetime.min.time())
+    bad = []
+    for step in range(96):
+        now = base + timedelta(minutes=30 * step)
+        monkeypatch.setattr(duty_router, "local_now", lambda now=now: now)
+        du = client.get("/api/duty", headers=admin_h).json()
+        rows = [y for x in du["teams"] for y in x["workers"]] + du["top"] + du["managers"]
+        for wid, p in people.items():
+            mine = [r["status"] for r in rows if r["worker"]["id"] == wid]
+            working = any(in_hours(sched, p, now.date() + timedelta(days=k), now) for k in (-1, 0, 1))
+            on = [s for s in mine if s in ("idle", "busy")]
+            if len(mine) > 1 or (len(on) == 1) != working:
+                bad.append(f"{now:%m-%d %H:%M} {p}: {mine} working={working}")
+    assert not bad, "\n".join(bad[:20])
