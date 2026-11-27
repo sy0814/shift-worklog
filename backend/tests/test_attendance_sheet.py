@@ -161,3 +161,13 @@ def test_new_factory_layout_and_roundtrip(client, admin_h, teams, ws):
     r = client.get("/api/attendance/template", headers=admin_h, params={"month": "2027-01", "team_id": teams["T1"]})
     sh = load_workbook(io.BytesIO(r.content)).worksheets[0]
     assert next(x for x in sh.iter_rows(min_row=5, values_only=True) if x[1] == 10700002)[2 + 6 - 1] == "PLD"
+
+
+def test_long_filename(client, admin_h):
+    """手机上的文件名常常很长（超过留痕 entity_id 的 50 个字符）：PostgreSQL 上以前直接 500「请求失败」。"""
+    t1 = S.teams[0]
+    data = sheet([["", 10700001, *[planned(t1, d) for d in DEC], ""]])
+    name = "出勤表 SSZM 2026年12月 电工车间 最终版 已核对 (1) - 副本 - 副本 - 副本 - 副本.xlsx" * 2
+    r = client.post("/api/attendance/import", headers=admin_h, data={"month": "2026-12"},
+                    files={"file": (name, data, "application/octet-stream")})
+    assert r.status_code == 200 and r.json()["errors"] == [], r.text
