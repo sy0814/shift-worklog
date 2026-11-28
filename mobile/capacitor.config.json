@@ -1,0 +1,13 @@
+{
+  "appId": "rs.workrecord.app",
+  "appName": "Work Log",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https",
+    "errorPath": "error.html",
+    "allowNavigation": ["*"]
+  },
+  "android": {
+    "appendUserAgent": "WorkRecordApp/0.0.0"
+  }
+}

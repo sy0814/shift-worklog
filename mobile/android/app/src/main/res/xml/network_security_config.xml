@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 信任：系统证书 + 用户自己装的证书 + 打包进来的服务器根证书（mobile/ca/workrecord-ca.crt，构建时复制到 res/raw）。
+     服务器用 Caddy 内部证书机构签发 HTTPS 证书，手机装了这个 App 就不用再单独装证书。 -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+            <certificates src="@raw/workrecord_ca" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

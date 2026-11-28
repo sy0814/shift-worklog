@@ -1,0 +1,83 @@
+# 安卓 App（mobile/）：PR 里打包检查；合并到 master 后打包并发布到 Release「android-latest」，
+# 服务器 update.ps1 -Online 从那里下载最新安装包，手机从 http://服务器/app.apk 下载安装。
+# App 只是外壳（打开服务器上的网页），网页功能更新不用重新打包；改了 mobile/ 才会重新打包。
+name: Android App
+
+on:
+  push:
+    branches: [master]
+    paths: ["mobile/**", ".github/workflows/android.yml"]
+  pull_request:
+    paths: ["mobile/**", ".github/workflows/android.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: 打包安卓 App
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: 准备（版本号写进 User-Agent，复制服务器根证书）
+        working-directory: mobile
+        run: |
+          npm ci
+          VER=$(node -p "require('./package.json').version")
+          echo "APP_VERSION_NAME=$VER" >> "$GITHUB_ENV"
+          echo "APP_VERSION_CODE=${{ github.run_number }}" >> "$GITHUB_ENV"
+          # 网页通过 User-Agent 里的 WorkRecordApp/版本号 知道自己在 App 里、App 是哪个版本（提示更新用）
+          node -e "const f='capacitor.config.json',c=require('./'+f);c.android.appendUserAgent='WorkRecordApp/$VER';require('fs').writeFileSync(f,JSON.stringify(c,null,2)+'\n')"
+          mkdir -p android/app/src/main/res/raw
+          cp ca/workrecord-ca.crt android/app/src/main/res/raw/workrecord_ca.crt
+          npx cap sync android
+      - name: Gradle 打包
+        working-directory: mobile/android
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        run: |
+          chmod +x gradlew
+          mkdir -p ../out
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+            # 签名钥匙在仓库设置的 Secrets 里，不进代码库
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > app/release.keystore
+            ./gradlew --no-daemon assembleRelease
+            cp app/build/outputs/apk/release/app-release.apk ../out/workrecord.apk
+            echo "$APP_VERSION_NAME" > ../out/version.txt
+            echo "SIGNED=1" >> "$GITHUB_ENV"
+          else
+            # 没设签名钥匙：只检查能不能编译（不发布）
+            echo "::warning::没有设置 Secrets ANDROID_KEYSTORE_BASE64 / KEYSTORE_PASSWORD，只做编译检查，不发布。见 mobile/README.md"
+            ./gradlew --no-daemon assembleDebug
+            cp app/build/outputs/apk/debug/app-debug.apk ../out/workrecord-debug.apk
+          fi
+          rm -f app/release.keystore
+      - uses: actions/upload-artifact@v4
+        with:
+          name: workrecord-apk
+          path: mobile/out/
+      - name: 发布到 Release android-latest（只在 master）
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master' && env.SIGNED == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete android-latest --yes --cleanup-tag || true
+          gh release create android-latest mobile/out/workrecord.apk mobile/out/version.txt \
+            --title "安卓 App $APP_VERSION_NAME" \
+            --notes "由 .github/workflows/android.yml 自动打包。服务器 update.ps1 -Online 会下载它；手机打开 http://服务器地址/app.apk 安装。" \
+            --target "${{ github.sha }}"

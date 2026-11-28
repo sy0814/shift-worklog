@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Work Log</string>
+    <string name="title_activity_main">Work Log</string>
+    <string name="package_name">rs.workrecord.app</string>
+    <string name="custom_url_scheme">rs.workrecord.app</string>
+</resources>

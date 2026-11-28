@@ -180,6 +180,7 @@ Na kraju se pojavljuje zeleno **„安装完成！”** (Instalacija završena!)
 
 ```
 安装完成！
+  安卓手机           浏览器打开 http://192.168.1.50/app.apk 下载安装 App（App 里带证书，不用另外装）
   手机 / 电脑先打开   http://192.168.1.50/install   安装证书（只需一次）
   然后访问           https://192.168.1.50
   管理员账号         admin（密码是刚才设置的）
@@ -239,6 +240,18 @@ Posle prijave otvorite meni **Upravljanje** gore i uradite redom:
 ## 8. Korak 6: Podešavanje telefona
 
 Svaki telefon ovo radi samo jednom. Ovaj odeljak možete odštampati za šefove smena. Stranica `http://VAŠA-IP/install` na telefonu prikazuje ista uputstva na kineskom, srpskom i engleskom.
+
+### 8.0 Android (preporučeno): aplikacija, bez instalacije sertifikata
+
+Aplikacija već sadrži sertifikat ovog sistema: instalirajte je, unesite adresu servera i spremno je. Dobro za one koji ne žele da instaliraju sertifikat na telefon.
+
+1. Telefon na fabričkom Wi-Fi-ju; u pregledaču otvorite `http://VAŠA-IP/app.apk` (dugme „Preuzmi Android aplikaciju” je i na stranici `http://VAŠA-IP/install`).
+2. Otvorite preuzetu datoteku i instalirajte. Prvi put telefon traži da **dozvolite instalaciju iz nepoznatih izvora** — dozvolite jednom.
+3. Otvorite aplikaciju „Radni dnevnik”, unesite adresu servera (ista kao u pregledaču na računaru, npr. `192.168.1.50`) i dodirnite „Poveži”.
+4. Ažuriranja sistema **ne traže novu instalaciju aplikacije**; kad postoji nova verzija same aplikacije, sistem prikaže obaveštenje — dodirnite „Preuzmi” i instalirajte preko postojeće.
+5. Ako se IP servera promeni: u aplikaciji meni → „Adresa servera (aplikacija)”; kad nema veze, aplikacija sama nudi „Promeni adresu servera”.
+
+> Instalacioni paket je na serveru u `C:\WorkRecord\data\app\workrecord.apk`; `update.ps1 -Online` preuzima najnoviji. Ako se `/app.apk` ne otvara, na serveru jednom pokrenite `update.ps1 -Online`. Izvoz u Excel u aplikaciji se ne preuzima — koristite računar. Za iPhone nema aplikacije, sledite 8.2.
 
 ### 8.1 Android
 

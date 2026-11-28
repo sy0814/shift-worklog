@@ -1,15 +1,16 @@
 <script setup>
 import { appTitle } from '../branding'
 // 布局：电脑 = 顶部导航（管理类页面收进「管理」下拉）；手机 = 精简顶栏 + 底部标签栏 + 抽屉菜单
-import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { computed, h, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { ElMessage } from 'element-plus'
+import { ElButton, ElMessage, ElNotification } from 'element-plus'
 import { ArrowDown, Calendar, Clock, Document, Folder, House, Menu, Setting } from '@element-plus/icons-vue'
 import dayjs from 'dayjs'
 import api from '../api'
 import { LANGS, localName } from '../i18n'
 import { net } from '../net'
+import { inApp, newerAppVersion, openAppSetup } from '../nativeApp'
 import { useAuth } from '../stores/auth'
 import LangSwitch from '../components/LangSwitch.vue'
 import OutboxButton from '../components/OutboxButton.vue'
@@ -60,6 +61,16 @@ let idleTimer
 onMounted(() => {
   ;['pointerdown', 'keydown'].forEach((ev) => window.addEventListener(ev, touch, { passive: true }))
   idleTimer = setInterval(() => { if (teamLogin.value && Date.now() - lastActive > 30 * 60 * 1000) logout() }, 60 * 1000)
+})
+// 安卓 App：服务器上有新版本 App 时提示下载（App 本身很少更新，网页功能更新不用重装 App）
+onMounted(async () => {
+  const v = await newerAppVersion()
+  if (!v) return
+  const n = ElNotification({
+    title: t('mapp.newVersion', { v }), duration: 0, type: 'info',
+    message: h('div', [h('span', t('mapp.newVersionHint') + ' '),
+      h(ElButton, { size: 'small', type: 'primary', onClick: () => { n.close(); location.href = '/app.apk' } }, () => t('mapp.download'))]),
+  })
 })
 onUnmounted(() => {
   ;['pointerdown', 'keydown'].forEach((ev) => window.removeEventListener(ev, touch))
@@ -124,6 +135,7 @@ async function changePassword() {
             <template #dropdown>
               <el-dropdown-menu>
                 <el-dropdown-item @click="pwDialog = true">{{ t('nav.password') }}</el-dropdown-item>
+                <el-dropdown-item v-if="inApp" @click="openAppSetup">{{ t('mapp.server') }}</el-dropdown-item>
                 <el-dropdown-item v-if="teamLogin" divided @click="logout">{{ t('users.switchUser') }}</el-dropdown-item>
                 <el-dropdown-item :divided="!teamLogin" @click="logout">{{ t('nav.logout') }}</el-dropdown-item>
               </el-dropdown-menu>
@@ -168,6 +180,7 @@ async function changePassword() {
         </div>
         <div class="links">
           <a class="dlink" @click="pwDialog = true; drawer = false">{{ t('nav.password') }}</a>
+          <a v-if="inApp" class="dlink" @click="openAppSetup">{{ t('mapp.server') }}</a>
           <a v-if="teamLogin" class="dlink" @click="logout">{{ t('users.switchUser') }}</a>
           <a class="dlink danger" @click="logout">{{ t('nav.logout') }}</a>
         </div>
