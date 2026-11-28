@@ -4,7 +4,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import dayjs from 'dayjs'
 import api from '../api'
-import { localName } from '../i18n'
+import { localName, personName } from '../i18n'
 import { fmtFull } from '../format'
 import { shortEntry } from '../cycle'
 import { useAuth } from '../stores/auth'
@@ -98,7 +98,7 @@ function fmtVal(f, v) {
 }
 const Q = computed(() => (locale.value === 'zh' ? ['「', '」'] : locale.value === 'sr' ? ['„', '”'] : ['“', '”']))
 function who(e) {
-  return e.user_id == null ? t('log.system') : (e.user_name || '#' + e.user_id)
+  return e.user_id == null ? t('log.system') : (personName(e.user_name) || '#' + e.user_id)
 }
 function verb(e) {
   return te(`log.verb.${e.action}`) ? t(`log.verb.${e.action}`) : e.action
@@ -141,7 +141,7 @@ function openEntity(e) {
     detailOpen.value = true
   }
 }
-const userLabel = (u) => (u.user_id == null ? t('log.system') : u.name === u.username ? u.username : `${u.name}（${u.username}）`)
+const userLabel = (u) => (u.user_id == null ? t('log.system') : u.name === u.username ? u.username : `${personName(u.name)}（${u.username}）`)
 </script>
 
 <template>

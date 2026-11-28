@@ -161,6 +161,7 @@
 - 界面文案三语（`i18n.js` 的 zh / sr / en 三块）；用户可能看到的服务器错误在 `apiErrors.js` 补三语。
 - **页面不能跳**：用户很在意点击后布局跳动（弹窗、标签、提示文字、勾选框都要预留位置）。组件根元素 class 名要独特。
 - 表格「操作」列用 `RowActions.vue`，列宽按当前语言算（`rowActions.js`）。
+- **塞语最长**：界面改完用塞语在电脑和手机上各看一遍。通用规则在 `style.css`（工具栏按钮折行不缩进、按钮式单选折行有边框、表单说明正常行高、手机上弹窗的标签放在上面）；**人名显示用 `$pn(name)`**（系统自带管理员「管理员」跟着界面语言显示 Administrator）。
 - 在 PostgreSQL 上跑测试：容器里有 PG 16（`pg_ctlcluster 16 main start`），空库 `wrtest` / `wrmig`（账号 wrtest/wrtest，没有就先建），设 `TEST_DATABASE_URL` / `TEST_PG_URL`；库要先清空。
 - **初始数据**（`seed.py`，只在第一次启动建）：默认车间、班次时间、内置角色、系统管理员。**正式安装没有班组和班长账号**，用户自己加（2026-11-27 用户要求）。示例数据（1～4 班、常白班，`t1_leader1`…`t4_leader1`、`day_leader1`…`day_leader3`，密码同用户名）只在 `.env` 的 `SEED_DEMO=true` 时建；测试（conftest）打开，开发 / 试用自己打开。管理员：`admin` / `.env` 的 `ADMIN_PASSWORD`。
 

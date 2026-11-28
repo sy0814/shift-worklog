@@ -266,7 +266,7 @@ onMounted(async () => {
           </el-table>
         </template>
 
-        <el-dialog v-model="tsOpen" :title="t('schedule.teamShift')" width="min(480px, 94vw)" append-to-body>
+        <el-dialog v-model="tsOpen" :title="t('schedule.teamShift')" width="min(640px, 94vw)" append-to-body>
           <p class="muted">{{ t('schedule.teamShiftHint') }}</p>
           <template v-if="ts.why && auth.whyOk(ts.why.team)">
             <el-button link type="primary" size="small" @click="tsWhyOpen = !tsWhyOpen">{{ t('why.button') }} {{ localName(auth.teamById(ts.why.team)) }} · {{ ts.why.day }} {{ tsWhyOpen ? '▴' : '▾' }}</el-button>
@@ -397,7 +397,7 @@ onMounted(async () => {
         <div class="toolbar">
           <el-input-number v-model="year" :min="2020" :max="2100" controls-position="right" />
           <el-date-picker v-model="newHoliday.day" value-format="YYYY-MM-DD" :placeholder="t('schedule.date')" />
-          <el-select v-model="newHoliday.kind" style="width: 150px">
+          <el-select v-model="newHoliday.kind" style="width: 210px">
             <el-option value="holiday" :label="t('schedule.kindHoliday')" />
             <el-option value="workday" :label="t('schedule.kindWorkday')" />
           </el-select>

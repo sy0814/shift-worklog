@@ -24,6 +24,7 @@ const messages = {
     home: { welcome: '你好，{name}', myTeam: '我的班组', today: '今日排班', tasksSoon: '任务与交接功能将在下一步加入', nextShiftTag: '下一个班', viewing: '正在看', back: '回到当前', todayHint: '点班组可以在下面看它的交接班' },
     team: { rotating: '倒班', day: '常白班' },
     users: {
+      adminName: '管理员',
       deleteConfirm: '删除账号「{n}」？只有没登录过的账号能删，用过的请停用。',
       username: '用户名', fullName: '姓名', role: '角色', team: '班组', lang: '语言', active: '启用',
       admin: '管理员', leader: '班长', password: '初始密码', resetPassword: '重置密码', newPassword: '新密码',
@@ -266,6 +267,7 @@ const messages = {
     home: { welcome: 'Zdravo, {name}', myTeam: 'Moja smena', today: 'Današnji raspored', tasksSoon: 'Zadaci i primopredaja dolaze u sledećem koraku', nextShiftTag: 'sledeća smena', viewing: 'Prikaz', back: 'Nazad na trenutnu', todayHint: 'Kliknite ekipu da vidite njenu primopredaju ispod' },
     team: { rotating: 'Smenski rad', day: 'Dnevna smena' },
     users: {
+      adminName: 'Administrator',
       deleteConfirm: 'Obrisati nalog „{n}”? Može se obrisati samo nalog koji se nikad nije prijavio; inače ga deaktivirajte.',
       username: 'Korisničko ime', fullName: 'Ime i prezime', role: 'Uloga', team: 'Smena', lang: 'Jezik', active: 'Aktivan',
       admin: 'Administrator', leader: 'Šef smene', password: 'Početna lozinka', resetPassword: 'Resetuj lozinku', newPassword: 'Nova lozinka',
@@ -508,6 +510,7 @@ const messages = {
     home: { welcome: 'Hello, {name}', myTeam: 'My team', today: "Today's schedule", tasksSoon: 'Tasks and handover come in the next step', nextShiftTag: 'next shift', viewing: 'Viewing', back: 'Back to current', todayHint: 'Click a team to see its handover below' },
     team: { rotating: 'Rotating', day: 'Day team' },
     users: {
+      adminName: 'Administrator',
       deleteConfirm: 'Delete account “{n}”? Only an account that never logged in can be deleted; otherwise deactivate it.',
       username: 'Username', fullName: 'Full name', role: 'Role', team: 'Team', lang: 'Language', active: 'Active',
       admin: 'Admin', leader: 'Team leader', password: 'Initial password', resetPassword: 'Reset password', newPassword: 'New password',
@@ -753,6 +756,12 @@ export function setLang(code) {
   i18n.global.locale.value = code
   localStorage.setItem('lang', code)
   document.documentElement.lang = code === 'sr' ? 'sr-Latn' : code
+}
+
+/** 人名显示：系统自带的管理员账号（初始数据里姓名就是「管理员」）跟着界面语言显示，其他人名原样 */
+export const BUILTIN_ADMIN_NAME = '管理员'
+export function personName(name) {
+  return name === BUILTIN_ADMIN_NAME ? i18n.global.t('users.adminName') : name
 }
 
 /** 按当前语言取对象的 name_zh / name_sr / name_en */

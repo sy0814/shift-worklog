@@ -44,8 +44,8 @@ const leftover = computed(() => localText(props.task.leftover, props.task.leftov
     <div class="row3 muted">
       <span v-if="task.lead" class="lead">★ {{ t('lead.title') }}：{{ task.lead.name }}</span>
       <span v-if="task.workers.length">👷 {{ task.workers.map((w) => w.name).join('、') }}</span>
-      <span>✎ {{ task.created_by_name }} {{ fmtTime(task.recorded_at) }}</span>
-      <span v-if="task.updated_by !== task.created_by || task.updated_at !== task.created_at">↻ {{ task.updated_by_name }} {{ fmtTime(task.updated_at) }}</span>
+      <span>✎ {{ $pn(task.created_by_name) }} {{ fmtTime(task.recorded_at) }}</span>
+      <span v-if="task.updated_by !== task.created_by || task.updated_at !== task.created_at">↻ {{ $pn(task.updated_by_name) }} {{ fmtTime(task.updated_at) }}</span>
     </div>
   </div>
 </template>

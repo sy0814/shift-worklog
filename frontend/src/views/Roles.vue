@@ -49,7 +49,7 @@ const rows = computed(() => defs.value.map((d) => ({ ...d })))
 </script>
 
 <template>
-  <div class="page wide">
+  <div class="page">
     <div class="toolbar">
       <h1 class="page-title" style="margin: 0; flex: 1">{{ t('rp.title') }}</h1>
       <el-button type="primary" @click="add">{{ t('rp.add') }}</el-button>
@@ -98,7 +98,7 @@ const rows = computed(() => defs.value.map((d) => ({ ...d })))
 </template>
 
 <style scoped>
-.wide { max-width: 1400px; }
+/* 和其他页面一样宽；角色多时表格在 .wrap 里横向滚动 */
 .toolbar { display: flex; gap: 8px; align-items: center; }
 .muted { color: #909399; }
 .small { font-size: 12px; }
@@ -108,7 +108,9 @@ const rows = computed(() => defs.value.map((d) => ({ ...d })))
 .matrix thead th { background: #f5f7fa; font-weight: normal; }
 .perm { position: sticky; left: 0; background: #fff; z-index: 1; min-width: 180px; }
 thead .perm { background: #f5f7fa; }
-.role { min-width: 190px; }
+/* 每个角色一列固定宽：三语名称下面的说明会折行，不再把列撑到几百像素宽 */
+.role { min-width: 250px; }
+.role > .names { width: 250px; }
 .rname { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
 .names { display: flex; flex-direction: column; gap: 4px; margin-bottom: 6px; }
 .w { width: 100%; }

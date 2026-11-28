@@ -269,7 +269,9 @@ const exportOpen = ref(false)
         <template #default="{ row }">{{ t('shift.' + row.shift_kind) }} → {{ fmtFull(row.until) }} <span class="muted">({{ t('ot.hours', { n: fmtH(row.hours) }) }})</span></template>
       </el-table-column>
       <el-table-column prop="note" :label="t('ot.note')" min-width="120" />
-      <el-table-column prop="created_by_name" :label="t('task.publisher')" width="110" />
+      <el-table-column prop="created_by_name" :label="t('task.publisher')" width="110">
+          <template #default="{ row }">{{ $pn(row.created_by_name) }}</template>
+        </el-table-column>
       <el-table-column width="80">
         <template #default="{ row }"><el-button v-if="row.team_id ? auth.teamOk('overtime.edit', row.team_id) : auth.can('overtime.edit')" link type="danger" @click="delOvertime(row)">{{ t('common.delete') }}</el-button></template>
       </el-table-column>
@@ -278,7 +280,7 @@ const exportOpen = ref(false)
     </template>
     <OvertimeDialog v-model="otOpen" :preset="otPreset" @saved="load" />
 
-    <el-dialog v-model="dlg" :title="cur.worker ? `${cur.worker.name} · ${cur.day}` : ''" width="min(560px, 96vw)" :fullscreen="isNarrow()" append-to-body>
+    <el-dialog v-model="dlg" :title="cur.worker ? `${cur.worker.name} · ${cur.day}` : ''" width="min(640px, 96vw)" :fullscreen="isNarrow()" append-to-body>
       <template v-if="cur.worker">
         <div class="why-row">
           <span v-if="cur.cell.source !== 'default'" class="muted small">
@@ -336,7 +338,7 @@ const exportOpen = ref(false)
       </template>
     </el-dialog>
 
-    <el-dialog v-model="batchOpen" :title="t('att.batch')" width="min(520px, 96vw)" :fullscreen="isNarrow()" append-to-body>
+    <el-dialog v-model="batchOpen" :title="t('att.batch')" width="min(640px, 96vw)" :fullscreen="isNarrow()" append-to-body>
       <el-form label-width="auto">
         <el-form-item :label="t('att.workers')">
           <el-select v-model="batch.worker_ids" multiple filterable style="width: 100%">

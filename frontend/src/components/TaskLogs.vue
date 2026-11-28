@@ -70,7 +70,7 @@ async function remove(x) {
         <span>{{ x.shift_date.slice(5) }}</span>
         <ShiftTag :kind="x.shift_kind" size="small" />
         <span v-if="x.team_id">{{ auth.teamLabel(x.team_id) }}</span>
-        <b>{{ x.author }}</b>
+        <b>{{ $pn(x.author) }}</b>
         <span class="muted">{{ fmtTime(x.recorded_at) }}</span>
         <span v-if="x.translation_status === 'pending'" class="muted"><el-icon class="is-loading"><Loading /></el-icon> {{ t('tr.translating') }}</span>
         <el-button v-if="x.can_delete" link type="danger" size="small" class="del" @click="remove(x)">{{ t('common.delete') }}</el-button>
