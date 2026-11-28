@@ -131,7 +131,7 @@ const STRONG = new Set(['team_override', 'attendance', 'holiday', 'workday', 'in
         <li v-for="(s, i) in data.steps" :key="i" :class="{ strong: STRONG.has(s.code) }">
           <div>{{ text(s) }}<router-link v-if="link(s)" :to="link(s).to" class="fix" @click="emit('navigate')">{{ t('why.fix.' + link(s).label) }} →</router-link></div>
           <div v-if="s.by_name || s.note" class="meta muted">
-            <span v-if="s.by_name">{{ t('why.by', { name: s.by_name, at: fmtFull(s.at) }) }}</span>
+            <span v-if="s.by_name">{{ t('why.by', { name: $pn(s.by_name), at: fmtFull(s.at) }) }}</span>
             <span v-if="s.note">{{ t('why.note', { note: s.note }) }}</span>
           </div>
         </li>

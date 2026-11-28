@@ -109,7 +109,7 @@ function open(id) {
 
 <template>
   <div class="page">
-    <h1 class="page-title">{{ t('home.welcome', { name: auth.user?.full_name }) }}</h1>
+    <h1 class="page-title">{{ t('home.welcome', { name: $pn(auth.user?.full_name) }) }}</h1>
     <el-alert v-for="(a, i) in alerts" :key="i" type="error" show-icon :closable="false" class="sys-alert"
               :title="alertText(a)">
       <router-link to="/settings">{{ t('alert.go') }} →</router-link>
@@ -132,21 +132,21 @@ function open(id) {
         <div class="meta"><ShiftTag :kind="c.s.kind" /> {{ fmt(c.s.start) }} – {{ fmt(c.s.end) }}</div>
         <!-- 两行：管理人员、电工（班组里的人），各自在岗 / 忙碌 / 空闲 -->
         <div v-if="c.d" class="counts">
-          <div class="crow">
-            <span class="who mgr">👔 {{ t('duty.mgrShort') }}</span>
-            <span class="cnt">{{ t('duty.onDuty', { n: c.d.counts.managers ?? 0 }) }}</span>
-            <span class="cnt busy">{{ t('duty.busy', { n: c.d.counts.managers_busy ?? 0 }) }}</span>
-            <span class="cnt idle">{{ t('duty.idle', { n: c.d.counts.managers_idle ?? 0 }) }}</span>
-          </div>
-          <div class="crow">
-            <span class="who">👷 {{ t('duty.staffShort') }}</span>
-            <span class="cnt">{{ t('duty.onDuty', { n: c.d.counts.on_duty }) }}</span>
-            <span class="cnt busy">{{ t('duty.busy', { n: c.d.counts.busy }) }}</span>
-            <span class="cnt idle">{{ t('duty.idle', { n: c.d.counts.idle }) }}</span>
+          <!-- 网格：标签一列、在岗 / 忙碌 / 空闲各一列，两行上下对齐（塞语标签长短差很多）；手机上标签单独一行 -->
+          <span class="who mgr">👔 {{ t('duty.mgrShort') }}</span>
+          <span class="cnt">{{ t('duty.onDuty', { n: c.d.counts.managers ?? 0 }) }}</span>
+          <span class="cnt busy">{{ t('duty.busy', { n: c.d.counts.managers_busy ?? 0 }) }}</span>
+          <span class="cnt idle">{{ t('duty.idle', { n: c.d.counts.managers_idle ?? 0 }) }}</span>
+          <span class="extra" />
+          <span class="who">👷 {{ t('duty.staffShort') }}</span>
+          <span class="cnt">{{ t('duty.onDuty', { n: c.d.counts.on_duty }) }}</span>
+          <span class="cnt busy">{{ t('duty.busy', { n: c.d.counts.busy }) }}</span>
+          <span class="cnt idle">{{ t('duty.idle', { n: c.d.counts.idle }) }}</span>
+          <span class="extra">
             <span v-if="c.d.counts.absent" class="cnt absent">{{ t('duty.absent', { n: c.d.counts.absent }) }}</span>
             <span v-if="c.d.counts.off_hours" class="cnt absent">{{ t('duty.offHours', { n: c.d.counts.off_hours }) }}</span>
             <span class="hint">{{ t('duty.clickHint') }} ›</span>
-          </div>
+          </span>
         </div>
       </el-card>
     </div>
@@ -190,9 +190,17 @@ function open(id) {
 .shift-card.current { border-left: 4px solid #67c23a; }
 .shift-card.next { border-left: 4px solid #409eff; }
 .mine .teams, .today-item.mine span { color: #409eff; }
-.counts { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; font-size: 13px; }
-.crow { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-.crow .who { min-width: 4.5em; font-weight: 600; }
+.counts { display: grid; grid-template-columns: max-content max-content max-content max-content 1fr; gap: 4px 12px;
+  align-items: center; margin-top: 10px; font-size: 13px; }
+.counts .who { font-weight: 600; white-space: nowrap; }
+.counts .cnt { white-space: nowrap; }
+.counts .extra { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; min-width: 0; }
+@media (max-width: 600px) {
+  /* 手机：标签单独一行，下面三列数字照样对齐 */
+  .counts { grid-template-columns: max-content max-content 1fr; }
+  .counts .who, .counts .extra { grid-column: 1 / -1; }
+  .counts .extra:empty { display: none; }
+}
 .cnt { color: #303133; }
 .who.mgr { color: var(--el-color-primary); }
 .cnt.busy { color: #b88230; }

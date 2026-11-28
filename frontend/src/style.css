@@ -20,6 +20,17 @@ body { font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", 
 .shift-night { background: var(--shift-night); }
 .shift-off { background: transparent; color: var(--shift-off); }
 .toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+/* 工具栏用 gap 控制间距；Element 给相邻按钮的 margin-left 会叠加，折行后第二行还会缩进一截（塞语按钮长，常折行） */
+.toolbar > .el-button + .el-button, .toolbar > * + .el-button { margin-left: 0; }
+
+/* 按钮式单选（班次、状态……）放不下折行时：每个按钮都有左边框、行间留空，不会出现缺边、贴在一起 */
+.el-radio-group { flex-wrap: wrap; row-gap: 6px; }
+.el-radio-button .el-radio-button__inner { border-left: var(--el-border); }
+.el-radio-button + .el-radio-button { margin-left: -1px; }
+.el-radio-button.is-active + .el-radio-button .el-radio-button__inner { border-left-color: var(--el-border-color); }
+
+/* 表单项里的说明文字：Element 给内容区 32px 行高，多行说明会稀稀拉拉，按正常行高排 */
+.el-form-item__content .muted, .el-form-item__content small { line-height: 1.5; }
 
 @media print {
   .topbar, .tabbar, .offline-bar { display: none !important; }
@@ -33,7 +44,16 @@ body { font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", 
   .toolbar > .el-input, .toolbar > .el-select, .toolbar > .el-date-editor {
     flex: 1 1 100%; width: auto !important; max-width: none !important;
   }
-  .toolbar > .el-button { flex: 1 1 calc(50% - 8px); min-width: 0; margin-left: 0 !important; }
-  .toolbar > .el-button > span { overflow: hidden; text-overflow: ellipsis; }
+  .toolbar > .el-button { flex: 1 1 calc(50% - 8px); min-width: 0; margin-left: 0 !important;
+    height: auto; min-height: 32px; padding-top: 6px; padding-bottom: 6px; }
+  /* 文字长（塞语）就换行，不截断 */
+  .toolbar > .el-button > span { white-space: normal; line-height: 1.3; text-align: center; }
   .toolbar > .spacer { display: none; }
+  /* 手机上的弹窗：标签放在上面，内容占满整行（左边标签会把按钮组挤成一列一个，塞语尤其明显） */
+  .el-dialog .el-form-item { flex-direction: column; align-items: stretch; }
+  .el-dialog .el-form-item__label { width: auto !important; justify-content: flex-start; height: auto; line-height: 1.4;
+    margin-bottom: 6px; padding-right: 0; }
+  .el-dialog .el-form-item__content { margin-left: 0 !important; }
+  .el-dialog .el-form-item__label-wrap { margin-left: 0 !important; margin-right: 0 !important; }
+  .el-dialog .el-radio { white-space: normal; height: auto; min-height: 32px; }
 }

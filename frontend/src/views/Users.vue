@@ -126,7 +126,9 @@ const freeWorkers = computed(() => workers.value.filter((w) => !users.value.some
     <h3>{{ t('users.admins') }}</h3>
     <el-table :data="admins" size="small" border>
       <el-table-column prop="username" :label="t('users.username')" min-width="120" />
-      <el-table-column prop="full_name" :label="t('users.fullName')" min-width="120" />
+      <el-table-column prop="full_name" :label="t('users.fullName')" min-width="120">
+        <template #default="{ row }">{{ $pn(row.full_name) }}</template>
+      </el-table-column>
       <el-table-column :label="t('users.lastLogin')" :width="W.lastLogin"><template #default="{ row }">{{ loginText(row) }}</template></el-table-column>
       <el-table-column :label="t('common.actions')" :width="adminActW" fixed="right">
         <template #default="{ row }">

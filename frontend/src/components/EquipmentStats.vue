@@ -122,7 +122,7 @@ const KIND_TYPE = { fault: 'danger', maintenance: 'warning', inspection: 'succes
           <el-table-column prop="work_hours" :label="t('eqs.workHours')" width="100" sortable align="center" />
           <el-table-column prop="handovers" :label="t('eqs.handovers')" width="80" sortable align="center" />
           <el-table-column prop="logs" :label="t('tlog.title')" width="90" sortable align="center" />
-          <el-table-column prop="last_at" :label="t('eqs.last')" width="110" sortable>
+          <el-table-column prop="last_at" :label="t('eqs.last')" width="132" sortable>
             <template #default="{ row }">{{ fmtTime(row.last_at) }}</template>
           </el-table-column>
           <el-table-column :label="t('eqs.repeat')" width="110" align="center" fixed="right">
@@ -146,7 +146,7 @@ const KIND_TYPE = { fault: 'danger', maintenance: 'warning', inspection: 'succes
           </div>
           <TransText :tri="c.content" :src-lang="c.source_lang" field="content" compact />
           <div v-for="(x, i) in c.logs" :key="i" class="log">
-            <div class="muted small"><ShiftTag :kind="x.shift_kind" /> {{ x.shift_date.slice(5) }} · {{ x.author }} · {{ fmtTime(x.recorded_at) }}</div>
+            <div class="muted small"><ShiftTag :kind="x.shift_kind" /> {{ x.shift_date.slice(5) }} · {{ $pn(x.author) }} · {{ fmtTime(x.recorded_at) }}</div>
             <TransText :tri="x.content" :src-lang="x.source_lang" field="log" compact />
           </div>
         </div>

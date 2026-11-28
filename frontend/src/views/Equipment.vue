@@ -145,7 +145,7 @@ const fileInput = ref(null)
     <template v-else>
     <div class="toolbar">
       <span class="spacer" />
-      <el-input v-model="q" :placeholder="t('eq.search')" clearable style="width: 200px" @input="onSearch" @clear="load" />
+      <el-input v-model="q" :placeholder="t('eq.search')" clearable style="width: 280px" @input="onSearch" @clear="load" />
       <el-checkbox v-model="showInactive" @change="load">{{ t('eq.showInactive') }}</el-checkbox>
       <el-button @click="download('/equipment/export/xlsx', { lang: locale }, 'equipment.xlsx')">{{ t('eq.export') }}</el-button>
       <template v-if="canManage">

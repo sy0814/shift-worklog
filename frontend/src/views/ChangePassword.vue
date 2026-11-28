@@ -50,7 +50,7 @@ function logout() {
         <h2>{{ appTitle(locale) }}</h2>
         <LangSwitch />
       </div>
-      <el-alert type="warning" :closable="false" show-icon :title="t('cp.title')" :description="t('cp.hint', { name: auth.user?.full_name || '' })" />
+      <el-alert type="warning" :closable="false" show-icon :title="t('cp.title')" :description="t('cp.hint', { name: $pn(auth.user?.full_name) || '' })" />
       <el-form label-position="top" class="form" @submit.prevent="save">
         <el-form-item :label="t('users.oldPassword')">
           <el-input v-model="form.old" type="password" show-password autocomplete="current-password" />

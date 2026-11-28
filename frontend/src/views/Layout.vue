@@ -118,7 +118,7 @@ async function changePassword() {
           <LangSwitch />
           <el-dropdown trigger="click">
             <span class="user">
-              {{ auth.user?.full_name }}
+              {{ $pn(auth.user?.full_name) }}
               <small v-if="auth.myTeam">· {{ localName(auth.myTeam) }}<template v-if="roleName"> · {{ roleName }}</template></small>
             </span>
             <template #dropdown>
@@ -155,7 +155,7 @@ async function changePassword() {
     <el-drawer v-model="drawer" direction="rtl" size="78%" :with-header="false" append-to-body>
       <div class="drawer">
         <div class="who">
-          <b>{{ auth.user?.full_name }}</b>
+          <b>{{ $pn(auth.user?.full_name) }}</b>
           <span v-if="auth.myTeam" class="muted">{{ localName(auth.myTeam) }}<template v-if="roleName"> · {{ roleName }}</template></span>
         </div>
         <div class="langs">

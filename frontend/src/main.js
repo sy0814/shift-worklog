@@ -5,12 +5,14 @@ import { h } from 'vue'
 import 'element-plus/dist/index.css'
 import App from './App.vue'
 import router from './router'
-import { i18n, setLang } from './i18n'
+import { i18n, personName, setLang } from './i18n'
 import './style.css'
 
 setLang(i18n.global.locale.value)
 
-createApp(App).use(createPinia()).use(router).use(i18n).use(ElementPlus).mount('#app')
+const app = createApp(App).use(createPinia()).use(router).use(i18n).use(ElementPlus)
+app.config.globalProperties.$pn = personName // 模板里显示人名用 $pn(name)：自带管理员跟着语言显示
+app.mount('#app')
 
 // PWA：注册 Service Worker；有新版本时提示，由用户点「刷新」（避免冲掉正在填的表单）
 if ('serviceWorker' in navigator && import.meta.env.PROD) {

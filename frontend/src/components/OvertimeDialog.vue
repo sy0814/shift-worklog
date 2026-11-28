@@ -57,7 +57,7 @@ async function save() {
 </script>
 
 <template>
-  <el-dialog v-model="visible" :title="t('ot.add')" width="min(520px, 96vw)" append-to-body>
+  <el-dialog v-model="visible" :title="t('ot.add')" width="min(620px, 96vw)" append-to-body>
     <el-form label-width="auto">
       <el-form-item :label="t('ot.target')">
         <el-radio-group v-model="form.mode">

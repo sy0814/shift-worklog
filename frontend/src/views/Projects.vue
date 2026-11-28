@@ -152,7 +152,7 @@ const open = (s) => ['not_started', 'in_progress'].includes(s.status)
           <span v-if="p.deadline" class="muted small">{{ t('proj.deadline') }} {{ p.deadline }}</span>
         </div>
         <el-progress :percentage="pct(p)" :status="p.closed_at ? 'success' : undefined" :stroke-width="10" />
-        <div class="muted small">{{ t('proj.counts', { done: p.done, total: p.total, open: p.open }) }}<template v-if="p.discarded"> · {{ t('proj.discarded', { n: p.discarded }) }}</template> · {{ p.created_by_name }}</div>
+        <div class="muted small">{{ t('proj.counts', { done: p.done, total: p.total, open: p.open }) }}<template v-if="p.discarded"> · {{ t('proj.discarded', { n: p.discarded }) }}</template> · {{ $pn(p.created_by_name) }}</div>
       </div>
     </div>
     </template>

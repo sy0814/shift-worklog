@@ -194,6 +194,9 @@ function addTask() {
 
 <style scoped>
 .foot { display: flex; gap: 8px; }
+/* 按钮文字长（塞语）时换行，不超出抽屉 */
+.foot .el-button { margin-left: 0; height: auto; min-height: 32px; min-width: 0; white-space: normal; line-height: 1.3; }
+.foot .el-button :deep(span) { white-space: normal; }
 .mgr-note { margin-bottom: 8px; }
 .why { font-size: 12px; padding: 0; height: auto; }
 .foot .grow { flex: 1; }

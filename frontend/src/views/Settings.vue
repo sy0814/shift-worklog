@@ -152,7 +152,7 @@ onMounted(async () => {
         </div>
       </template>
       <el-alert :title="t('sys.fixedNote')" type="info" :closable="false" show-icon class="mb" />
-      <el-form label-width="auto" style="max-width: 640px">
+      <el-form label-width="auto" label-position="left" style="max-width: 640px">
         <el-form-item :label="t('sys.provider')">
           <el-radio-group v-model="form.provider" @change="changeProvider">
             <el-radio-button value="deepseek">{{ t('sys.deepseek') }}</el-radio-button>
@@ -204,7 +204,7 @@ onMounted(async () => {
 
     <el-card shadow="never">
       <template #header><b>{{ t('overdue.settings') }}</b></template>
-      <el-form label-width="auto" style="max-width: 520px">
+      <el-form label-width="auto" label-position="left" style="max-width: 520px">
         <el-form-item :label="t('overdue.hoursLabel')"><el-input-number v-model="alertCfg.overdue_hours" :min="1" :max="1440" /></el-form-item>
         <el-form-item :label="t('overdue.handoversLabel')"><el-input-number v-model="alertCfg.overdue_handovers" :min="1" :max="100" /></el-form-item>
         <el-form-item><span class="muted">{{ t('overdue.hint') }}</span></el-form-item>

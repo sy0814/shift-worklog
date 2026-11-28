@@ -236,16 +236,16 @@ function histText(h) {
       <el-alert v-if="task.overdue" type="error" :closable="false" show-icon class="mt"
                 :title="`${t('overdue.badge')} · ${t('overdue.hours', { n: Math.floor(task.age_hours) })}${task.handover_count ? ' · ' + t('ho.times', { n: task.handover_count }) : ''}`" />
       <el-alert v-if="task.handover_in" type="info" :closable="false" class="mt"
-                :title="`${t('ho.from', { team: teamLabel(task.handover_in.team_id) })} · ${task.handover_in.by_name} · ${fmtFull(task.handover_in.at)}`">
+                :title="`${t('ho.from', { team: teamLabel(task.handover_in.team_id) })} · ${$pn(task.handover_in.by_name)} · ${fmtFull(task.handover_in.at)}`">
         <el-button link type="primary" @click="goTo(task.handover_in.task_id)">{{ t('ho.viewSource') }} #{{ task.handover_in.task_id }}</el-button>
       </el-alert>
       <el-alert v-if="task.handover_out" type="warning" :closable="false" class="mt"
-                :title="`${t('ho.toTeam', { team: teamLabel(task.handover_out.team_id) })} · ${task.handover_out.by_name} · ${fmtFull(task.handover_out.at)}`">
+                :title="`${t('ho.toTeam', { team: teamLabel(task.handover_out.team_id) })} · ${$pn(task.handover_out.by_name)} · ${fmtFull(task.handover_out.at)}`">
         <div v-if="task.handover_out.note" class="pre">{{ task.handover_out.note }}</div>
         <el-button link type="primary" @click="goTo(task.handover_out.task_id)">{{ t('ho.viewTarget') }} #{{ task.handover_out.task_id }}</el-button>
       </el-alert>
       <el-alert v-if="task.status === 'discarded'" type="error" :closable="false" class="mt"
-                :title="`${t('ho.discarded')} · ${task.discarded_by_name} · ${fmtFull(task.discarded_at)}`">
+                :title="`${t('ho.discarded')} · ${$pn(task.discarded_by_name)} · ${fmtFull(task.discarded_at)}`">
         <b>{{ t('ho.discardReason') }}:</b>
         <TransText :tri="task.discard_reason" :src-lang="task.discard_reason_lang" field="discard_reason" :manual-fields="task.manual_fields" />
       </el-alert>
@@ -283,9 +283,9 @@ function histText(h) {
         </el-descriptions-item>
         <el-descriptions-item :label="t('task.start')">{{ fmtFull(task.start_at) }}</el-descriptions-item>
         <el-descriptions-item :label="t('task.end')">{{ fmtFull(task.end_at) }}</el-descriptions-item>
-        <el-descriptions-item v-if="task.confirmed_by" :label="t('task.confirmedBy')">{{ task.confirmed_by_name }} · {{ fmtFull(task.confirmed_at) }}</el-descriptions-item>
-        <el-descriptions-item :label="t('task.publisher')">{{ task.created_by_name }} · {{ fmtFull(task.recorded_at) }}</el-descriptions-item>
-        <el-descriptions-item :label="t('task.updater')">{{ task.updated_by_name }} · {{ fmtFull(task.updated_at) }}</el-descriptions-item>
+        <el-descriptions-item v-if="task.confirmed_by" :label="t('task.confirmedBy')">{{ $pn(task.confirmed_by_name) }} · {{ fmtFull(task.confirmed_at) }}</el-descriptions-item>
+        <el-descriptions-item :label="t('task.publisher')">{{ $pn(task.created_by_name) }} · {{ fmtFull(task.recorded_at) }}</el-descriptions-item>
+        <el-descriptions-item :label="t('task.updater')">{{ $pn(task.updated_by_name) }} · {{ fmtFull(task.updated_at) }}</el-descriptions-item>
         <el-descriptions-item v-if="leftover.text" :label="t('task.leftover')">
           <TransText :tri="task.leftover" :src-lang="task.leftover_source_lang" field="leftover" :manual-fields="task.manual_fields" />
         </el-descriptions-item>

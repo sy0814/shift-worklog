@@ -121,7 +121,7 @@ const perMember = (p) => (p ? `${p.min} / ${p.median} / ${p.max}` : '—')
           <div>
             <b>{{ current.start }} ~ {{ current.end }} · {{ teamLabel(current.team_id) }}</b>
             <div class="muted small">
-              {{ t('ai.by', { name: current.created_by_name }) }} · {{ fmtFull(current.created_at) }} · <code>{{ current.model }}</code>
+              {{ t('ai.by', { name: $pn(current.created_by_name) }) }} · {{ fmtFull(current.created_at) }} · <code>{{ current.model }}</code>
               <template v-if="current.usage?.prompt_tokens"> · {{ t('ai.tokens', { i: current.usage.prompt_tokens, o: current.usage.completion_tokens }) }}</template>
             </div>
           </div>
