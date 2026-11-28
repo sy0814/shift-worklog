@@ -178,6 +178,7 @@ At the end you see green **「安装完成！」** ("Installation complete!") an
 
 ```
 安装完成！
+  安卓手机           浏览器打开 http://192.168.1.50/app.apk 下载安装 App（App 里带证书，不用另外装）
   手机 / 电脑先打开   http://192.168.1.50/install   安装证书（只需一次）
   然后访问           https://192.168.1.50
   管理员账号         admin（密码是刚才设置的）
@@ -237,6 +238,18 @@ After logging in, open the **Admin** menu at the top and do the following:
 ## 8. Step 6: Set up the phones
 
 Each phone needs this only once. You can print this section for the team leaders. The page `http://YOUR-IP/install` shows the same instructions on the phone in Chinese, Serbian and English.
+
+### 8.0 Android (recommended): the app, no certificate needed
+
+The app already contains this system's certificate: install it, enter the server address and it works. Good for people who do not want to install a certificate on their phone.
+
+1. Phone on the plant Wi-Fi; open `http://YOUR-IP/app.apk` in the browser (the `http://YOUR-IP/install` page also has a "Download Android app" button).
+2. Open the downloaded file and install. The first time the phone asks to **allow installing from unknown sources** — allow it once.
+3. Open the "Work Log" app, enter the server address (the same as in the computer's browser, e.g. `192.168.1.50`) and tap "Connect".
+4. System updates **do not need a new app install**; when the app itself has a new version, the system shows a notice — tap "Download" and install it over the current one.
+5. If the server IP changes: in the app, menu → "Server address (app)"; when it cannot connect, the app offers "Change server address" itself.
+
+> The installer is on the server at `C:\WorkRecord\data\app\workrecord.apk`; `update.ps1 -Online` downloads the latest. If `/app.apk` does not open, run `update.ps1 -Online` on the server once. Excel exports do not download inside the app — use a computer. There is no iPhone app; follow 8.2.
 
 ### 8.1 Android
 

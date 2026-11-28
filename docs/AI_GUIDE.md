@@ -25,6 +25,7 @@
 | 前端 | Vue 3 `<script setup>`、Vite、Element Plus、Pinia、vue-i18n、vite-plugin-pwa（injectManifest）、idb、exifr、dayjs |
 | 翻译 / AI | DeepSeek（OpenAI 兼容），可在页面上换成其他兼容接口 |
 | 部署 | `deploy/windows/*.ps1`（PowerShell 5.1）、Caddy 内部 CA 签 HTTPS |
+| 安卓 App | `mobile/`：Capacitor 外壳，打包服务器根证书，GitHub Actions `android.yml` 打包到 Release `android-latest`（见 `mobile/README.md`） |
 
 ```
 backend/
@@ -217,6 +218,7 @@ npm run build    # 输出到 backend/static
 | 车间 | `GET /departments`（导航页，不需要登录，含此刻在班班组）、`POST/PUT/DELETE /departments/{id}`（系统管理员） |
 | 登录 | `POST /auth/login`（表单）、`GET /auth/teams?department_id=`、`GET /auth/teams/{id}/people`、`POST /auth/pin`、`GET/PATCH /auth/me`、`POST /auth/change-password` |
 | 任务 | `GET/POST /tasks`、`GET/PATCH /tasks/{id}`、`POST /tasks/{id}/status`、`POST /tasks/{id}/attachments`、`DELETE /attachments/{id}`、`GET /files/{id}/{thumb\|view\|original}?t=`、`GET /tasks/{id}/history`、`GET /assignable` |
+| 安卓 App | `GET /api/app-info`（不用登录：服务器上 App 的版本）、`GET /app.apk`（安装包，Caddy 80 端口也转到这里） |
 | 交接班 | `GET /board`（含 `projects` = 本班「当班自己加小项目」的项目卡片；有 `visible_from` 还没到的子项目不返回）、`GET /handover/default`、`POST /handover`、`POST /tasks/{id}/discard`、`GET /overdue`、`GET /duty?which=current\|next` |
 | 翻译 | `PUT /tasks/{id}/translation`、`POST /tasks/{id}/retranslate`、`POST /translate`、`GET /translation/status`、`POST /translation/retry-failed`、术语表 `/glossary*` |
 | 排班 | `GET /shifts/now`、`GET /shifts/calendar`、`GET /shifts/coverage`、`GET/PUT /shifts/config`（班次时间）、`/teams`（增删改）、`/team-shifts`（调班、`/swap` 互换、`/unaffected` 不受调班影响的人）、`/holidays/{day}` |

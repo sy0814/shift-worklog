@@ -7,7 +7,7 @@
 	auto_https disable_redirects
 }
 
-# HTTP（80 端口）：只提供根证书下载和安装说明，其它一律跳转到 HTTPS
+# HTTP（80 端口）：只提供根证书下载、安装说明和安卓 App 安装包，其它一律跳转到 HTTPS
 :80 {
 	handle /ca.crt {
 		root * {$CA_DIR:/data/caddy/pki/authorities/local}
@@ -15,6 +15,10 @@
 		header Content-Type application/x-x509-ca-cert
 		header Content-Disposition "attachment; filename=\"workrecord-ca.crt\""
 		file_server
+	}
+	# 安卓 App 安装包：手机还没信任证书时也要能下载，所以走 HTTP（程序从 data\app\workrecord.apk 提供）
+	handle /app.apk {
+		reverse_proxy {$APP_UPSTREAM:app:8000}
 	}
 	handle /install* {
 		root * {$INSTALL_DIR:/srv/install}

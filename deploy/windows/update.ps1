@@ -68,6 +68,7 @@ Start-AppServices
 Wait-Health
 Register-Watchdog
 Register-AddressTask   # 网页「系统设置 → 访问地址」用（以前的版本没有这个任务）
+Update-MobileApk       # 安卓 App 安装包（有新版本才下载）
 Write-Ok '看门狗已开启（每 5 分钟检查服务、备份、磁盘）'
 Write-Host ''
 Write-Host '更新完成。手机打开系统时会提示「有新版本」，点刷新即可。' -ForegroundColor Green

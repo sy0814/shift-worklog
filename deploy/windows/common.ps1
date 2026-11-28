@@ -27,6 +27,8 @@ $TaskBackup = 'WorkRecordBackup'
 $UpdateZipUrl = 'https://github.com/sy0814/shift-worklog/archive/refs/heads/master.zip'
 if ($env:WORKRECORD_UPDATE_URL) { $UpdateZipUrl = $env:WORKRECORD_UPDATE_URL }
 $TaskWatchdog = 'WorkRecordWatchdog'
+# 安卓 App 安装包：GitHub Release「android-latest」（.github/workflows/android.yml 打包），update / install 时下载到 data\app
+$MobileReleaseUrl = 'https://github.com/sy0814/shift-worklog/releases/download/android-latest'
 $TaskAddress = 'WorkRecordSetAddress'   # 网页「系统设置 → 访问地址」保存后由程序启动（没有定时触发），以 SYSTEM 运行 set-address.ps1 -FromFile   # 看门狗：每 5 分钟检查服务、备份、磁盘（watchdog.ps1）
 
 # Caddy：从官方 GitHub Releases 下载（caddyserver.com 的下载接口现在要登录，会返回 401）
@@ -322,6 +324,38 @@ function Register-AddressTask {
 }
 
 # 更新、卸载时先暂停看门狗，免得它把刚停下的服务又启动起来
+function Update-MobileApk {
+    # 下载最新的安卓 App 安装包到 data\app（workrecord.apk + version.txt），手机从 http://服务器地址/app.apk 下载安装。
+    # 版本没变就跳过；下载失败只提示，不影响系统更新
+    $dir = Join-Path $DataDir 'app'
+    $tmpVer = Join-Path $env:TEMP 'workrecord-app-version.txt'
+    $tmpApk = Join-Path $env:TEMP 'workrecord-app.apk'
+    $oldProgress = $ProgressPreference
+    $ProgressPreference = 'SilentlyContinue'   # PowerShell 5.1 显示进度条时下载很慢
+    try {
+        New-Item -ItemType Directory -Force -Path $dir | Out-Null
+        Invoke-WebRequest -UseBasicParsing -TimeoutSec 30 -Uri "$MobileReleaseUrl/version.txt" -OutFile $tmpVer
+        $ver = (Get-Content -Raw -Encoding UTF8 $tmpVer).Trim()
+        $apk = Join-Path $dir 'workrecord.apk'
+        $verFile = Join-Path $dir 'version.txt'
+        $cur = ''
+        if (Test-Path $verFile) { $cur = (Get-Content -Raw -Encoding UTF8 $verFile).Trim() }
+        if ($ver -and $ver -eq $cur -and (Test-Path $apk)) {
+            Write-Ok "安卓 App 已是最新版本 $ver"
+            return
+        }
+        Invoke-WebRequest -UseBasicParsing -TimeoutSec 600 -Uri "$MobileReleaseUrl/workrecord.apk" -OutFile $tmpApk
+        Move-Item -Path $tmpApk -Destination $apk -Force
+        Write-Utf8NoBom $verFile $ver
+        Write-Ok "安卓 App $ver 已下载：手机浏览器打开 http://服务器地址/app.apk 安装"
+    } catch {
+        Write-Note "安卓 App 安装包没下载成功（不影响系统，可以稍后再运行 update.ps1 -Online）：$($_.Exception.Message)"
+    } finally {
+        $ProgressPreference = $oldProgress
+        Remove-Item -LiteralPath $tmpVer, $tmpApk -Force -ErrorAction SilentlyContinue
+    }
+}
+
 function Disable-Watchdog {
     Disable-ScheduledTask -TaskName $TaskWatchdog -ErrorAction SilentlyContinue | Out-Null
 }

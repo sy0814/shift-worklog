@@ -78,6 +78,35 @@ def get_alerts(_=Depends(require_admin)):
     return alerts.current(local_now())
 
 
+# ---------------- 安卓 App（mobile/）----------------
+# 安装包由 GitHub 打包，服务器 update.ps1 -Online 下载到 data\app\（workrecord.apk + version.txt）。
+# 手机用浏览器打开 http://服务器/app.apk 下载（Caddy 80 端口转到这里，不用证书）；App 里的网页用 /api/app-info 比版本、提示更新。
+def _app_dir():
+    from .storage_service import data_dir
+
+    return data_dir() / "app"
+
+
+@app.get("/api/app-info")
+def app_info():
+    """服务器上现有的安卓 App 版本（没有 = null）。不用登录：App 登录前也要能提示更新。"""
+    d = _app_dir()
+    try:
+        version = (d / "version.txt").read_text(encoding="utf-8-sig").strip() or None
+    except OSError:
+        version = None
+    return {"version": version if (d / "workrecord.apk").is_file() else None, "url": "/app.apk"}
+
+
+@app.get("/app.apk", include_in_schema=False)
+def app_apk():
+    f = _app_dir() / "workrecord.apk"
+    if not f.is_file():
+        raise HTTPException(404, "app not downloaded yet; run update.ps1 -Online on the server")
+    return FileResponse(f, media_type="application/vnd.android.package-archive", filename="workrecord.apk",
+                        headers={"Cache-Control": "no-cache"})
+
+
 # 缓存策略：带哈希的静态文件永久缓存；index.html / sw.js / manifest 每次都要检查更新（否则新版本推不下去）
 NO_CACHE_FILES = {"index.html", "sw.js", "manifest.webmanifest", "registerSW.js"}
 

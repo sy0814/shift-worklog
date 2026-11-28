@@ -232,12 +232,14 @@ Register-ScheduledTask -TaskName $TaskBackup -Action $action -Trigger $trigger -
 Write-Ok "每天 03:40 备份到 $BackupTarget（数据库、图片、证书、配置），数据库备份保留 30 天"
 Register-Watchdog
 Register-AddressTask
+Update-MobileApk
 Write-Ok '看门狗：每 5 分钟检查一次，服务停了会自动重启并弹窗提醒；备份失败、磁盘快满也会弹窗（记录在 Windows 事件日志和 logs\watchdog.log）'
 
 # ---------------- 完成 ----------------
 $first = ($SiteHosts -split ',')[0].Trim()
 Write-Host ''
 Write-Host '安装完成！' -ForegroundColor Green
+Write-Host "  安卓手机           浏览器打开 http://$first/app.apk 下载安装 App（App 里带证书，不用另外装）"
 Write-Host "  手机 / 电脑先打开   http://$first/install   安装证书（只需一次）"
 Write-Host "  然后访问           https://$first"
 Write-Host '  管理员账号         admin（密码是刚才设置的）'

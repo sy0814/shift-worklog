@@ -453,3 +453,8 @@
   - 定期巡查「当班自己加小项目」（`open_items`）：每次派发一个属于那个班的空项目，首页交接班上方一张卡片「+ 添加小项目」，下班 30 分钟后空的自动关闭为「本班无」（`close_empty_open_projects`，在自动移交的定时任务里）；巡查表单「从哪天开始」所有周期都显示（以前每周 / 每月看不到，默认今天）
   - 测试 `test_project_start.py`、`test_swaps.py::test_cover_follows_covered_team_including_off_days`
 - 2026-11-28 **「当班自己加小项目」的项目改成待办里的文件夹**（用户要的）：首页交接班「本班待办」里一行 📁（全做完放「本班完成」），左边点开 `ProjectDrawer.vue`（项目信息 + 全部小项目，点小项目开任务详情），右边「添加小项目」；它的小项目从待办 / 移交过来 / 本班完成里拿掉（`routers/handover.py` 按 `in_folder` 过滤，`BoardProject` 加 `open / closed / source_lang / shift_date / shift_kind`）。原来交接班上方单独的卡片去掉
+- 2026-11-28 **安卓 App 外壳**（用户要的：有人怕不安全不肯装证书）：`mobile/`（Capacitor 8）只显示服务器上的网页，**打包了这台服务器的根证书**（用户发来的 `workrecord-ca.crt`，`network_security_config` 信任它），装 App 就不用装证书；第一次填服务器地址（`www/index.html`），连不上显示 `www/error.html`；名称跟着手机语言（工作记录系统 / Radni dnevnik / Work Log）、图标用系统图标。网页功能更新不用重装 App。
+  - 打包：容器连不上 Google 的安卓 SDK，改由 GitHub Actions `.github/workflows/android.yml` 打包，master 上发布到 Release `android-latest`；签名钥匙**不进仓库**（提交时被拦了：公开仓库里不能放私钥），放在 GitHub Secrets `ANDROID_KEYSTORE_BASE64` / `KEYSTORE_PASSWORD`，没设时只做编译检查、不发布（换钥匙要卸载重装）
+  - 服务器：`update.ps1 -Online` / `install.ps1` 调 `Update-MobileApk` 下载到 `data\app`；`GET /app.apk`、`GET /api/app-info`（`backend/app/main.py`）；Caddy 80 端口转 `/app.apk`（手机浏览器不认证书也能下载）；安装说明页加「下载安卓 App」
+  - 网页：User-Agent 带 `WorkRecordApp/版本号`（`frontend/src/nativeApp.js`），服务器上 App 版本更新时提示下载；菜单「服务器地址（App）」回到 App 的地址页。App 里的下载交给手机浏览器，`/app.apk` 改走 HTTP（`MainActivity`）
+  - 限制：只有安卓；网页里 JS 生成的下载（导出 Excel）在 App 里不下载
