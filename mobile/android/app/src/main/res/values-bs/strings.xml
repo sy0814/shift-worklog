@@ -2,4 +2,5 @@
 <resources>
     <string name="app_name">Radni dnevnik</string>
     <string name="title_activity_main">Radni dnevnik</string>
+    <string name="press_back_again">Pritisnite „nazad” još jednom za izlaz</string>
 </resources>

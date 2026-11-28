@@ -2,4 +2,5 @@
 <resources>
     <string name="app_name">工作记录系统</string>
     <string name="title_activity_main">工作记录系统</string>
+    <string name="press_back_again">再按一次返回键退出</string>
 </resources>

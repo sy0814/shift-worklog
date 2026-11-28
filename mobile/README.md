@@ -14,7 +14,7 @@ App 把**这台服务器的根证书**打包在里面（`res/xml/network_securit
 | `www/error.html` | 打不开服务器时显示（Capacitor `errorPath`）：重试 / 改地址 |
 | `ca/workrecord-ca.crt` | **服务器的根证书**（`http://服务器/ca.crt` 下载的那个，公开的，不是秘密）。打包时复制到 `res/raw/workrecord_ca.crt` |
 | `capacitor.config.json` | `allowNavigation: ["*"]`（地址是用户填的）；`appendUserAgent` 打包时改成 `WorkRecordApp/版本号` |
-| `android/` | `npx cap add android` 生成后改过：图标、三语名称（`values-zh` / `values-sr` …）、证书配置、`MainActivity`（下载交给手机浏览器，`/app.apk` 改走 HTTP）、版本号和签名（`app/build.gradle`） |
+| `android/` | `npx cap add android` 生成后改过：图标、三语名称（`values-zh` / `values-sr` …）、证书配置、`MainActivity`（下载交给手机浏览器，`/app.apk` 改走 HTTP；返回键：网页能后退就后退，退到头 2 秒内再按一次才退出）、版本号和签名（`app/build.gradle`） |
 | 签名钥匙 | **不在仓库里**。GitHub 仓库 → Settings → Secrets and variables → Actions 里的 `ANDROID_KEYSTORE_BASE64`（钥匙文件的 base64）和 `KEYSTORE_PASSWORD`，打包时临时写成 `android/app/release.keystore`。**同一把钥匙签的新版本才能覆盖安装，钥匙文件要另外保存好，不要换**。没设这两个 Secret 时只做编译检查、不发布 |
 
 ## 打包和发布

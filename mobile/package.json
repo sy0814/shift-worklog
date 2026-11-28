@@ -1,6 +1,6 @@
 {
   "name": "workrecord-mobile",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "安卓 App 外壳：打开服务器上的系统网页，内置服务器的根证书（不用在手机上装证书）",
   "scripts": {
