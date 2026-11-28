@@ -6,7 +6,8 @@
 const isOpen = (el) => getComputedStyle(el).display !== 'none'
 
 function openOverlays() {
-  return [...document.querySelectorAll('.el-overlay')].filter(isOpen)
+  // 看大图（.el-image-viewer__wrapper）不在 .el-overlay 里，也算一层
+  return [...document.querySelectorAll('.el-overlay, .el-image-viewer__wrapper')].filter(isOpen)
 }
 
 function topOverlay() {

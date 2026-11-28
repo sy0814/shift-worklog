@@ -9,6 +9,7 @@ import { i18n, personName, setLang } from './i18n'
 import './style.css'
 import { inApp } from './nativeApp'
 import { installBackClose } from './backClose'
+import { installPinchZoom } from './pinchZoom'
 
 setLang(i18n.global.locale.value)
 
@@ -18,6 +19,8 @@ app.mount('#app')
 
 // 安卓 App / 装到主屏幕的 PWA：返回键先关弹窗、抽屉（见 backClose.js）
 if (inApp || window.matchMedia?.('(display-mode: standalone)').matches) installBackClose()
+// 看大图两指缩放（手机浏览器和 App 都用）
+if ('ontouchstart' in window) installPinchZoom()
 
 // PWA：注册 Service Worker；有新版本时提示，由用户点「刷新」（避免冲掉正在填的表单）
 if ('serviceWorker' in navigator && import.meta.env.PROD) {

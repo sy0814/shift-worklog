@@ -29,6 +29,20 @@ body { font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", 
 .el-radio-button + .el-radio-button { margin-left: -1px; }
 .el-radio-button.is-active + .el-radio-button .el-radio-button__inner { border-left-color: var(--el-border-color); }
 
+/* 手机（尤其安卓 App 全屏到状态栏、iPhone 刘海）：抽屉顶部的标题和 ×、全屏弹窗、看大图的 × 和工具条避开状态栏 / 底部手势条。
+   电脑上 env() 是 0，不受影响 */
+.el-drawer__header { padding-top: calc(var(--el-drawer-padding-primary) + env(safe-area-inset-top)); }
+.el-drawer.btt .el-drawer__header { padding-top: var(--el-drawer-padding-primary); }
+.el-drawer__footer { padding-bottom: calc(var(--el-drawer-padding-primary) + env(safe-area-inset-bottom)); }
+.el-dialog.is-fullscreen { padding-top: calc(var(--el-dialog-padding-primary, 16px) + env(safe-area-inset-top));
+  padding-bottom: calc(var(--el-dialog-padding-primary, 16px) + env(safe-area-inset-bottom)); }
+.el-image-viewer__close { top: calc(40px + env(safe-area-inset-top)); }
+.el-image-viewer__actions { bottom: calc(30px + env(safe-area-inset-bottom)); }
+@media (max-width: 767px) {
+  /* 手机上看大图的 × 放在右上角里一点，手指好点 */
+  .el-image-viewer__close { top: calc(16px + env(safe-area-inset-top)); right: 16px; }
+}
+
 /* 表单项里的说明文字：Element 给内容区 32px 行高，多行说明会稀稀拉拉，按正常行高排 */
 .el-form-item__content .muted, .el-form-item__content small { line-height: 1.5; }
 
