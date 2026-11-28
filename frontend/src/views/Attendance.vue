@@ -92,7 +92,9 @@ watch(() => route.query, (q) => { if (q.worker || q.team || q.month) applyQuery(
 function code(c) {
   if (!c || c.status == null) return ''
   if (c.code) return c.code // 出勤月表里的原始写法（AL、SL、BT……）原样显示
-  return c.status === 'present' ? t(`att.code.${c.shift_kind}`) : t(`att.code.${c.status}`)
+  // 出勤但算不出班次（以前存下的：没选班次、那天又休息；现在保存时会要求选班次）→ 写「出」，不显示 att.code.null
+  if (c.status === 'present') return c.shift_kind ? t(`att.code.${c.shift_kind}`) : t('att.code.present')
+  return t(`att.code.${c.status}`)
 }
 const canEdit = (w) => auth.teamOk('attendance.edit', w.team_id)
 const counts = computed(() => {

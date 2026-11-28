@@ -76,3 +76,24 @@ def test_cover_without_shift_uses_covered_teams_shift(client, admin_h, teams, w)
         "worker_ids": [w["t1"]], "start": "2026-11-30", "end": "2026-11-30", "status": "present", "team_id": teams["T3"]})
     _, c = cell(client, admin_h, teams["T3"], w["t1"], "2026-11-30")
     assert c["shift_kind"] == "night" and c["team_id"] == teams["T3"]
+
+
+def test_present_without_shift_on_off_day_rejected(client, admin_h, teams, w):
+    """设成出勤却算不出上哪个班（没选班次，被顶的班组 / 他自己那天休息）→ 不保存，请选班次。
+    以前会存下来，出勤格子显示成 att.code.null（用户 2026-11-28 发现）。"""
+    day = "2026-11-22"  # 1 班白班、4 班休息
+    _, before = cell(client, admin_h, teams["T3"], w["t3a"], day)
+    # 去顶休息的 4 班、没选班次
+    r = client.put("/api/attendance", headers=admin_h, json={
+        "worker_id": w["t3a"], "day": day, "status": "present", "team_id": teams["T4"]})
+    assert r.status_code == 400 and "not on duty that day" in r.json()["detail"]
+    _, c = cell(client, admin_h, teams["T3"], w["t3a"], day)
+    assert c == before  # 没存
+    # 自己休息的那天设出勤、没选班次
+    r = client.put("/api/attendance/batch", headers=admin_h, json={
+        "worker_ids": [w["t4"]], "start": day, "end": day, "status": "present"})
+    assert r.status_code == 400 and "Swap T4" in r.json()["detail"]
+    # 选了班次就可以
+    r = client.put("/api/attendance", headers=admin_h, json={
+        "worker_id": w["t3a"], "day": day, "status": "present", "team_id": teams["T4"], "shift_kind": "middle"})
+    assert r.status_code == 200 and r.json()["shift_kind"] == "middle"
