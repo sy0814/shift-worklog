@@ -74,7 +74,7 @@ const blank = () => ({
   name: '', content: '', lang: locale.value, enabled: true, kind: 'daily', at_time: '08:00', every_n: 1,
   weekdays: [], month_days: [], year_dates: [], shift_kinds: [], start_date: dayjs().format('YYYY-MM-DD'),
   ...(auth.wide('inspection.manage') ? { assign: 'on_duty', team_id: null } : { assign: 'fixed', team_id: auth.user.team_id }), worker_ids: [],
-  transferable: true, subs: [],
+  transferable: true, open_items: false, subs: [],
 })
 // 小项目：表单里用 { content, target: { mode: default / team / person, team_id, worker_id } }，提交时转成 sub_items
 const subOf = (it) => ({ content: it.content, target: { mode: it.worker_id ? 'person' : it.team_id ? 'team' : 'default',
@@ -83,11 +83,11 @@ const itemOf = (s) => ({ content: s.content.trim(), team_id: s.target.mode === '
   worker_id: s.target.mode === 'person' ? s.target.worker_id : null })
 function body() {
   const { subs, ...rest } = form
-  return { ...rest, sub_items: (subs || []).filter((x) => x.content.trim()).map(itemOf) }
+  return { ...rest, sub_items: rest.open_items ? [] : (subs || []).filter((x) => x.content.trim()).map(itemOf) }
 }
 const subsOk = computed(() => (form.subs || []).every((x) => x.content.trim()
   && (x.target.mode === 'default' || (x.target.mode === 'team' ? x.target.team_id : x.target.worker_id))))
-const canSave = computed(() => form.name?.trim() && (form.content?.trim() || form.subs?.length) && subsOk.value)
+const canSave = computed(() => form.name?.trim() && (form.open_items || ((form.content?.trim() || form.subs?.length) && subsOk.value)))
 // 选人时显示每个人下一个班
 const slots = ref({})
 async function loadSlots() {
@@ -187,6 +187,7 @@ const runType = { created: 'success', manual: 'primary', skipped: 'info', failed
       </el-table-column>
       <el-table-column :label="t('insp.name')" min-width="140">
         <template #default="{ row }">{{ row.name }} <el-tag v-if="row.sub_items?.length" size="small" effect="plain">📁 {{ t('insp.subsCount', { n: row.sub_items.length }) }}</el-tag>
+          <el-tag v-if="row.open_items" size="small" effect="plain">📁 {{ t('insp.openItemsTag') }}</el-tag>
           <el-tag v-if="!row.transferable" size="small" type="info" effect="plain">{{ t('task.notTransferable') }}</el-tag></template>
       </el-table-column>
       <el-table-column :label="t('insp.kind')" min-width="150"><template #default="{ row }">{{ summary(row) }}</template></el-table-column>
@@ -210,11 +211,17 @@ const runType = { created: 'success', manual: 'primary', skipped: 'info', failed
       <div class="edit">
         <el-form label-width="auto" class="f">
           <el-form-item :label="t('insp.name')"><el-input v-model="form.name" maxlength="100" /></el-form-item>
-          <el-form-item :label="t('insp.content')">
+          <el-form-item :label="t('insp.openItems')">
+            <div class="row">
+              <el-switch v-model="form.open_items" />
+              <small class="muted">{{ t('insp.openItemsHint') }}</small>
+            </div>
+          </el-form-item>
+          <el-form-item v-if="!form.open_items" :label="t('insp.content')">
             <el-input v-model="form.content" type="textarea" :autosize="{ minRows: 2, maxRows: 6 }" maxlength="2000"
                       :placeholder="form.subs?.length ? t('insp.contentOptional') : t('task.contentPh')" />
           </el-form-item>
-          <el-form-item :label="t('insp.subs')">
+          <el-form-item v-if="!form.open_items" :label="t('insp.subs')">
             <div class="subs">
               <div class="muted small">{{ t('insp.subsHint') }}</div>
               <div v-for="(x, i) in form.subs" :key="i" class="sub">
@@ -286,7 +293,8 @@ const runType = { created: 'success', manual: 'primary', skipped: 'info', failed
           <el-form-item v-if="form.kind !== 'shift'" :label="t('insp.atTime')">
             <el-time-select v-model="form.at_time" start="00:00" step="00:15" end="23:45" :clearable="false" style="width: 130px" />
           </el-form-item>
-          <el-form-item v-if="['daily', 'shift', 'yearly'].includes(form.kind)" :label="t('insp.startDate')">
+          <!-- 每种周期都从这天起才派（例如设下周一开始，之前一次都不派） -->
+          <el-form-item :label="t('insp.startDate')">
             <el-date-picker v-model="form.start_date" value-format="YYYY-MM-DD" :clearable="false" style="width: 160px" />
           </el-form-item>
 

@@ -218,6 +218,15 @@ class Project(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # 全部子项目结束的时间
     inspection_id: Mapped[int | None] = mapped_column(ForeignKey("inspection_templates.id"), nullable=True, index=True)
+    # 计划开始时间：子项目到 start_at - lead_minutes 才出现在待办里（之前不显示），归属开始时间那个班
+    start_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    lead_minutes: Mapped[int] = mapped_column(Integer, default=30, server_default="30")
+    # 「小项目由当班自己添加」的定期巡查生成的：每个班一个，属于 shift_date / shift_kind 那个班；
+    # 下班时一个小项目都没有 → 自动关闭，closed_empty = 本班无
+    open_items: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    shift_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    shift_kind: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    closed_empty: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
 
 
 class Equipment(Base):
@@ -330,6 +339,8 @@ class Task(Base):
 
     # 移交链：第一次录入的时间、已经移交过几次（用于未闭环警示）
     chain_started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # 有计划开始时间的项目子项目：这个时间之前不在待办 / 人员状态里出现（空 = 一直显示）
+    visible_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     handover_count: Mapped[int] = mapped_column(Integer, default=0)
 
     # 废弃原因（三语）
@@ -524,6 +535,8 @@ class InspectionTemplate(Base):
     # 小项目：[{content, team_id?, worker_id?}]。有小项目时，每次派发生成一个「项目」（名称 = 巡查项名称），
     # 每个小项目是一个子项目：分给指定的人 / 班组，没指定就给这次派给的班组
     sub_items: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")
+    # 小项目由当班自己添加（次数不固定，例如停送电）：每次派发生成一个空项目，当班往里加
+    open_items: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     transferable: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())  # 生成的项目是否可移交
     next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

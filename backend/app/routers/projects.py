@@ -5,7 +5,7 @@
   改项目、加子项目、改派：项目所属班组在自己范围内。
 """
 
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
@@ -39,6 +39,8 @@ class ProjectIn(BaseModel):
     deadline: date | None = None
     team_id: int | None = None  # 项目归哪个班组（管理员 / 范围是全部班组的可以选；默认自己的班组）
     subs: list[SubIn] = Field(default_factory=list, max_length=200)
+    start_at: datetime | None = None  # 计划开始时间（空 = 马上）；子项目到「开始时间 - lead_minutes」才出现在待办里
+    lead_minutes: int = Field(default=30, ge=0, le=1440)
 
 
 class ProjectUpdate(BaseModel):
@@ -46,6 +48,8 @@ class ProjectUpdate(BaseModel):
     lang: Lang | None = None
     transferable: bool | None = None
     deadline: date | None = None
+    start_at: datetime | None = None
+    lead_minutes: int | None = Field(default=None, ge=0, le=1440)
 
 
 class SubsIn(BaseModel):
@@ -66,6 +70,13 @@ class ProjectOut(BaseModel):
     transferable: bool
     team_id: int
     deadline: date | None
+    start_at: UTCDateTime | None = None
+    lead_minutes: int = 30
+    open_items: bool = False
+    shift_date: date | None = None
+    shift_kind: str | None = None
+    closed_empty: bool = False
+    can_add: bool = False  # 能不能往里加小项目（「当班自己加」的项目：这个班组能新建任务的人也能加）
     created_by_name: str
     created_at: UTCDateTime
     closed_at: UTCDateTime | None
@@ -91,9 +102,24 @@ def _out(db: Session, p: Project, prog, who, names) -> ProjectOut:
     return ProjectOut(
         id=p.id, name=Trilingual(zh=p.name_zh, sr=p.name_sr, en=p.name_en), source_lang=p.source_lang,
         translation_status=p.translation_status, transferable=p.transferable, team_id=p.team_id, deadline=p.deadline,
+        start_at=p.start_at, lead_minutes=p.lead_minutes, open_items=p.open_items, shift_date=p.shift_date,
+        shift_kind=p.shift_kind, closed_empty=p.closed_empty, can_add=_can_add(who, p),
         created_by_name=names.get(p.created_by, ""), created_at=p.created_at, closed_at=p.closed_at,
         total=prog.total, done=prog.done, discarded=prog.discarded, open=prog.open,
         can_manage=who.team_ok("project.manage", p.team_id))
+
+
+def _utc(d: datetime | None) -> datetime | None:
+    """页面传来的时间没带时区就当 UTC（前端都传 ISO 带 Z）。"""
+    if d is not None and d.tzinfo is None:
+        return d.replace(tzinfo=timezone.utc)
+    return d
+
+
+def _can_add(who, p: Project) -> bool:
+    if p.closed_at is not None and p.closed_empty:
+        return False
+    return who.team_ok("project.manage", p.team_id) or (p.open_items and who.team_ok("task.create", p.team_id))
 
 
 def _names(db: Session) -> dict[int, str]:
@@ -176,13 +202,16 @@ def create_project(body: ProjectIn, db: Session = Depends(get_db), user: User = 
         _check_target(who, tid)
     now = utcnow()
     p = Project(source_lang=body.lang, translation_status="pending", transferable=body.transferable, team_id=team_id,
-                deadline=body.deadline, created_by=user.id, updated_by=user.id, created_at=now, updated_at=now)
+                deadline=body.deadline, created_by=user.id, updated_by=user.id, created_at=now, updated_at=now,
+                start_at=_utc(body.start_at) if body.start_at and _utc(body.start_at) > now else None,
+                lead_minutes=body.lead_minutes)
     setattr(p, f"name_{body.lang}", body.name.strip())
     db.add(p)
     db.flush()
     audit.log(db, user_id=user.id, action="create", entity="project", entity_id=p.id,
               new={"name": body.name.strip(), "transferable": body.transferable, "team_id": team_id,
-                   "deadline": str(body.deadline) if body.deadline else None, "subs": len(body.subs)})
+                   "deadline": str(body.deadline) if body.deadline else None, "subs": len(body.subs),
+                   "start_at": p.start_at.isoformat() if p.start_at else None, "lead_minutes": body.lead_minutes})
     subs = [project_service.create_sub(db, p, s.content, body.lang, user.id, team_id=tid, worker=w)
             for s, (tid, w) in zip(body.subs, targets)]
     db.commit()
@@ -227,7 +256,10 @@ def update_project(pid: int, body: ProjectUpdate, db: Session = Depends(get_db),
     who = permissions.who(db, user)
     permissions.require(who.team_ok("project.manage", p.team_id))
     data = body.model_dump(exclude_unset=True)
-    changes = {k: data[k] for k in ("transferable", "deadline") if k in data}
+    changes = {k: data[k] for k in ("transferable", "deadline", "lead_minutes") if k in data}
+    if "start_at" in data:
+        st = _utc(data["start_at"])
+        changes["start_at"] = st if st and st > utcnow() else None
     renamed = False
     if data.get("name"):
         lang = data.get("lang") or p.source_lang
@@ -238,6 +270,8 @@ def update_project(pid: int, body: ProjectUpdate, db: Session = Depends(get_db),
             renamed = True
     if audit.log_changes(db, p, changes, user_id=user.id, entity="project", entity_id=p.id):
         p.updated_by, p.updated_at = user.id, utcnow()
+        if "start_at" in changes or "lead_minutes" in changes:
+            project_service.reschedule_subs(db, p)
     db.commit()
     if renamed:
         translation_service.enqueue_project(p.id)
@@ -248,10 +282,15 @@ def update_project(pid: int, body: ProjectUpdate, db: Session = Depends(get_db),
 def add_subs(pid: int, body: SubsIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     p = _get(db, pid)
     who = permissions.who(db, user)
-    permissions.require(who.team_ok("project.manage", p.team_id))
+    permissions.require(_can_add(who, p))
+    if p.open_items:  # 当班自己加的小项目：都归这个项目的班组和那个班
+        for s in body.subs:
+            if s.worker_id is None:
+                s.team_id = p.team_id
     targets = [_target_team(db, s) for s in body.subs]
     for tid, _w in targets:
-        _check_target(who, tid)
+        if not (p.open_items and tid == p.team_id):
+            _check_target(who, tid)
     subs = [project_service.create_sub(db, p, s.content, body.lang, user.id, team_id=tid, worker=w)
             for s, (tid, w) in zip(body.subs, targets)]
     p.updated_by, p.updated_at = user.id, utcnow()

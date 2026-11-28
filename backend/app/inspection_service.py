@@ -78,6 +78,9 @@ def create_task(db: Session, t: InspectionTemplate, occ_local: datetime, run_sta
         run.status, run.note = "failed", "no team on duty / team not found"
         db.add(run)
         return run
+    if t.open_items:  # 小项目由当班自己添加：生成一个属于这个班的空项目，当班往里加
+        _create_project(db, t, run, team, (shift_date, shift_kind), occ_utc, occ_local, user_id, open_items=True)
+        return run
     if t.sub_items:  # 有小项目：生成一个项目，每个小项目一个子项目
         _create_project(db, t, run, team, (shift_date, shift_kind), occ_utc, occ_local, user_id)
         return run
@@ -104,7 +107,7 @@ def create_task(db: Session, t: InspectionTemplate, occ_local: datetime, run_sta
 
 
 def _create_project(db: Session, t: InspectionTemplate, run: InspectionRun, team, slot, occ_utc, occ_local,
-                    user_id: int | None) -> None:
+                    user_id: int | None, open_items: bool = False) -> None:
     """有小项目的巡查：生成项目（名称 = 巡查项名称）+ 子项目。上一次的译文一样就直接复制，不用再翻译。"""
     from . import project_service
     from .models import Project
@@ -113,7 +116,8 @@ def _create_project(db: Session, t: InspectionTemplate, run: InspectionRun, team
     now = utcnow()
     prev = db.scalar(select(Project).where(Project.inspection_id == t.id).order_by(Project.id.desc()).limit(1))
     p = Project(source_lang=t.lang, translation_status="pending", transferable=t.transferable, team_id=team.id,
-                inspection_id=t.id, created_by=actor, updated_by=actor, created_at=now, updated_at=now)
+                inspection_id=t.id, created_by=actor, updated_by=actor, created_at=now, updated_at=now,
+                open_items=open_items, shift_date=slot[0] if open_items else None, shift_kind=slot[1] if open_items else None)
     if prev is not None and prev.translation_status == "done" and t.name.strip() in {prev.name_zh, prev.name_sr, prev.name_en}:
         p.name_zh, p.name_sr, p.name_en, p.source_lang, p.translation_status = (
             prev.name_zh, prev.name_sr, prev.name_en, prev.source_lang, "done")
@@ -128,7 +132,7 @@ def _create_project(db: Session, t: InspectionTemplate, run: InspectionRun, team
             for l in LANGS:
                 if getattr(old, f"content_{l}"):
                     done_before.setdefault(getattr(old, f"content_{l}"), old)
-    for item in t.sub_items:
+    for item in ([] if open_items else t.sub_items):
         worker = db.get(Worker, item["worker_id"]) if item.get("worker_id") else None
         if worker is not None and not worker.is_active:
             worker = None
@@ -145,7 +149,8 @@ def _create_project(db: Session, t: InspectionTemplate, run: InspectionRun, team
     db.add(run)
     audit.log(db, user_id=user_id, action="auto_create" if user_id is None else "create", entity="project",
               entity_id=p.id, new={"inspection_id": t.id, "inspection": t.name, "occurrence": occ_local.isoformat(),
-                                    "team_id": team.id, "subs": len(t.sub_items)})
+                                    "team_id": team.id, "subs": 0 if open_items else len(t.sub_items),
+                                    "open_items": open_items})
 
 
 def process_template(db: Session, t: InspectionTemplate, now_local: datetime) -> list[InspectionRun]:

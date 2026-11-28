@@ -6,6 +6,7 @@ source_task_id 指回原任务；内容、译文、图片带过去，参与人�
 """
 
 import uuid
+from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
@@ -27,7 +28,7 @@ from ..schemas import (
 from ..security import get_current_user, require_admin
 from ..shifts import TeamInfo
 from .. import permissions
-from .tasks import LANGS, OPEN, _get_task, _require, can_transfer, overdue_clause, tasks_out
+from .tasks import LANGS, OPEN, _get_task, _require, can_transfer, overdue_clause, tasks_out, visible_now
 
 router = APIRouter(prefix="/api", tags=["handover"])
 
@@ -212,7 +213,7 @@ def board(team_id: int | None = None, db: Session = Depends(get_db), user: User 
     nxt = sched.default_handover_target(main, now_local)
 
     opts = [selectinload(Task.workers), selectinload(Task.attachments), selectinload(Task.lead)]
-    open_tasks = db.scalars(select(Task).options(*opts).where(Task.team_id.in_(ids), Task.status.in_(OPEN))
+    open_tasks = db.scalars(select(Task).options(*opts).where(Task.team_id.in_(ids), Task.status.in_(OPEN), visible_now())
                             .order_by(Task.chain_started_at)).all()
     # 本班完成：在班 → 这个班次开始以来；不在班 → 它最近一个已经上过的班次
     dd, dk = d, k
@@ -232,7 +233,25 @@ def board(team_id: int | None = None, db: Session = Depends(get_db), user: User 
     by_id = {t.id: t for t in all_out}
     open_out = [by_id[t.id] for t in open_tasks]
     key = lambda t: (not t.overdue, t.chain_started_at)  # 超时的排最前
-    return BoardOut(
+    # 「小项目由当班自己添加」的项目（例如停送电）：这个班的，本班往里加小项目
+    from .. import project_service
+    from ..models import Project
+    from ..schemas import BoardProject, Trilingual
+
+    # 这个班的；刚下班 2 小时内（补录期）的也还显示
+    sd_start = sched.shift_window(sd, sk)[0]
+    projs = [p for p in db.scalars(select(Project).where(Project.open_items.is_(True), Project.closed_at.is_(None),
+                                                         Project.team_id.in_(ids), Project.shift_date.is_not(None))
+                                   .order_by(Project.id))
+             if (p.shift_date, p.shift_kind) == (sd, sk)
+             or (sched.shift_window(p.shift_date, p.shift_kind)[0] < sd_start
+                 and sched.shift_window(p.shift_date, p.shift_kind)[1] + timedelta(hours=2) >= now_local)]
+    prog = project_service.progress(db, [p.id for p in projs])
+    board_projects = [BoardProject(
+        id=p.id, name=Trilingual(zh=p.name_zh, sr=p.name_sr, en=p.name_en), team_id=p.team_id,
+        total=prog[p.id].total, done=prog[p.id].done,
+        can_add=w.team_ok("project.manage", p.team_id) or w.team_ok("task.create", p.team_id)) for p in projs]
+    return BoardOut(projects=board_projects, 
         team_id=main.id, team_ids=ids, shift_date=sd, shift_kind=sk, on_duty=on_duty,
         prev_team_ids=prev_ids, next_team_id=nxt.id if nxt else None,
         received=sorted([t for t in open_out if t.handover_in and t.handover_in.team_id not in ids], key=key),

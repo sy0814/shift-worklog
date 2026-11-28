@@ -50,13 +50,24 @@ async function loadPeople() {
 const name = (p) => localText(p.name, p.source_lang).text
 const pct = (p) => (p.total ? Math.round(((p.done + p.discarded) / p.total) * 100) : 0)
 const overdue = (p) => !p.closed_at && p.deadline && p.deadline < dayjs().format('YYYY-MM-DD')
+// 计划开始时间还没到：子项目到「开始时间 - 提前分钟」才出现在待办里
+const LEADS = [0, 15, 30, 60, 120, 240]
+const pending = (p) => p.start_at && dayjs(p.start_at).isAfter(dayjs())
+const startText = (p) => t('proj.startTag', { t: dayjs(p.start_at).format('MM-DD HH:mm') })
+const pastDate = (d) => dayjs(d).isBefore(dayjs(), 'day')
+async function setStart(patch) {
+  const body = { ...patch }
+  if ('start_at' in body) body.start_at = body.start_at ? new Date(body.start_at).toISOString() : null
+  detail.value = (await api.patch(`/projects/${detail.value.id}`, body)).data
+  load()
+}
 
 // ---------------- 新建 ----------------
 const formOpen = ref(false)
 const form = reactive({})
 const blankSub = () => ({ content: '', target: { mode: 'team', team_id: auth.user?.team_id ?? null, worker_id: null } })
 function openCreate() {
-  Object.assign(form, { name: '', transferable: true, deadline: null, team_id: auth.hasOwnTeamHere ? auth.user.team_id : auth.teams[0]?.id, subs: [blankSub()] })
+  Object.assign(form, { name: '', transferable: true, deadline: null, start_at: null, lead_minutes: 30, team_id: auth.hasOwnTeamHere ? auth.user.team_id : auth.teams[0]?.id, subs: [blankSub()] })
   loadPeople()
   formOpen.value = true
 }
@@ -65,6 +76,7 @@ const subOk = (s) => s.content.trim() && (s.target.mode === 'team' ? s.target.te
 const formOk = computed(() => form.name?.trim() && form.subs?.length && form.subs.every(subOk))
 async function create() {
   const body = { name: form.name.trim(), lang: locale.value, transferable: form.transferable, deadline: form.deadline || null,
+    start_at: form.start_at ? new Date(form.start_at).toISOString() : null, lead_minutes: form.lead_minutes,
     subs: form.subs.map(subBody), ...(auth.wide('project.manage') || !auth.hasOwnTeamHere ? { team_id: form.team_id } : {}) }
   const p = (await api.post('/projects', body)).data
   formOpen.value = false
@@ -148,7 +160,10 @@ const open = (s) => ['not_started', 'in_progress'].includes(s.status)
           <el-tag v-if="!p.transferable" size="small" type="info">{{ t('proj.fixed') }}</el-tag>
           <el-tag v-if="p.closed_at" size="small" type="success">{{ t('proj.closedTag') }}</el-tag>
           <el-tag v-else-if="overdue(p)" size="small" type="danger">{{ t('proj.late') }}</el-tag>
+          <el-tag v-if="p.closed_empty" size="small" type="info">{{ t('proj.emptyTag') }}</el-tag>
+          <el-tag v-if="!p.closed_at && pending(p)" size="small" type="warning">⏰ {{ startText(p) }}</el-tag>
           <span class="muted small grow" />
+          <span v-if="p.open_items && p.shift_date" class="muted small">{{ p.shift_date.slice(5) }} {{ t(`shift.${p.shift_kind}`) }}</span>
           <span v-if="p.deadline" class="muted small">{{ t('proj.deadline') }} {{ p.deadline }}</span>
         </div>
         <el-progress :percentage="pct(p)" :status="p.closed_at ? 'success' : undefined" :stroke-width="10" />
@@ -171,6 +186,19 @@ const open = (s) => ['not_started', 'in_progress'].includes(s.status)
           </div>
         </el-form-item>
         <el-form-item :label="t('proj.deadline')"><el-date-picker v-model="form.deadline" value-format="YYYY-MM-DD" /></el-form-item>
+        <el-form-item :label="t('proj.start')">
+          <div class="start-row">
+            <el-date-picker v-model="form.start_at" type="datetime" format="YYYY-MM-DD HH:mm" :placeholder="t('proj.startNow')"
+                            :disabled-date="pastDate" clearable style="width: 210px" />
+            <template v-if="form.start_at">
+              <span>{{ t('proj.lead') }}</span>
+              <el-select v-model="form.lead_minutes" style="width: 120px">
+                <el-option v-for="n in LEADS" :key="n" :value="n" :label="t('proj.leadOpt', { n })" />
+              </el-select>
+            </template>
+            <small class="muted">{{ t('proj.startHint') }}</small>
+          </div>
+        </el-form-item>
         <el-form-item :label="t('proj.subs')">
           <div class="subs">
             <div v-for="(s, i) in form.subs" :key="i" class="sub">
@@ -201,6 +229,17 @@ const open = (s) => ['not_started', 'in_progress'].includes(s.status)
             <el-tag effect="plain">{{ localName(auth.teamById(detail.team_id)) }}</el-tag>
             <span v-if="detail.deadline" :class="{ red: overdue(detail) }">{{ t('proj.deadline') }} {{ detail.deadline }}</span>
             <el-tag v-if="detail.closed_at" type="success">{{ t('proj.closedTag') }} {{ dayjs(detail.closed_at).format('MM-DD HH:mm') }}</el-tag>
+            <el-tag v-if="detail.closed_empty" type="info">{{ t('proj.emptyTag') }}</el-tag>
+          </div>
+          <div v-if="!detail.open_items && !detail.closed_at && (detail.can_manage || detail.start_at)" class="row">
+            <span>{{ t('proj.start') }}</span>
+            <el-date-picker :model-value="detail.start_at ? new Date(detail.start_at) : null" type="datetime" format="YYYY-MM-DD HH:mm"
+                            :placeholder="t('proj.startNow')" :disabled-date="pastDate" :disabled="!detail.can_manage" clearable size="small"
+                            style="width: 190px" @update:model-value="(v) => setStart({ start_at: v })" />
+            <el-select v-if="detail.start_at" :model-value="detail.lead_minutes" :disabled="!detail.can_manage" size="small" style="width: 180px"
+                       @update:model-value="(v) => setStart({ lead_minutes: v })">
+              <el-option v-for="n in LEADS" :key="n" :value="n" :label="t('proj.lead') + ' ' + t('proj.leadOpt', { n })" />
+            </el-select>
           </div>
           <div class="row">
             <el-switch :model-value="detail.transferable" :disabled="!detail.can_manage" @change="setTransferable" />
@@ -212,7 +251,7 @@ const open = (s) => ['not_started', 'in_progress'].includes(s.status)
         </div>
         <div class="subhead">
           <h4>{{ t('proj.subs') }}</h4>
-          <el-button v-if="detail.can_manage" size="small" :icon="Plus" @click="openAdd">{{ t('proj.addSub') }}</el-button>
+          <el-button v-if="detail.can_add" size="small" :icon="Plus" @click="openAdd">{{ t('proj.addSub') }}</el-button>
         </div>
         <div v-for="s in detail.subs" :key="s.id" class="drow">
           <TaskCard :task="s" class="grow" @click="openTask(s)" />
@@ -272,6 +311,8 @@ const open = (s) => ['not_started', 'in_progress'].includes(s.status)
 .mt4 { margin-top: 4px; }
 .dhead { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
 .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 13px; }
+.start-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; width: 100%; }
+.start-row .muted { flex-basis: 100%; line-height: 1.5; }
 .red { color: #f56c6c; }
 .subhead { display: flex; align-items: center; justify-content: space-between; margin: 8px 0; }
 .subhead h4 { margin: 0; }

@@ -17,6 +17,7 @@ from ..schedule_service import load_schedule, local_now
 from ..departments import get_dept
 from ..schemas import Trilingual, WorkerOut
 from ..security import get_current_user
+from .tasks import visible_now
 
 router = APIRouter(prefix="/api", tags=["duty"])
 OPEN = ("not_started", "in_progress")
@@ -175,7 +176,7 @@ def _place(db: Session, slot: _Slot, workers: list[Worker], eff: dict, ot: dict,
 def _open_tasks(db: Session, ids: list[int]) -> dict[int, list[Task]]:
     """员工 id → 手上未完成的任务（未开始也算，进行中的排前面）。"""
     tasks = list(db.scalars(select(Task).options(selectinload(Task.workers))
-                            .where(Task.status.in_(OPEN), Task.workers.any(Worker.id.in_(ids))))) if ids else []
+                            .where(Task.status.in_(OPEN), Task.workers.any(Worker.id.in_(ids)), visible_now()))) if ids else []
     out: dict[int, list[Task]] = {}
     for t in tasks:
         for w in t.workers:
