@@ -88,12 +88,16 @@ def test_open_items_inspection(client, admin_h, teams):
     h1 = login(client, "t1_leader1", "t1_leader1")
     _, b = board_ids(client, h1, teams["T1"])
     card = next((x for x in b["projects"] if x["id"] == pid), None)
-    if (p["shift_date"], p["shift_kind"]) == (b["shift_date"], b["shift_kind"]):
-        assert card and card["can_add"]
+    assert card and card["can_add"]  # 这个班的（或刚下班 2 小时内的）都显示
     r = client.post(f"/api/projects/{pid}/subs", headers=h1, json={"lang": "zh", "subs": [{"content": "3# 泵停电"}]})
     assert r.status_code == 200, r.text
     sub = r.json()["subs"][0]
     assert sub["team_id"] == teams["T1"] and (sub["shift_date"], sub["shift_kind"]) == (p["shift_date"], p["shift_kind"])
+    # 交接班里：项目是一个文件夹（带计数），它的小项目不再一条条出现在待办里（用户 2026-11-28 要的）
+    ids, b = board_ids(client, h1, teams["T1"])
+    assert sub["id"] not in ids
+    card = next(x for x in b["projects"] if x["id"] == pid)
+    assert (card["total"], card["open"], card["closed"]) == (1, 1, False)
     # 别的班组的班长不能加
     h3 = login(client, "t3_leader1", "t3_leader1")
     assert client.post(f"/api/projects/{pid}/subs", headers=h3, json={"lang": "zh", "subs": [{"content": "x"}]}).status_code == 403

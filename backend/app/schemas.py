@@ -403,9 +403,14 @@ class BoardProject(BaseModel):
     """交接班里「小项目由当班自己添加」的项目（例如停送电）：本班往里加小项目。"""
     id: int
     name: "Trilingual"
+    source_lang: str = "zh"
     team_id: int
+    shift_date: date | None = None
+    shift_kind: str | None = None
     total: int
     done: int
+    open: int = 0
+    closed: bool = False  # 小项目全做完了 → 放在「本班完成」里
     can_add: bool
 
 
