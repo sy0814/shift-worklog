@@ -45,6 +45,8 @@ async function needPortal(auth) {
 }
 
 router.beforeEach(async (to) => {
+  // 已经登录的人回到登录页（例如 App 里按返回退到了这里）：直接去首页
+  if (to.name === 'login' && localStorage.getItem('token') && (await useAuth().restore())) return { name: 'home' }
   if (to.meta.public) return true
   const auth = useAuth()
   if (!(await auth.restore())) {

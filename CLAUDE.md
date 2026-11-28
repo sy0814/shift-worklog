@@ -29,7 +29,7 @@
 
 ## 已确定的方向
 
-- **B/S 架构**：内网服务器上的网页系统，电脑和手机共用一套代码；手机端是响应式页面 + **PWA**；另有**安卓 App 外壳**（`mobile/`，Capacitor）：只显示服务器上的网页，**打包了这台服务器的根证书**（`mobile/ca/workrecord-ca.crt`，不愿装证书的人装 App 就行；服务器证书换了要换这个文件再出新 App），网页更新不用重装 App。GitHub Actions（`.github/workflows/android.yml`）打包发布到 Release `android-latest`，`update.ps1 -Online` 下载到 `data\app`，手机从 `http://服务器/app.apk` 下载；改了 `mobile/` 要把 `mobile/package.json` 的 version 加一，网页才会提示更新（`frontend/src/nativeApp.js`）。App 和装到主屏幕的 PWA 里，**返回键先关最上面的弹窗 / 抽屉**，没有才回上一页（`frontend/src/backClose.js`：弹窗打开时压一条历史，返回时给它发 Esc；看大图也算一层）。看大图支持两指缩放（`frontend/src/pinchZoom.js`，换成预览自带的滚轮缩放）；抽屉标题、全屏弹窗、看大图的 × 用 `env(safe-area-inset-*)` 避开状态栏（`style.css`，App 是全屏到状态栏的）。iPhone 没有 App（要苹果开发者账号）。不做单机版。详见 `mobile/README.md`。
+- **B/S 架构**：内网服务器上的网页系统，电脑和手机共用一套代码；手机端是响应式页面 + **PWA**；另有**安卓 App 外壳**（`mobile/`，Capacitor）：只显示服务器上的网页，**打包了这台服务器的根证书**（`mobile/ca/workrecord-ca.crt`，不愿装证书的人装 App 就行；服务器证书换了要换这个文件再出新 App），网页更新不用重装 App。GitHub Actions（`.github/workflows/android.yml`）打包发布到 Release `android-latest`，`update.ps1 -Online` 下载到 `data\app`，手机从 `http://服务器/app.apk` 下载；改了 `mobile/` 要把 `mobile/package.json` 的 version 加一，网页才会提示更新（`frontend/src/nativeApp.js`）。App 和装到主屏幕的 PWA 里，**返回键先关最上面的弹窗 / 抽屉**，没有才回上一页，App 退到头要 2 秒内再按一次才回桌面（`MainActivity` 的 OnBackPressedCallback：没装 @capacitor/app 时 Capacitor 不管返回键，Android 默认直接关 App）（`frontend/src/backClose.js`：弹窗打开时压一条历史，返回时给它发 Esc；看大图也算一层）。看大图支持两指缩放（`frontend/src/pinchZoom.js`，换成预览自带的滚轮缩放）；抽屉标题、全屏弹窗、看大图的 × 用 `env(safe-area-inset-*)` 避开状态栏（`style.css`，App 是全屏到状态栏的）。iPhone 没有 App（要苹果开发者账号）。不做单机版。详见 `mobile/README.md`。
 - **全厂一套系统 + 车间层**（不是每个车间一套）。每个车间像独立系统一样用，车间之间可以移交任务、借调人员。只有一个车间时界面不显示车间。
 - **翻译和 AI 分析统一用 DeepSeek**（OpenAI 兼容，可在页面上换成其他兼容接口）；不接其他翻译服务。
 - **塞尔维亚语一律拉丁字母**（sr-Latn），模型输出和人工输入都转写。
