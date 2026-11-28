@@ -240,23 +240,30 @@ def board(team_id: int | None = None, db: Session = Depends(get_db), user: User 
 
     # 这个班的；刚下班 2 小时内（补录期）的也还显示
     sd_start = sched.shift_window(sd, sk)[0]
-    projs = [p for p in db.scalars(select(Project).where(Project.open_items.is_(True), Project.closed_at.is_(None),
+    # 项目像一个文件夹放在「本班待办」里（全做完了放「本班完成」），它的小项目不再一条条出现在交接班里
+    projs = [p for p in db.scalars(select(Project).where(Project.open_items.is_(True), Project.closed_empty.is_(False),
                                                          Project.team_id.in_(ids), Project.shift_date.is_not(None))
                                    .order_by(Project.id))
              if (p.shift_date, p.shift_kind) == (sd, sk)
-             or (sched.shift_window(p.shift_date, p.shift_kind)[0] < sd_start
+             or (p.closed_at is None and sched.shift_window(p.shift_date, p.shift_kind)[0] < sd_start
                  and sched.shift_window(p.shift_date, p.shift_kind)[1] + timedelta(hours=2) >= now_local)]
     prog = project_service.progress(db, [p.id for p in projs])
     board_projects = [BoardProject(
-        id=p.id, name=Trilingual(zh=p.name_zh, sr=p.name_sr, en=p.name_en), team_id=p.team_id,
-        total=prog[p.id].total, done=prog[p.id].done,
-        can_add=w.team_ok("project.manage", p.team_id) or w.team_ok("task.create", p.team_id)) for p in projs]
-    return BoardOut(projects=board_projects, 
+        id=p.id, name=Trilingual(zh=p.name_zh, sr=p.name_sr, en=p.name_en), source_lang=p.source_lang, team_id=p.team_id,
+        shift_date=p.shift_date, shift_kind=p.shift_kind, total=prog[p.id].total, done=prog[p.id].done,
+        open=prog[p.id].open, closed=p.closed_at is not None,
+        can_add=p.closed_at is None and (w.team_ok("project.manage", p.team_id) or w.team_ok("task.create", p.team_id)))
+        for p in projs]
+    in_folder = {p.id for p in projs}
+    open_out = [t for t in open_out if not (t.project and t.project.id in in_folder)]
+    done_out = [by_id[t.id] for t in done if not (t.project_id and t.project_id in in_folder)]
+    return BoardOut(
+        projects=board_projects,
         team_id=main.id, team_ids=ids, shift_date=sd, shift_kind=sk, on_duty=on_duty,
         prev_team_ids=prev_ids, next_team_id=nxt.id if nxt else None,
         received=sorted([t for t in open_out if t.handover_in and t.handover_in.team_id not in ids], key=key),
         todo=sorted([t for t in open_out if not (t.handover_in and t.handover_in.team_id not in ids)], key=key),
-        done_recent=[by_id[t.id] for t in done], done_shift_date=dd, done_shift_kind=dk,
+        done_recent=done_out, done_shift_date=dd, done_shift_kind=dk,
     )
 
 

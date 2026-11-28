@@ -15,6 +15,7 @@ import ShiftTag from './ShiftTag.vue'
 import TaskCard from './TaskCard.vue'
 import TaskDetail from './TaskDetail.vue'
 import HandoverDialog from './HandoverDialog.vue'
+import ProjectDrawer from './ProjectDrawer.vue'
 
 const { t, locale } = useI18n()
 const auth = useAuth()
@@ -93,7 +94,11 @@ function open(task) {
 const hoOpen = ref(false)
 const teamName = (id) => localName(auth.teamById(id))
 // 「小项目由当班自己添加」的项目（例如停送电）：本班每做一次就加一个小项目
-const projName = (p) => p.name[locale.value] || p.name.zh || p.name.sr || p.name.en || ''
+const projName = (p) => p.name[locale.value] || p.name[p.source_lang] || p.name.zh || p.name.sr || p.name.en || ''
+const projOpen = ref(false)
+const projId = ref(null)
+const projDrawer = ref(null)
+function openProj(p) { projId.value = p.id; projOpen.value = true }
 const itemOpen = ref(false)
 const itemProj = ref(null)
 const itemText = ref('')
@@ -105,15 +110,16 @@ async function saveItem() {
     await api.post(`/projects/${itemProj.value.id}/subs`, { lang: locale.value, subs: [{ content: itemText.value.trim() }] })
     itemOpen.value = false
     load()
+    if (projOpen.value) projDrawer.value?.load()
   } finally { itemBusy.value = false }
 }
 
 // 正在看的不是此刻在班的班（不在班 → 它的下一个班；或者从「今日排班」点了别的班组）：标题旁边写明
 const viewing = computed(() => board.value && (props.teamId || !board.value.on_duty))
 const sections = computed(() => board.value && [
-  { key: 'received', title: t('board.received'), list: board.value.received, selectable: true },
-  { key: 'todo', title: t('board.todo'), list: board.value.todo, selectable: true },
-  { key: 'done', list: board.value.done_recent,
+  { key: 'received', title: t('board.received'), list: board.value.received, selectable: true, folders: [] },
+  { key: 'todo', title: t('board.todo'), list: board.value.todo, selectable: true, folders: (board.value.projects || []).filter((p) => !p.closed) },
+  { key: 'done', list: board.value.done_recent, folders: (board.value.projects || []).filter((p) => p.closed),
     title: board.value.on_duty ? t('board.doneRecent')
       : t('board.doneLast', { date: board.value.done_shift_date.slice(5), shift: t(`shift.${board.value.done_shift_kind}`) }) },
 ])
@@ -141,16 +147,23 @@ const sections = computed(() => board.value && [
       <el-button v-if="auth.isAdmin" type="primary" @click="router.push('/schedule?tab=teams')">{{ t('board.addTeams') }}</el-button>
     </el-empty>
     <div v-else v-loading="loading">
-      <div v-if="board?.projects?.length" class="hb-projs">
-        <div v-for="p in board.projects" :key="p.id" class="hb-proj">
-          <span class="hb-pname">📁 {{ projName(p) }}</span>
-          <span class="muted">{{ t('proj.boardHint', { n: p.total }) }}</span>
-          <el-button v-if="p.can_add" size="small" type="primary" plain @click="openItem(p)">+ {{ t('proj.addItem') }}</el-button>
-        </div>
-      </div>
       <template v-for="sec in sections" :key="sec.key">
-        <h3 class="sec">{{ sec.title }} <el-tag size="small" round>{{ sec.list.length }}</el-tag></h3>
+        <h3 class="sec">{{ sec.title }} <el-tag size="small" round>{{ sec.list.length + sec.folders.length }}</el-tag></h3>
         <div class="list">
+          <!-- 项目文件夹（「当班自己加小项目」的项目）：左边点开看详情，右边加小项目；它的小项目不再一条条列出来 -->
+          <div v-for="p in sec.folders" :key="'p' + p.id" class="row">
+            <span class="pick"><el-checkbox disabled /></span>
+            <div :class="['hb-folder', { closed: p.closed }]">
+              <div class="hb-fmain" role="button" tabindex="0" @click="openProj(p)" @keydown.enter="openProj(p)">
+                <span class="hb-fname">📁 {{ projName(p) }}</span>
+                <span class="hb-fmeta">
+                  <ShiftTag v-if="p.shift_kind" :kind="p.shift_kind" /> {{ p.shift_date?.slice(5) }}
+                  · {{ t('proj.folderCount', { done: p.done, total: p.total, open: p.open }) }}
+                </span>
+              </div>
+              <el-button v-if="p.can_add" type="primary" plain size="small" class="hb-fadd" @click.stop="openItem(p)">+ {{ t('proj.addItem') }}</el-button>
+            </div>
+          </div>
           <div v-for="task in sec.list" :key="task.id" class="row">
             <!-- 每一行都有方框，卡片左边都对齐：能移交的可以勾；不能移交的（不可移交、没权限、已完成）是灰色方框 -->
             <span class="pick">
@@ -162,7 +175,7 @@ const sections = computed(() => board.value && [
             </span>
             <TaskCard :task="task" class="grow" @click="open(task)" />
           </div>
-          <div v-if="!sec.list.length" class="muted empty">{{ t('board.empty') }}</div>
+          <div v-if="!sec.list.length && !sec.folders.length" class="muted empty">{{ t('board.empty') }}</div>
         </div>
       </template>
     </div>
@@ -174,6 +187,7 @@ const sections = computed(() => board.value && [
         <el-button type="primary" :loading="itemBusy" :disabled="!itemText.trim()" @click="saveItem">{{ t('common.save') }}</el-button>
       </template>
     </el-dialog>
+    <ProjectDrawer ref="projDrawer" v-model="projOpen" :project-id="projId" @add="openItem" @changed="changed" />
     <TaskDetail v-model="detailOpen" :task-id="detailId" @changed="changed" />
     <HandoverDialog v-if="board" v-model="hoOpen" :task-ids="selected" :team-id="board.team_id" @done="() => { selected = []; changed() }" />
   </section>
@@ -200,8 +214,11 @@ const sections = computed(() => board.value && [
 
 .grow { flex: 1; min-width: 0; }
 .empty { padding: 4px 0 8px; }
-.hb-projs { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
-.hb-proj { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; background: #fff; border: 1px dashed #b3d8ff;
-  border-radius: 6px; padding: 8px 12px; }
-.hb-pname { font-weight: 600; }
+.hb-folder { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; background: #fff; border-radius: 6px;
+  border-left: 4px solid #409eff; padding: 10px 12px; }
+.hb-folder.closed { border-left-color: #67c23a; }
+.hb-fmain { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; cursor: pointer; }
+.hb-fname { font-weight: 600; font-size: 15px; }
+.hb-fmeta { color: #909399; font-size: 13px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.hb-fadd { flex: none; }
 </style>

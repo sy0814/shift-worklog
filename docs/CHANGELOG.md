@@ -452,3 +452,4 @@
   - 项目「计划开始」+「提前显示」（默认 30 分钟）：子项目归开始时间那个班、到时间前不在待办 / 人员忙碌里（`tasks.visible_from`，`tasks.visible_now()`），卡片写「⏰ 计划 … 开始」；改开始时间重算没开始的子项目。用户原话：「项目没有设几月几号开始的按钮，我设周一开始它现在就弹出任务了」
   - 定期巡查「当班自己加小项目」（`open_items`）：每次派发一个属于那个班的空项目，首页交接班上方一张卡片「+ 添加小项目」，下班 30 分钟后空的自动关闭为「本班无」（`close_empty_open_projects`，在自动移交的定时任务里）；巡查表单「从哪天开始」所有周期都显示（以前每周 / 每月看不到，默认今天）
   - 测试 `test_project_start.py`、`test_swaps.py::test_cover_follows_covered_team_including_off_days`
+- 2026-11-28 **「当班自己加小项目」的项目改成待办里的文件夹**（用户要的）：首页交接班「本班待办」里一行 📁（全做完放「本班完成」），左边点开 `ProjectDrawer.vue`（项目信息 + 全部小项目，点小项目开任务详情），右边「添加小项目」；它的小项目从待办 / 移交过来 / 本班完成里拿掉（`routers/handover.py` 按 `in_folder` 过滤，`BoardProject` 加 `open / closed / source_lang / shift_date / shift_kind`）。原来交接班上方单独的卡片去掉
