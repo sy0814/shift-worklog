@@ -378,6 +378,7 @@ class TaskOut(BaseModel):
     transferable: bool = True  # 能不能移交（任务自己的设置，且项目子项目时项目也可移交）
     # 移交 / 废弃 / 警示
     chain_started_at: UTCDateTime
+    visible_from: UTCDateTime | None = None  # 项目计划开始：这之前不在待办里出现，卡片写「计划 … 开始」
     handover_count: int
     age_hours: float
     overdue: bool
@@ -398,6 +399,16 @@ class HistoryOut(AuditOut):
     user_name: str | None
 
 
+class BoardProject(BaseModel):
+    """交接班里「小项目由当班自己添加」的项目（例如停送电）：本班往里加小项目。"""
+    id: int
+    name: "Trilingual"
+    team_id: int
+    total: int
+    done: int
+    can_add: bool
+
+
 class BoardOut(BaseModel):
     team_id: int  # 主班组（合并时是倒班班组）
     team_ids: list[int]  # 本块包含的班组（常白班合并时有两个）
@@ -411,6 +422,7 @@ class BoardOut(BaseModel):
     done_recent: list[TaskOut]  # 本班完成的（不在班时：它上一个班完成的）
     done_shift_date: date  # done_recent 对应的班次
     done_shift_kind: str
+    projects: list[BoardProject] = []
 
 
 # ---------------- 翻译 / 术语表 ----------------

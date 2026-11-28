@@ -164,9 +164,23 @@ def set_attendance(body: AttendanceSet, db: Session = Depends(get_db), user: Use
         raise HTTPException(status.HTTP_403_FORBIDDEN, "not your team's worker")
     _validate(db, body.status, body.shift_kind, body.team_id)
     _apply(db, w, body.day, body.status, body.shift_kind, body.team_id, body.note, "manual", user.id)
+    _require_shift(db, [w], body.day, body.day)
     db.commit()
     c = att.effective(db, [w], body.day, body.day)[w.id][body.day]
     return Cell(**vars(c))
+
+
+def _require_shift(db: Session, workers: list[Worker], start: date, end: date) -> None:
+    """手工设成「出勤」却算不出上哪个班（没选班次，而他自己 / 被顶的班组那天休息）→ 不保存，请选班次。
+    否则格子里没有班次可显示，首页也不知道他在哪个班。"""
+    db.flush()
+    eff = att.effective(db, workers, start, end)
+    for w in workers:
+        for d, c in eff[w.id].items():
+            if c.status == "present" and not c.shift_kind and not c.code:
+                db.rollback()
+                who = w.name if start == end else f"{w.name} ({d})"
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, f"{who} is not on duty that day; choose a shift")
 
 
 def _validate(db: Session, status_: str, shift_kind: str | None, team_id: int | None) -> None:
@@ -202,6 +216,7 @@ def set_batch(body: AttendanceBatch, db: Session = Depends(get_db), user: User =
             _apply(db, w, d, body.status, body.shift_kind, body.team_id, body.note, "manual", user.id)
             n += 1
         d += timedelta(days=1)
+    _require_shift(db, workers, body.start, body.end)
     audit.log(db, user_id=user.id, action="batch", entity="attendance", entity_id=f"{body.start}~{body.end}",
               new=body.model_dump(mode="json"))
     db.commit()

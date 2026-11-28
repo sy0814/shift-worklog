@@ -49,11 +49,13 @@ def resolve(sched: Schedule, entry: Entry, a: Attendance | None, d: date,
     kind = a.shift_kind
     if a.status == "present" and not kind:
         if a.team_id and a.team_id != entry.team_id:
-            # 去顶别的班组、没指定班次 → 按被顶班组当天的班次
+            # 去顶别的班组、没指定班次 → 跟着被顶班组走：它当天上什么班就上什么班，它休息他也休息（用户 2026-11-28 定的）
             cover = sched.team(a.team_id)
             k = sched.shift_of(cover, d) if cover else None
             kind = k if k and k != OFF else None
             note(trace, "cover", team_id=a.team_id, kind=kind)
+            if kind is None:
+                return DayAttendance("off", None, a.team_id, a.source, a.note)
         else:
             kind = base.shift_kind
     # 手工改过 / 导入的：班次没变的话保留自定义上班时间

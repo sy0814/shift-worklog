@@ -16,7 +16,7 @@ import TaskCard from './TaskCard.vue'
 import TaskDetail from './TaskDetail.vue'
 import HandoverDialog from './HandoverDialog.vue'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const auth = useAuth()
 const outbox = useOutbox()
 const router = useRouter()
@@ -92,6 +92,22 @@ function open(task) {
 }
 const hoOpen = ref(false)
 const teamName = (id) => localName(auth.teamById(id))
+// 「小项目由当班自己添加」的项目（例如停送电）：本班每做一次就加一个小项目
+const projName = (p) => p.name[locale.value] || p.name.zh || p.name.sr || p.name.en || ''
+const itemOpen = ref(false)
+const itemProj = ref(null)
+const itemText = ref('')
+const itemBusy = ref(false)
+function openItem(p) { itemProj.value = p; itemText.value = ''; itemOpen.value = true }
+async function saveItem() {
+  itemBusy.value = true
+  try {
+    await api.post(`/projects/${itemProj.value.id}/subs`, { lang: locale.value, subs: [{ content: itemText.value.trim() }] })
+    itemOpen.value = false
+    load()
+  } finally { itemBusy.value = false }
+}
+
 // 正在看的不是此刻在班的班（不在班 → 它的下一个班；或者从「今日排班」点了别的班组）：标题旁边写明
 const viewing = computed(() => board.value && (props.teamId || !board.value.on_duty))
 const sections = computed(() => board.value && [
@@ -125,6 +141,13 @@ const sections = computed(() => board.value && [
       <el-button v-if="auth.isAdmin" type="primary" @click="router.push('/schedule?tab=teams')">{{ t('board.addTeams') }}</el-button>
     </el-empty>
     <div v-else v-loading="loading">
+      <div v-if="board?.projects?.length" class="hb-projs">
+        <div v-for="p in board.projects" :key="p.id" class="hb-proj">
+          <span class="hb-pname">📁 {{ projName(p) }}</span>
+          <span class="muted">{{ t('proj.boardHint', { n: p.total }) }}</span>
+          <el-button v-if="p.can_add" size="small" type="primary" plain @click="openItem(p)">+ {{ t('proj.addItem') }}</el-button>
+        </div>
+      </div>
       <template v-for="sec in sections" :key="sec.key">
         <h3 class="sec">{{ sec.title }} <el-tag size="small" round>{{ sec.list.length }}</el-tag></h3>
         <div class="list">
@@ -144,6 +167,13 @@ const sections = computed(() => board.value && [
       </template>
     </div>
 
+    <el-dialog v-model="itemOpen" :title="itemProj ? `${projName(itemProj)} · ${t('proj.addItem')}` : ''" width="min(480px, 94vw)" append-to-body>
+      <el-input v-model="itemText" type="textarea" :autosize="{ minRows: 2, maxRows: 6 }" maxlength="5000" :placeholder="t('proj.itemPh')" />
+      <template #footer>
+        <el-button @click="itemOpen = false">{{ t('common.cancel') }}</el-button>
+        <el-button type="primary" :loading="itemBusy" :disabled="!itemText.trim()" @click="saveItem">{{ t('common.save') }}</el-button>
+      </template>
+    </el-dialog>
     <TaskDetail v-model="detailOpen" :task-id="detailId" @changed="changed" />
     <HandoverDialog v-if="board" v-model="hoOpen" :task-ids="selected" :team-id="board.team_id" @done="() => { selected = []; changed() }" />
   </section>
@@ -170,4 +200,8 @@ const sections = computed(() => board.value && [
 
 .grow { flex: 1; min-width: 0; }
 .empty { padding: 4px 0 8px; }
+.hb-projs { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.hb-proj { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; background: #fff; border: 1px dashed #b3d8ff;
+  border-radius: 6px; padding: 8px 12px; }
+.hb-pname { font-weight: 600; }
 </style>

@@ -126,7 +126,7 @@ deploy/Caddyfile, deploy/install/install.html
 - **班次日志** `task_logs`（迁移 0019，`routers/task_logs.py`）：一条任务多条自由记录，三语列 + `source_lang`，翻译队列项 `("log", id)`（`translation_service.translate_log`，定时重试也包括）；班次按写的时间 `recorded_at` 算（离线最多往前 3 天）；`GET /tasks/{id}/logs` 列整条移交链（`chain_ids`）；写需要 `task_perms` 的 `log`（= 能开始 / 完成或修改，已完成的要 `task.edit_done`）；删 = 写的人或能修改任务的人，软删除；留痕在任务上（action `log` / `log_delete`）。前端 `TaskLogs.vue`，离线走发件箱（type `log`，`client_id` 去重）。导出多一张「班次日志」表。i18n 用 `tlog`（`log` 已被操作记录页占用）
 
 ### 3.5 项目与定期巡查
-- **项目** `projects`：多个子项目（子项目就是任务）；全部完成或废弃才闭合（只看每条移交链的最新一条）；可移交的子项目下班 30 分钟后自动移交给在班主班组。
+- **项目** `projects`：多个子项目（子项目就是任务）；全部完成或废弃才闭合（只看每条移交链的最新一条）；可移交的子项目下班 30 分钟后自动移交给在班主班组。计划开始（`start_at` / `lead_minutes`）的子项目带 `tasks.visible_from`，到时间前待办和人员忙碌不算（`tasks.visible_now()`）；`open_items` 项目属于一个班（`shift_date / shift_kind`）。
 - **定期巡查** `inspection_templates`：周期（每天 / 每 N 天 / 每周几 / 每月几号 / 每年某天 / 每 N 个班）+ 派给谁；每分钟检查，`(巡查项, 触发时间)` 唯一不重复派；有小项目时每次派发生成一个项目。
 
 ### 3.6 其他
@@ -217,7 +217,7 @@ npm run build    # 输出到 backend/static
 | 车间 | `GET /departments`（导航页，不需要登录，含此刻在班班组）、`POST/PUT/DELETE /departments/{id}`（系统管理员） |
 | 登录 | `POST /auth/login`（表单）、`GET /auth/teams?department_id=`、`GET /auth/teams/{id}/people`、`POST /auth/pin`、`GET/PATCH /auth/me`、`POST /auth/change-password` |
 | 任务 | `GET/POST /tasks`、`GET/PATCH /tasks/{id}`、`POST /tasks/{id}/status`、`POST /tasks/{id}/attachments`、`DELETE /attachments/{id}`、`GET /files/{id}/{thumb\|view\|original}?t=`、`GET /tasks/{id}/history`、`GET /assignable` |
-| 交接班 | `GET /board`、`GET /handover/default`、`POST /handover`、`POST /tasks/{id}/discard`、`GET /overdue`、`GET /duty?which=current\|next` |
+| 交接班 | `GET /board`（含 `projects` = 本班「当班自己加小项目」的项目卡片；有 `visible_from` 还没到的子项目不返回）、`GET /handover/default`、`POST /handover`、`POST /tasks/{id}/discard`、`GET /overdue`、`GET /duty?which=current\|next` |
 | 翻译 | `PUT /tasks/{id}/translation`、`POST /tasks/{id}/retranslate`、`POST /translate`、`GET /translation/status`、`POST /translation/retry-failed`、术语表 `/glossary*` |
 | 排班 | `GET /shifts/now`、`GET /shifts/calendar`、`GET /shifts/coverage`、`GET/PUT /shifts/config`（班次时间）、`/teams`（增删改）、`/team-shifts`（调班、`/swap` 互换、`/unaffected` 不受调班影响的人）、`/holidays/{day}` |
 | 为什么？ | `GET /explain/worker/{id}?day=`、`GET /explain/team/{id}?day=`：`{day, result, steps[]}`（权限 `schedule.why`，迁移 0021 给已有角色按以前的规则补默认值；按目标的班组判断范围，没有班组的人按车间；成员默认 403）。前端每一步的「去修改」链接（`WhyPanel.vue` 的 `link()`）靠页面 query 打开弹窗：`/attendance?worker=&day=`、`/attendance?team=&month=`、`/schedule?tab=teams&team=`、`/schedule?tab=calendar&shift=班组&day=`、`/schedule?tab=holidays`、`/workers?schedule=员工`；打开后 `router.replace` 去掉 query |
@@ -241,7 +241,7 @@ npm run build    # 输出到 backend/static
 |---|---|
 | 翻译重试（任务、项目、设备） | 每 2 分钟 |
 | 定期巡查派发 | 每分钟 |
-| 项目子项目下班后自动移交 | 每分钟 |
+| 项目子项目下班后自动移交；「当班自己加小项目」的空项目下班 30 分钟后关闭为「本班无」 | 每分钟 |
 | 员工班组变更到日子生效（`_sync_workers`） | 每分钟 |
 | 原图归档 | 每天 02:50 |
 | 数据库备份 | Windows 计划任务每天 03:40（`backup.ps1`，不在程序里） |

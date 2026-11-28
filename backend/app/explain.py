@@ -17,7 +17,7 @@ code 一览（按出现的先后）：
   member_shift   （班组）班组本身休息，但有成员被单独安排上 kind 班 → 班组也算在班（workers = 哪些人）
   member_ignored （班组）有成员被单独安排上 kind 班，但班组这天有班组调班，以调班为准，不算在班（workers）
   attendance     出勤例外记录（导入 / 手工改）：status、shift_kind、顶哪个班组 team_id、备注
-  cover          去顶 team_id 的班、没写班次 → 按那个班组当天的 kind
+  cover          去顶 team_id 的班、没写班次 → 按那个班组当天的 kind；kind 为空 = 那个班组这天休息，他也休息
   hours_dropped  例外改了班次，原来的自定义时间段 hours 不再适用
   group          这个班次合并显示在 main 那一组（team_ids）；alone = 他的班组当天不上这个班，是单独安排来的
   overtime       加班到 until（hours 小时）

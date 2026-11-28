@@ -17,6 +17,8 @@ const outbox = useOutbox()
 const pending = computed(() => { const p = outbox.pendingStatus(props.task.id); return p && p !== props.task.status ? p : null })
 const status = computed(() => pending.value || props.task.status)
 const leftover = computed(() => localText(props.task.leftover, props.task.leftover_source_lang))
+// 项目设了计划开始、还没到：写「计划 … 开始」（这之前它不在待办里，只在项目、任务页能看到）
+const planned = computed(() => props.task.visible_from && new Date(props.task.chain_started_at) > new Date())
 </script>
 
 <template>
@@ -27,6 +29,7 @@ const leftover = computed(() => localText(props.task.leftover, props.task.leftov
       <span class="team">{{ auth.teamLabel(task.team_id) }}</span>
       <ShiftTag :kind="task.shift_kind" />
       <span class="muted">{{ task.shift_date.slice(5) }}</span>
+      <el-tag v-if="planned" type="warning" size="small" effect="plain">⏰ {{ t('proj.startTag', { t: fmtTime(task.chain_started_at) }) }}</el-tag>
       <el-tag v-if="task.overdue" type="danger" size="small" effect="dark">{{ t('overdue.badge') }} {{ Math.floor(task.age_hours) }}h</el-tag>
       <el-tag v-if="task.inspection_id" size="small" type="success" effect="plain">{{ t('insp.tag') }}</el-tag>
       <el-tag v-if="task.project" size="small" type="primary" effect="plain" class="ptag">📁 {{ localText(task.project.name, task.project.source_lang).text }} {{ task.project.done }}/{{ task.project.total }}</el-tag>

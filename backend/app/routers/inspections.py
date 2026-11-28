@@ -46,6 +46,7 @@ class InspectionIn(BaseModel):
     worker_ids: list[int] = Field(default_factory=list, max_length=50)
     sub_items: list[SubItem] = Field(default_factory=list, max_length=100)  # 小项目
     transferable: bool = True  # 生成的任务（有小项目时 = 生成的项目）是否可移交
+    open_items: bool = False  # 小项目由当班自己添加（次数不固定，例如停送电）：每次派发一个空项目
 
 
 class InspectionOut(InspectionIn):
@@ -80,7 +81,10 @@ class RunOut(BaseModel):
 def _validate(db: Session, b: InspectionIn, dept_id: int | None) -> dict:
     """dept_id：在班班组按哪个车间找（新建 = 当前车间，修改 = 原来的车间）；固定班组时 = 那个班组的车间。"""
     d = b.model_dump()
-    if not b.sub_items and not b.content.strip():
+    if b.open_items:  # 当班自己加小项目：不用固定小项目，也不用任务内容
+        b = b.model_copy(update={"sub_items": []})
+        d["sub_items"] = []
+    elif not b.sub_items and not b.content.strip():
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "content required")
     items = []
     for it in b.sub_items:
@@ -172,7 +176,7 @@ def _out(db: Session, t: InspectionTemplate, user: User | None = None) -> Inspec
         every_n=t.every_n, weekdays=t.weekdays or [], month_days=t.month_days or [],
         year_dates=t.year_dates or [], shift_kinds=t.shift_kinds or [],
         start_date=t.start_date, assign=t.assign, team_id=t.team_id, worker_ids=t.worker_ids or [],
-        sub_items=t.sub_items or [], transferable=t.transferable,
+        sub_items=t.sub_items or [], transferable=t.transferable, open_items=t.open_items,
         next_run_at=t.next_run_at, last_run_at=t.last_run_at, runs=n, updated_at=t.updated_at,
         can_edit=user is not None and _may_manage(user, t.assign, t.team_id, t.department_id),
         department_id=t.department_id)

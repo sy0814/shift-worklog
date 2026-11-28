@@ -8,7 +8,7 @@
 
 import uuid
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -22,6 +22,19 @@ from .shifts import ALL
 from .worker_history import Timelines
 
 OPEN = ("not_started", "in_progress")
+
+
+def _aware(d: datetime | None) -> datetime | None:
+    if d is not None and d.tzinfo is None:
+        return d.replace(tzinfo=timezone.utc)
+    return d
+
+
+def to_local(d: datetime) -> datetime:
+    """UTC → 工厂当地时间（naive，和排班引擎一致）。"""
+    from .config import get_settings
+
+    return _aware(d).astimezone(get_settings().tz).replace(tzinfo=None)
 AUTO_GRACE = timedelta(minutes=30)
 
 
@@ -59,6 +72,8 @@ def progress(db: Session, project_ids: list[int]) -> dict[int, Progress]:
 def refresh_closed(db: Session, project: Project, prog: Progress | None = None) -> bool:
     """按子项目状态更新项目的完成时间。返回是否有变化。"""
     prog = prog or progress(db, [project.id])[project.id]
+    if project.closed_empty and prog.total == 0:
+        return False  # 当班自己加小项目的项目，下班时一个都没有 → 已关闭为「本班无」
     if prog.closed and project.closed_at is None:
         project.closed_at = utcnow()
         audit.log(db, user_id=None, action="close", entity="project", entity_id=project.id,
@@ -84,10 +99,16 @@ def next_slot_of_worker(db: Session, sched, worker: Worker, now_local: datetime,
 def create_sub(db: Session, project: Project, content: str, lang: str, user_id: int, *, team_id: int | None = None,
                worker: Worker | None = None, slot: tuple[date, str] | None = None, recorded_at: datetime | None = None,
                inspection_id: int | None = None, log_user: int | None | bool = True) -> Task:
-    """加一个子项目（不 commit）：分给班组（班长再安排人），或直接分给某个人（带队人 = 这个人）。"""
+    """加一个子项目（不 commit）：分给班组（班长再安排人），或直接分给某个人（带队人 = 这个人）。
+    项目有还没到的计划开始时间：归属开始时间那个班，到「开始时间 - 提前分钟」才出现在待办里（visible_from）。
+    「小项目由当班自己添加」的项目：归属项目的那个班。"""
     sched = load_schedule(db)
-    now_local = local_now()
     now = utcnow()
+    start = _aware(project.start_at)
+    future = start is not None and start > now
+    now_local = to_local(start) if future else local_now()
+    if project.open_items and project.shift_date and slot is None and worker is None:
+        slot = (project.shift_date, project.shift_kind)
     if worker is not None:
         team_id = Timelines(db, [worker]).on(worker.id, now_local.date()).team_id or worker.team_id
         slot = next_slot_of_worker(db, sched, worker, now_local) or slot
@@ -101,8 +122,9 @@ def create_sub(db: Session, project: Project, content: str, lang: str, user_id: 
         client_id=str(uuid.uuid4()), source_lang=lang, team_id=team_id, origin_team_id=team_id,
         project_id=project.id, inspection_id=inspection_id, status="not_started", shift_date=slot[0], shift_kind=slot[1],
         created_by=user_id, updated_by=user_id, recorded_at=recorded_at or now, created_at=now, updated_at=now,
-        translation_status="pending", chain_started_at=recorded_at or now, handover_count=0, manual_fields=[],
-        kind="inspection" if inspection_id else "other",
+        translation_status="pending", chain_started_at=start if future else (recorded_at or now), handover_count=0,
+        manual_fields=[], kind="inspection" if inspection_id else "other",
+        visible_from=start - timedelta(minutes=project.lead_minutes or 0) if future else None,
     )
     setattr(t, f"content_{lang}", content.strip())
     if worker is not None:
@@ -115,6 +137,28 @@ def create_sub(db: Session, project: Project, content: str, lang: str, user_id: 
         "content": content.strip(), "lang": lang, "team_id": team_id, "project_id": project.id,
         "lead_worker_id": worker.id if worker else None, "shift": f"{slot[0]} {slot[1]}"})
     return t
+
+
+def reschedule_subs(db: Session, project: Project) -> None:
+    """改了计划开始时间 / 提前分钟：还没开始的子项目重新算归属的班和出现时间（已经开始的不动）。"""
+    sched = load_schedule(db)
+    now = utcnow()
+    start = _aware(project.start_at)
+    future = start is not None and start > now
+    at = to_local(start) if future else local_now()
+    for t in db.scalars(select(Task).where(Task.project_id == project.id, Task.status == "not_started",
+                                           Task.handover_count == 0)):
+        team = sched.team(t.team_id)
+        worker = db.get(Worker, t.lead_worker_id) if t.lead_worker_id else None
+        slot = next_slot_of_worker(db, sched, worker, at) if worker else None
+        if slot is None:
+            try:
+                slot = sched.receiving_slot(team, at) if team else sched.shift_at(at)
+            except ValueError:
+                slot = sched.shift_at(at)
+        t.shift_date, t.shift_kind = slot
+        t.visible_from = start - timedelta(minutes=project.lead_minutes or 0) if future else None
+        t.chain_started_at = start if future else t.recorded_at
 
 
 # ---------------- 自动移交 ----------------
@@ -153,12 +197,32 @@ def auto_handover(db: Session, now_local: datetime | None = None) -> list[Task]:
     return created
 
 
+def close_empty_open_projects(db: Session, now_local: datetime | None = None) -> list[Project]:
+    """「小项目由当班自己添加」的项目：所属的班下班 AUTO_GRACE 以后一个小项目都没有 → 关闭为「本班无」。"""
+    now_local = now_local or local_now()
+    sched = load_schedule(db)
+    rows = db.scalars(select(Project).where(Project.open_items.is_(True), Project.closed_at.is_(None),
+                                            Project.shift_date.is_not(None))).all()
+    prog = progress(db, [p.id for p in rows])
+    out = []
+    for p in rows:
+        if prog[p.id].total:
+            continue
+        if now_local >= sched.shift_window(p.shift_date, p.shift_kind)[1] + AUTO_GRACE:
+            p.closed_at, p.closed_empty = utcnow(), True
+            audit.log(db, user_id=None, action="close", entity="project", entity_id=p.id, new={"empty": True})
+            out.append(p)
+    return out
+
+
 def auto_handover_job() -> None:
     """定时任务（每分钟）。"""
     import logging
 
     try:
         with SessionLocal() as db:
+            if close_empty_open_projects(db):
+                db.commit()
             created = auto_handover(db)
             if created:
                 db.commit()

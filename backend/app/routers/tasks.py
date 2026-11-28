@@ -224,6 +224,13 @@ def make_ctx(db: Session, tasks: list[Task], user: User | None = None) -> OutCtx
     )
 
 
+def visible_now(now: datetime | None = None):
+    """有计划开始时间、还没到出现时间的项目子项目不显示（待办、人员状态忙碌）。"""
+    from sqlalchemy import or_
+
+    return or_(Task.visible_from.is_(None), Task.visible_from <= (now or utcnow()))
+
+
 def overdue_clause(db: Session, now: datetime):
     """SQL 条件：未完成且（从第一次录入起超过 N 小时 或 已移交 N 次及以上）。"""
     cfg = app_settings.get_all(db)
@@ -277,7 +284,7 @@ def task_out(task: Task, user: User, ctx: OutCtx) -> TaskOut:
         project=ctx.projects.get(task.project_id),
         equipment=ctx.equipment.get(task.equipment_id), transferable=can_transfer(task), kind=task.kind or "other",
         log_count=(ctx.log_counts or {}).get(task.id, 0),
-        chain_started_at=task.chain_started_at, handover_count=task.handover_count,
+        chain_started_at=task.chain_started_at, visible_from=task.visible_from, handover_count=task.handover_count,
         age_hours=round(age, 1), overdue=overdue,
         handover_in=_ho_info(ctx.ho_to.get(task.id), True, names),
         handover_out=_ho_info(ctx.ho_from.get(task.id), False, names),
