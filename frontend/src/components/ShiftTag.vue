@@ -1,5 +1,5 @@
 <script setup>
-// 班次标签。short：只写一个字（白 / 中 / 夜 / 休，塞语 1 / 2 / 3 / S，和工厂出勤表一样），手机上的排班日历用，鼠标放上去看全称
+// 班次标签。short：只写一个字（白 / 中 / 夜 / 休，塞语 1 / 2 / 3 / /，和工厂出勤表一样），手机上的排班日历用，鼠标放上去看全称
 import { useI18n } from 'vue-i18n'
 defineProps({ kind: { type: String, required: true }, short: { type: Boolean, default: false } })
 const { t } = useI18n()
