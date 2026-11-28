@@ -458,3 +458,4 @@
   - 服务器：`update.ps1 -Online` / `install.ps1` 调 `Update-MobileApk` 下载到 `data\app`；`GET /app.apk`、`GET /api/app-info`（`backend/app/main.py`）；Caddy 80 端口转 `/app.apk`（手机浏览器不认证书也能下载）；安装说明页加「下载安卓 App」
   - 网页：User-Agent 带 `WorkRecordApp/版本号`（`frontend/src/nativeApp.js`），服务器上 App 版本更新时提示下载；菜单「服务器地址（App）」回到 App 的地址页。App 里的下载交给手机浏览器，`/app.apk` 改走 HTTP（`MainActivity`）
   - 限制：只有安卓；网页里 JS 生成的下载（导出 Excel）在 App 里不下载
+- 2026-11-28 **App 里返回键先关弹窗**（用户反馈：一按返回就回桌面）：`frontend/src/backClose.js`，只在 App（User-Agent 带 WorkRecordApp）和装到主屏幕的 PWA 里启用。看 `.el-overlay` 开了几个，开一个往历史里压一条（带上 vue-router 原来的 state）；返回键（Capacitor 是 webView.goBack）弹出时给最上面的弹窗发 Esc（Element Plus 的弹窗 / 抽屉 / 确认框都按 Esc 关）；点 × 关掉的把多压的历史退掉；不让按 Esc 关的弹窗把历史补回去。Playwright 试过：详情 → 返回关详情 → 再返回回上一页；点 × 后返回直接回上一页；项目详情上再开任务详情，返回只关最上面一层。只改网页，App 不用重新出
